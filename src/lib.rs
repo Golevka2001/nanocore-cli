@@ -19,6 +19,7 @@ pub use frame::{Frame, Direction, MAGIC};
 
 pub mod protocol;
 pub mod tail;
+pub mod transport;
 
 /// Message types (byte 8 of a frame).
 pub mod msg_type {
