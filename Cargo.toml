@@ -1,0 +1,11 @@
+[package]
+name = "nanocore"
+version = "0.1.0"
+edition = "2021"
+description = "Reverse-engineered control library for the Nanocore (TPE-S10) MIDI guitar effects processor"
+license = "GPL-3.0-only"
+repository = "https://github.com/Golevka2001/nanocore-cli"
+
+[dependencies]
+
+[dev-dependencies]
