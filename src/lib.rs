@@ -16,10 +16,13 @@
 pub mod frame;
 
 pub use frame::{Frame, Direction, MAGIC};
+pub use transport::Transport;
+pub use client::Nanocore;
 
 pub mod protocol;
 pub mod tail;
 pub mod transport;
+pub mod client;
 
 /// Message types (byte 8 of a frame).
 pub mod msg_type {
