@@ -15,6 +15,8 @@
 
 pub mod frame;
 pub mod protocol;
+pub mod models_data;
+pub mod params_data;
 pub mod tail;
 pub mod transport;
 pub mod client;
