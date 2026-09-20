@@ -6,6 +6,14 @@ description = "Reverse-engineered control library for the Nanocore (TPE-S10) MID
 license = "GPL-3.0-only"
 repository = "https://github.com/Golevka2001/nanocore-cli"
 
+[features]
+default = []
+## Real MIDI I/O via `midir` (CoreMIDI on macOS, ALSA on Linux, WinMM on Windows).
+## Also enables the `nanocore-cli` binary (which needs `clap`).
+midi = ["dep:midir", "dep:clap"]
+
 [dependencies]
+midir = { version = "0.11", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
 
 [dev-dependencies]
