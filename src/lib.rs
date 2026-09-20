@@ -14,17 +14,19 @@
 //! * `type` is the message type (e.g. 0x6D data, 0x63 snapshot, 0x68 ping)
 
 pub mod frame;
-
-pub use frame::{Frame, Direction, MAGIC};
-pub use transport::Transport;
-pub use client::Nanocore;
-
 pub mod protocol;
 pub mod tail;
 pub mod transport;
 pub mod client;
 
-/// Message types (byte 8 of a frame).
+#[cfg(feature = "midi")]
+pub mod midi;
+
+pub use frame::{Frame, Direction, MAGIC};
+pub use transport::Transport;
+pub use client::Nanocore;
+
+
 pub mod msg_type {
     pub const PING: u8 = 0x68;
     pub const DATA: u8 = 0x6D;
