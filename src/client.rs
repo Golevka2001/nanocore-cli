@@ -271,6 +271,44 @@ impl<T: Transport> Nanocore<T> {
         self.transact_expect(k, p, &[crate::msg_type::MODEL_LIST])
     }
 
+    /// Read a whole amp model or IR blob using a plan from [`crate::asset::read_plan`].
+    ///
+    /// Read-only. Sends each chunk request and concatenates the decoded replies
+    /// in ascending `addr` order (the device answers out of order).
+    ///
+    /// `on_chunk(done, total)` is called after each reply so callers can show
+    /// progress; pass a closure that does nothing if you don't care.
+    ///
+    /// The plan is taken as a parameter rather than derived here so that an
+    /// unknown region or slot is rejected by the caller *before* any MIDI is
+    /// sent, instead of surfacing as a fake transport error.
+    pub fn read_asset<F>(
+        &mut self,
+        plan: &[crate::asset::ChunkRequest],
+        total: u32,
+        mut on_chunk: F,
+    ) -> Result<Vec<u8>, Error<T::Error>>
+    where
+        F: FnMut(usize, usize),
+    {
+        let n = plan.len();
+        let mut chunks = Vec::with_capacity(n);
+        for (i, req) in plan.iter().enumerate() {
+            let reply = self.transact_expect(req.region, req.payload(), &[req.region])?;
+            if let Some(c) = crate::asset::parse_chunk(&reply.payload) {
+                chunks.push(c);
+            }
+            on_chunk(i + 1, n);
+        }
+        let blob = crate::asset::assemble(&chunks);
+        // The plan is built for the standard blob size; drop any slack.
+        Ok(if blob.len() > total as usize {
+            blob[..total as usize].to_vec()
+        } else {
+            blob
+        })
+    }
+
     /// Read the names of all preset slots (0–63).
     ///
     /// The device answers a `0x40` preset-list query with 8 fixed-size records

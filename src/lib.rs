@@ -12,13 +12,17 @@
 //! * byte 5 is constant `0x02`
 //! * `seq` is a little-endian u16 counter echoed by the device
 //! * `type` is the message type (e.g. 0x6D data, 0x63 snapshot, 0x68 ping)
+//!
+//! The payload of several messages ends with a device-generated
+//! "compact state" tail (`DA 00 0E ... statusByte ... From Nanocore`).
+//! See [`tail`] for helpers.
 
 pub mod frame;
 pub mod protocol;
-pub mod models_data;
 pub mod midicc;
 pub mod models_data;
 pub mod params_data;
+pub mod asset;
 pub mod tail;
 pub mod transport;
 pub mod client;
@@ -30,8 +34,8 @@ pub use frame::{Frame, Direction, MAGIC};
 pub use transport::Transport;
 pub use client::Nanocore;
 
-
 pub mod msg_type {
+
     pub const PING: u8 = 0x68;
     pub const DATA: u8 = 0x6D;
     pub const SNAPSHOT: u8 = 0x63;
