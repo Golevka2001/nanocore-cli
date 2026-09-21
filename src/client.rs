@@ -309,6 +309,190 @@ impl<T: Transport> Nanocore<T> {
         })
     }
 
+    /// Write an IR blob back to a slot and verify by reading it again.
+    ///
+    /// Replays the app's import flow for one slot:
+    /// `0x56` (query name) → PING → `0x49` (session) → PING → `0x50` (sync) →
+    /// `0x51` (begin) → `0x52`×N (data) → `0x53` (hash) → `0x55` (name) →
+    /// `0x57` (commit) → full read-back.
+    ///
+    /// The identity hash is **derived from `blob`** (`identity_hash`): the
+    /// device recomputes it on commit and silently rejects a mismatch.
+    /// The `B3` byte of the `0x53` frame is derived from the blob (it carries
+    /// the CRC's masked-out high bits — see `asset::write_hash`). The preamble
+    /// steps are best-effort: the device keeps its write session across
+    /// connections, and a session already open makes `0x49`/`0x50` go unanswered.
+    ///
+    /// Returns the read-back bytes so the caller can compare them with `blob`.
+    pub fn write_ir_slot(
+        &mut self,
+        slot: u8,
+        blob: &[u8],
+        name_override: Option<&str>,
+        mut on_progress: impl FnMut(&str),
+    ) -> Result<Vec<u8>, String> {
+        self.write_ir_slot_inner(slot, blob, name_override, &mut on_progress)
+    }
+
+    fn write_ir_slot_inner(
+        &mut self,
+        slot: u8,
+        blob: &[u8],
+        name_override: Option<&str>,
+        on_progress: &mut dyn FnMut(&str),
+    ) -> Result<Vec<u8>, String> {
+        use crate::asset;
+
+        // 1. Query the slot's name FIRST — while the device is still in its
+        //    normal (read-friendly) mode. Once the write session is open the
+        //    device only accepts the write flow. The identity hash is NOT
+        //    reused: the device recomputes it from the blob on commit and
+        //    silently rejects a mismatch, so it must be derived from the
+        //    content being written (verified 16/16 in the capture).
+        let mut name: Vec<u8>;
+        match self.transact_expect(
+            asset::SLOT_QUERY,
+            asset::slot_query(slot),
+            &[asset::SLOT_QUERY],
+        ) {
+            Ok(reply) => {
+                let (_old_hash, n) = asset::parse_slot_query(&reply.payload)
+                    .ok_or_else(|| {
+                        "0x56 reply did not parse as a slot identity".to_string()
+                    })
+                    .map_err(|e| e.to_string())?;
+                name = n;
+            }
+            Err(_) => {
+                // Mid-session the device may not answer 0x56; without an
+                // explicit override we cannot preserve the old name.
+                name = match name_override {
+                    Some(n) => n.as_bytes().to_vec(),
+                    None => return Err("slot query failed and no --name given".into()),
+                };
+            }
+        }
+        if let Some(n) = name_override {
+            name = n.as_bytes().to_vec();
+        }
+        on_progress(&format!("slot name {:?}", String::from_utf8_lossy(&name)));
+
+        // 2. Session open, capture order: PING -> 0x49 -> PING -> 0x50.
+        //    Both 0x49 and 0x50 replies echo our seq. However the device
+        //    keeps its write session across connections: a 0x49 while the
+        //    session is already open is ignored (no reply), and once open the
+        //    device skips straight to the write flow. So every preamble step
+        //    is best-effort; the data/commit frames are what matter.
+        let (pk, pp) = crate::protocol::ping();
+        on_progress("ping 1");
+        self.transact_expect(pk, pp.clone(), &[crate::msg_type::PING])
+            .map_err(|e| e.to_string())?;
+        on_progress("session open (0x49)");
+        let session_ok = self
+            .transact_expect(
+                asset::SESSION_OPEN,
+                asset::session_open(),
+                &[asset::SESSION_OPEN],
+            )
+            .is_ok();
+        if session_ok {
+            on_progress("session opened");
+            // In the app's capture a PING after 0x49 is echoed, but once the
+            // device is in write mode it may answer only with its own
+            // heartbeat (flags=0x02, own seq) — best-effort, never fatal.
+            let _ = self.transact_expect(pk, pp, &[crate::msg_type::PING]);
+        } else {
+            on_progress("session already open (0x49 ignored)");
+        }
+        on_progress("sync (0x50)");
+        if self
+            .transact_expect(0x50, vec![0x00, 0x00, 0x00], &[0x50])
+            .is_ok()
+        {
+            on_progress("synced");
+        } else {
+            on_progress("sync unanswered (continuing)");
+        }
+
+        // 3. Begin. If the device is mid-write from an earlier interrupted
+        //    attempt it ignores 0x51 and expects the data continuation — so a
+        //    timeout here is tolerated and the data frames decide the outcome.
+        let total = blob.len() as u32;
+        on_progress("begin");
+        if self
+            .transact_expect(
+                asset::WRITE_BEGIN,
+                asset::write_begin(slot, total),
+                &[asset::WRITE_BEGIN],
+            )
+            .is_ok()
+        {
+            on_progress("begin acked");
+        } else {
+            on_progress("begin unanswered (continuing)");
+        }
+
+        // 4. Data frames.
+        let n_chunks = blob.len().div_ceil(asset::WRITE_CHUNK_BYTES);
+        for (ci, chunk) in blob.chunks(asset::WRITE_CHUNK_BYTES).enumerate() {
+            self.transact_expect(
+                asset::WRITE_IR,
+                asset::encode_data_frame(chunk, ci, slot),
+                &[asset::WRITE_IR],
+            ).map_err(|e| {
+                on_progress(&format!("FAILED at chunk {}/{}", ci + 1, n_chunks));
+                e.to_string()
+            })?;
+            on_progress(&format!("chunk {}/{}", ci + 1, n_chunks));
+        }
+
+        // 5. Hash (derived from the blob), 6. name, 7. commit.
+        on_progress("hash");
+        self.transact_expect(
+            asset::WRITE_HASH,
+            asset::write_hash(slot, total, blob),
+            &[asset::WRITE_HASH],
+        ).map_err(|e| e.to_string())?;
+        on_progress("name");
+        let name_bytes = asset::encode_name(&name);
+        self.transact_expect(
+            asset::WRITE_NAME,
+            asset::write_name(slot, &name_bytes),
+            &[asset::WRITE_NAME],
+        ).map_err(|e| e.to_string())?;
+        self.transact_expect(
+            asset::WRITE_COMMIT,
+            asset::write_commit(slot),
+            &[asset::WRITE_COMMIT],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // The app re-enumerates the slot table between the commit and its
+        // read-back; the flash write is not immediately visible. Re-query the
+        // slot and give the device a moment before reading back.
+        let _ = self.transact_expect(
+            asset::SLOT_QUERY,
+            asset::slot_query(slot),
+            &[asset::SLOT_QUERY],
+        );
+
+        // 8. Read back and return.
+        let (total, plan) = asset::read_plan(asset::REGION_IR, slot)
+            .ok_or_else(|| "no read plan for that slot".to_string()).map_err(|e| e.to_string())?;
+        let mut chunks = Vec::new();
+        for req in &plan {
+            let reply = self.transact_expect(req.region, req.payload(), &[req.region]).map_err(|e| e.to_string())?;
+            if let Some(c) = asset::parse_chunk(&reply.payload) {
+                chunks.push(c);
+            }
+        }
+        let mut back = asset::assemble(&chunks);
+        if back.len() > total as usize {
+            back.truncate(total as usize);
+        }
+        Ok(back)
+    }
+
     /// Read the names of all preset slots (0–63).
     ///
     /// The device answers a `0x40` preset-list query with 8 fixed-size records
