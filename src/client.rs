@@ -331,7 +331,22 @@ impl<T: Transport> Nanocore<T> {
         name_override: Option<&str>,
         mut on_progress: impl FnMut(&str),
     ) -> Result<Vec<u8>, String> {
-        self.write_ir_slot_inner(slot, blob, name_override, &mut on_progress)
+        // Flash operations are slow: the device can take well over the default
+        // 1 s budget to answer session/commit frames (observed: a 0x49 ACK
+        // arriving after the whole 1 s budget expired). Use a generous policy
+        // for the whole write flow.
+        let saved = self.config;
+        self.set_config(crate::client::RetryConfig {
+            initial_timeout: Duration::from_millis(500),
+            max_timeout: Duration::from_millis(2000),
+            hard_limit: Duration::from_secs(10),
+            max_retries: 2,
+            poll_interval: Duration::from_millis(10),
+        });
+        let result =
+            self.write_ir_slot_inner(slot, blob, name_override, &mut on_progress);
+        self.set_config(saved);
+        result
     }
 
     fn write_ir_slot_inner(
@@ -475,20 +490,38 @@ impl<T: Transport> Nanocore<T> {
             asset::slot_query(slot),
             &[asset::SLOT_QUERY],
         );
+        // The flash write settles asynchronously: an immediate read-back can
+        // serve partially-stale data (observed: one stale byte range ~2.4 s
+        // into the blob seconds after the commit). Give it time, and retry
+        // the read-back until it matches or the budget runs out.
+        std::thread::sleep(std::time::Duration::from_millis(1200));
 
-        // 8. Read back and return.
+
+        // 8. Read back and return. Retry the whole read a few times: right
+        //    after the commit the device can serve partially-stale data.
         let (total, plan) = asset::read_plan(asset::REGION_IR, slot)
             .ok_or_else(|| "no read plan for that slot".to_string()).map_err(|e| e.to_string())?;
-        let mut chunks = Vec::new();
-        for req in &plan {
-            let reply = self.transact_expect(req.region, req.payload(), &[req.region]).map_err(|e| e.to_string())?;
-            if let Some(c) = asset::parse_chunk(&reply.payload) {
-                chunks.push(c);
+        let mut back = Vec::new();
+        for attempt in 0..3 {
+            let mut chunks = Vec::new();
+            for req in &plan {
+                let reply = self.transact_expect(req.region, req.payload(), &[req.region]).map_err(|e| e.to_string())?;
+                if let Some(c) = asset::parse_chunk(&reply.payload) {
+                    chunks.push(c);
+                }
             }
-        }
-        let mut back = asset::assemble(&chunks);
-        if back.len() > total as usize {
-            back.truncate(total as usize);
+            back = asset::assemble(&chunks);
+            if back.len() > total as usize {
+                back.truncate(total as usize);
+            }
+            if back == blob {
+                if attempt > 0 {
+                    on_progress(&format!("read-back stable on attempt {}", attempt + 1));
+                }
+                break;
+            }
+            on_progress(&format!("read-back stale (attempt {}), waiting…", attempt + 1));
+            std::thread::sleep(std::time::Duration::from_millis(1200));
         }
         Ok(back)
     }
