@@ -34,8 +34,8 @@ pub use frame::{Frame, Direction, MAGIC};
 pub use transport::Transport;
 pub use client::Nanocore;
 
+/// Message types (byte 8 of a frame).
 pub mod msg_type {
-
     pub const PING: u8 = 0x68;
     pub const DATA: u8 = 0x6D;
     pub const SNAPSHOT: u8 = 0x63;

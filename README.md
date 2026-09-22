@@ -23,6 +23,7 @@ layouts are derived from real MIDI captures of the official app.
 | Snapshot `0x63` read | ⚠️ partial (float scan + chainOrder) |
 | Effect data `0x06` read | ✅ parse verified |
 | Preset list `0x40` read | ⚠️ parser present, TX format TBD |
+| Output gain (`0x65`) | ❌ not decoded |
 
 ## Real-device status (USB-MIDI, macOS) — working
 
@@ -90,7 +91,34 @@ DA 00 0E <u16 ids...> 5A "statusByte" 5E "clockTimestamp" ... 5D "From Nanocore"
 
 These strings are produced by the **device firmware** (they are absent from
 both `libapp.so` and `liblivtra.so`). Whether the device requires the tail on
-write commands is unknown — helpers in `nanocore::tail` let you detect/strip it.
+write commands is unknown — helpers in [`tail`] let you detect/strip it.
+
+## Resolved details
+
+* **Parameter address bytes** in the `0x07` param-write message are now
+  decoded: `b6` = parameter index within the effect, `b5` = slot/instance
+  (`0x00` fx1, `0x01` fx2), and `b3` is an **app-side fragment marker**
+  (cycles `0x00..0x38` in steps of 8) that is *not* needed for writes — a
+  single frame with `b3 = 0x00` updates the whole parameter on real hardware.
+* **Float encoding is confirmed.** Parameter values are IEEE754 float32, 4
+  little-endian bytes, sent with the high bit of every byte cleared
+  (`encode_param_value`). This is mandatory: the transport is SysEx, so any
+  byte `>= 0x80` is a status byte and the message is dropped. With 4 bytes ×
+  7 data bits the device receives only 28 bits; bit 23 (the exponent LSB) is
+  among the four forced-to-zero bits, so odd-exponent values collapse to the
+  next lower even exponent (`0.3 → 0.1495`). That quantization is inherent to
+  the hardware and the official app does the same — verified across all 481
+  writes in a real knob-sweep capture (every value byte `< 0x80`).
+
+## Open questions
+
+1. **Metadata tail** requirement on writes (the `da 00 0e ...` block the app
+   appends; the device answers full 13-byte ACKs without us mirroring it, but
+   its exact role is unconfirmed).
+2. **Effect option tables** for the other 7 slots (only fx1 is mapped).
+3. **Output gain** (`0x65`) value location.
+4. **b3 semantics** — what the 8-way `0x08/0x10/0x20` selector means on the
+   app side (purely cosmetic for our writes).
 
 ## Tests
 
@@ -100,3 +128,27 @@ cargo build --features midi     # builds nanocore-cli
 ```
 
 Tests use real captured byte sequences from the official app.
+
+## CLI
+
+```bash
+nanocore-cli list                        # enumerate MIDI ports
+nanocore-cli monitor                     # dump every inbound frame (raw + parsed)
+nanocore-cli ping                        # ping and wait for the reply
+nanocore-cli preset 5                    # select preset index 5
+nanocore-cli cab 3 / variant 2 / enable 0 on / volume 90
+nanocore-cli snapshot                    # request the 0x63 snapshot
+nanocore-cli raw 6d 00 02 00 00 09 01    # send arbitrary bytes
+nanocore-cli replay 7d 4e 43 70 ...      # replay a captured frame verbatim
+nanocore-cli probe 1                     # full preset-switch flow + 3s dump
+```
+
+Flags: `--in N` `--out N` `--hint NAME` `--timeout MS` `--retries N`
+`--expect HH` `--flags HH` `--no-wait`.
+
+## Disclaimer & license
+
+Unofficial project, not affiliated with LIVTRA. Research-oriented; use at
+your own risk.
+
+GPL-3.0-only. See [LICENSE](LICENSE).
