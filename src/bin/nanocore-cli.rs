@@ -19,10 +19,12 @@
 use std::io::Write;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use nanocore::asset;
 use nanocore::client::{Error, Nanocore, RetryConfig};
 use nanocore::midi::{self, MidiTransport};
 use nanocore::midicc::{self, Block};
 use nanocore::models_data;
+use nanocore::params_data;
 use nanocore::protocol;
 use nanocore::{Frame, Transport};
 
@@ -114,7 +116,43 @@ enum Command {
     /// Switch the tuner on/off (default: on)
     Tuner { state: Option<Power> },
 
+    // ── parameters ────────────────────────────────────────────────────────
+    /// List a block's parameters (no device needed; omit BLOCK for an overview)
+    Params {
+        block: Option<BlockArg>,
+        /// Effect-type id for blocks whose parameters depend on it
+        /// (e.g. `delay --type 1` = Digital)
+        #[arg(long, value_name = "N")]
+        r#type: Option<u8>,
+    },
+    /// Set a named block parameter (0.0–1.0, device-normalised)
+    Param {
+        block: BlockArg,
+        /// Parameter name (e.g. `threshold`) or its b6 index
+        key: String,
+        value: f32,
+        /// Effect-type id for blocks whose parameters depend on it
+        #[arg(long, value_name = "N")]
+        r#type: Option<u8>,
+    },
+
     // ── assets (amp models & IRs) ─────────────────────────────────────────
+    /// Read, check or write the raw amp/IR blobs stored in device slots
+    Asset {
+        #[command(subcommand)]
+        cmd: AssetCmd,
+    },
+    /// List the built-in model tables, or query them from the device
+    Models {
+        /// Omit to list both tables
+        region: Option<RegionArg>,
+        /// Query the real device instead of the built-in table (read-only)
+        #[arg(long)]
+        live: bool,
+    },
+    /// List the names of all 64 preset slots (read-only)
+    Presets,
+
     // ── connection ────────────────────────────────────────────────────────
     /// List the available MIDI ports
     List,
@@ -159,6 +197,43 @@ enum Command {
     Probe { index: Option<u8> },
 }
 
+#[derive(Subcommand, Debug)]
+enum AssetCmd {
+    /// Fetch the blob, print its crc32, optionally save it
+    Read {
+        region: RegionArg,
+        slot: u8,
+        /// Write the blob to this file
+        out: Option<String>,
+    },
+    /// Fetch and compare byte-for-byte against a reference file
+    ///
+    /// Use e.g. the `ir/slot_00.bin` inside a `.npreset` bundle as reference.
+    Verify {
+        region: RegionArg,
+        slot: u8,
+        /// Reference file to compare against
+        reference: String,
+        /// Write the blob to this file
+        out: Option<String>,
+    },
+    /// Write a blob into a slot and verify by reading it back (IR only)
+    ///
+    /// WARNING (experimental): an interrupted write session can leave the
+    /// device's preset-name table wiped (all slots show the placeholder
+    /// "preset"); root cause under investigation. Keep the session alive
+    /// until this command prints its final OK/MISMATCH line.
+    Write {
+        region: RegionArg,
+        slot: u8,
+        /// File holding the blob (must be the standard IR size, 4096 bytes)
+        file: String,
+        /// Slot name to write along with the blob (default: keep the current one)
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+    },
+}
+
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum BlockArg {
     Fx1,
@@ -198,6 +273,28 @@ impl BlockArg {
             BlockArg::Delay => "delay",
             BlockArg::Reverb => "reverb",
             BlockArg::Eq => "eq",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum RegionArg {
+    Amp,
+    Ir,
+}
+
+impl RegionArg {
+    fn asset_region(self) -> u8 {
+        match self {
+            RegionArg::Amp => asset::REGION_AMP,
+            RegionArg::Ir => asset::REGION_IR,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            RegionArg::Amp => "amp",
+            RegionArg::Ir => "ir",
         }
     }
 }
@@ -267,6 +364,8 @@ fn main() {
     let result = match cli.command {
         // No device needed at all.
         Command::List => return cmd_list(),
+        Command::Models { region, live } => cmd_models(region, live, &conn),
+        Command::Params { block, r#type } => cmd_params(block, r#type),
         Command::Chain { positions } if positions.is_empty() => return print_chain_help(),
         // Everything else goes through the device.
         command => run(command, &conn),
@@ -311,7 +410,7 @@ fn run(command: Command, conn: &Conn) -> Result<(), String> {
     let mut dev = open_device(conn)?;
 
     match command {
-        Command::List => unreachable!(),
+        Command::List | Command::Models { .. } | Command::Params { .. } => unreachable!(),
         Command::Chain { .. } => {
             let (kind, payload) = match preflight.expect("chain preflight") {
                 Preflight::Chain(k, p) => (k, p),
@@ -352,6 +451,22 @@ fn run(command: Command, conn: &Conn) -> Result<(), String> {
         Command::Volume { percent } => {
             let (k, p) = protocol::set_usb_volume(percent);
             transact(&mut dev, conn, k, p, &[])
+        }
+        Command::Param { block, key, value, r#type, .. } => {
+            cmd_param(&mut dev, conn, block.key(), &key, value, r#type)
+        }
+        Command::Asset { cmd } => cmd_asset(&mut dev, cmd),
+        Command::Presets => {
+            let entries = dev.read_preset_names()?;
+            for e in &entries {
+                println!(
+                    "  #{:<2} {:<12} {}",
+                    e.slot,
+                    e.name,
+                    if e.named { "" } else { "(empty)" }
+                );
+            }
+            Ok(())
         }
         Command::Ping => {
             let (k, p) = protocol::ping();
@@ -473,6 +588,218 @@ fn cmd_list() {
         }
         Err(e) => println!("outputs: <error: {e}>"),
     }
+}
+
+fn cmd_models(region: Option<RegionArg>, live: bool, conn: &Conn) -> Result<(), String> {
+    if live {
+        let mut dev = open_device(conn)?;
+        return query_models_live(&mut dev);
+    }
+    match region {
+        Some(RegionArg::Amp) => print_models(models_data::AMP),
+        Some(RegionArg::Ir) => print_models(models_data::CAB),
+        None => {
+            println!("AMP models (0-37, device slot = index+1):");
+            print_models(models_data::AMP);
+            println!("\nCAB / IR models (0-29, device slot = index+1):");
+            print_models(models_data::CAB);
+        }
+    }
+    Ok(())
+}
+
+fn cmd_params(block: Option<BlockArg>, r#type: Option<u8>) -> Result<(), String> {
+    match block {
+        None => {
+            for &(key, slot) in params_data::BLOCKS {
+                let summary = match params_data::params(key, r#type) {
+                    Some(ps) => format!("{} parameter(s)", ps.len()),
+                    None => "needs --type N (or no published list for that type)".into(),
+                };
+                println!("  {key:<7} b5={slot}  {summary}");
+            }
+            println!("\nusage: nanocore-cli params <block> [--type N]");
+            Ok(())
+        }
+        Some(block) => {
+            let key = block.key();
+            let slot = params_data::block_slot(key)
+                .ok_or_else(|| format!("unknown block {key:?}"))?;
+            let ps = params_data::params(key, r#type).ok_or_else(|| {
+                format!(
+                    "block {key:?} is type-dependent: pass `--type N`, and note that some \
+                     types have no published parameter list (fx1 types 1-2, fx2 types 5-7)"
+                )
+            })?;
+            println!(
+                "{key} (b5={slot}){}:",
+                match r#type {
+                    Some(t) => format!(", effect type {t}"),
+                    None => String::new(),
+                }
+            );
+            for p in ps {
+                println!("  b6={:<2} {:<24} CC{}", p.index, p.name, p.cc);
+            }
+            Ok(())
+        }
+    }
+}
+
+fn cmd_param(
+    dev: &mut Nanocore<MidiTransport>,
+    conn: &Conn,
+    block: &str,
+    key: &str,
+    value: f32,
+    r#type: Option<u8>,
+) -> Result<(), String> {
+    let slot = params_data::block_slot(block)
+        .ok_or_else(|| format!("unknown block {block:?} (fx1 fx2 amp cab delay mod reverb eq)"))?;
+    let info = match key.parse::<u8>() {
+        Ok(i) => params_data::param_by_index(block, r#type, i),
+        Err(_) => params_data::param_by_name(block, r#type, key),
+    };
+    let info = info.ok_or_else(|| {
+        format!(
+            "no parameter {key:?} for block {block:?}{}. \
+             Run `nanocore-cli params {block}` to list them; type-dependent blocks \
+             additionally need `--type N`. Some types have no published parameter \
+             list (fx1 types 1-2, fx2 types 5-7).",
+            match r#type {
+                Some(t) => format!(" type {t}"),
+                None => String::new(),
+            }
+        )
+    })?;
+    if !(0.0..=1.0).contains(&value) {
+        return Err(format!("value must be 0.0-1.0 (device-normalised), got {value}"));
+    }
+    println!(
+        "param {block} [b5={slot}] b6={} {} (CC{}) = {value}",
+        info.index, info.name, info.cc
+    );
+    let (k, p) = protocol::param_write(protocol::DEFAULT_B3, slot, info.index, value);
+    transact(dev, conn, k, p, &[])
+}
+
+fn cmd_asset(dev: &mut Nanocore<MidiTransport>, cmd: AssetCmd) -> Result<(), String> {
+    match cmd {
+        AssetCmd::Read { region, slot, out } => {
+            asset_read(dev, region, slot, out, None)
+        }
+        AssetCmd::Verify { region, slot, reference, out } => {
+            let want = std::fs::read(&reference)
+                .map_err(|e| format!("cannot read {reference}: {e}"))?;
+            asset_read(dev, region, slot, out, Some(&want))
+        }
+        AssetCmd::Write { region, slot, file, name } => {
+            if region != RegionArg::Ir {
+                return Err("asset write currently supports ir slots only".into());
+            }
+            let blob = std::fs::read(&file)
+                .map_err(|e| format!("cannot read {file}: {e}"))?;
+            if blob.len() as u32 != asset::IR_TOTAL {
+                return Err(format!(
+                    "IR blob must be exactly {} bytes (got {})",
+                    asset::IR_TOTAL,
+                    blob.len()
+                ));
+            }
+            println!("asset write ir slot {slot} — {} bytes", blob.len());
+            eprintln!(
+                "warning: asset write is experimental — do not interrupt the session; \
+                 an interrupted write has been observed to wipe the preset-name table \n\
+                 (recoverable via a factory reset in the official app)"
+            );
+            let back = dev.write_ir_slot(slot, &blob, name.as_deref(), |msg| {
+                eprint!("\r{msg}");
+            })?;
+            eprintln!();
+            match back == blob {
+                true => {
+                    let crc = asset::crc32(&back);
+                    println!("OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).", back.len());
+                    Ok(())
+                }
+                false => {
+                    let at = back
+                        .iter()
+                        .zip(blob.iter())
+                        .position(|(a, b)| a != b)
+                        .unwrap_or(0);
+                    println!(
+                        "MISMATCH after write: first difference at byte {at} \
+                         (device 0x{:02x}, file 0x{:02x})",
+                        back[at], blob[at]
+                    );
+                    std::process::exit(3);
+                }
+            }
+        }
+    }
+}
+
+/// Shared body of `asset read` / `asset verify`.
+fn asset_read(
+    dev: &mut Nanocore<MidiTransport>,
+    region: RegionArg,
+    slot: u8,
+    out: Option<String>,
+    reference: Option<&[u8]>,
+) -> Result<(), String> {
+    let region_byte = region.asset_region();
+    let Some((total, plan)) = asset::read_plan(region_byte, slot) else {
+        return Err(format!("no read plan for region {}", region.name()));
+    };
+    println!(
+        "asset {} slot {} (read-only, {} chunk request(s), expecting {} bytes)...",
+        region.name(),
+        slot,
+        plan.len(),
+        total
+    );
+    let blob = dev
+        .read_asset(&plan, total, |done, n| {
+            eprint!("\r  chunk {done}/{n}");
+        })
+        .map_err(|e| e.to_string())?;
+    eprintln!();
+    println!("read {} bytes", blob.len());
+
+    let crc = asset::crc32(&blob);
+    println!("crc32 = {crc:08x}");
+
+    if let Some(path) = &out {
+        match std::fs::write(path, &blob) {
+            Ok(()) => println!("written to {path}"),
+            Err(e) => eprintln!("warning: cannot write {path}: {e}"),
+        }
+    }
+    if let Some(want) = reference {
+        if blob.len() != want.len() {
+            println!(
+                "MISMATCH: device returned {} bytes, reference has {}",
+                blob.len(),
+                want.len()
+            );
+            std::process::exit(3);
+        }
+        match blob.iter().zip(want.iter()).position(|(a, b)| a != b) {
+            None => println!(
+                "OK: byte-identical to the reference ({} bytes, crc32 {crc:08x}).",
+                blob.len()
+            ),
+            Some(at) => {
+                println!(
+                    "MISMATCH: first difference at byte {at}: device 0x{:02x}, reference 0x{:02x}",
+                    blob[at], want[at]
+                );
+                std::process::exit(3);
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── chain ───────────────────────────────────────────────────────────────────
