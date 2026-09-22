@@ -522,11 +522,20 @@ pub struct ModelName {
     pub name: String,
     /// `true` when byte 7 of the response is non-zero.
     ///
-    /// First read as "the slot holds a user/custom model": in the
-    /// `resona-import` capture the only flagged slot (29) held a
-    /// user-imported NAM file. The `preset-export` capture later showed this
-    /// reading is wrong (see the fix commit) — the flag follows the slot whose
-    /// model is currently loaded, factory or not.
+    /// **This is not a "user model" marker.** An earlier revision of this
+    /// module assumed the opposite based on the `resona-import` capture,
+    /// where slot 29 (a user-imported NAM) was the only flagged slot. The
+    /// `preset-export` capture refutes that: it queries a single slot, 9, which
+    /// holds the *factory* model `Mar8001`, and byte 7 is still `0x01`.
+    ///
+    /// The surviving hypothesis — consistent with both captures — is that byte
+    /// 7 marks the slot whose model is **currently loaded / in use**, i.e. in
+    /// the import capture the active amp was the user NAM in slot 29, and in
+    /// the export capture the active amp was `Mar8001` in slot 9.
+    ///
+    /// To identify user/custom models, compare [`ModelName::name`] against the
+    /// factory table in [`crate::models_data`] instead — that is
+    /// flag-independent.
     pub active: bool,
 }
 
@@ -596,6 +605,14 @@ mod tests {
         0x7c, 0x21, 0x54, 0x1a, 0x1a, 0x00, 0x00, 0x4e, 0x44, 0x53, 0x50, 0x20, 0x41, 0x00,
         0x72, 0x63, 0x68, 0x65, 0x74, 0x79, 0x70, 0x00, 0x65, 0x3a, 0x00,
     ];
+    // The single-slot query from `preset-export.mmon`: slot 9, which holds the
+    // *factory* model `Mar8001`, yet byte 7 is 0x01. This is the counter-example
+    // that proves byte 7 is not a user-model flag.
+    const SLOT9_FACTORY_ACTIVE: &[u8] = &[
+        0x00, 0x00, 0x1e, 0x10, 0x00, 0x09, 0x01, 0x01, 0x52, 0x2f, 0x00, 0x06, 0x00, 0x46,
+        0x36, 0x31, 0x44, 0x1a, 0x1a, 0x00, 0x00, 0x4d, 0x61, 0x72, 0x38, 0x30, 0x30, 0x31,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
 
     #[test]
     fn model_query_is_5_bytes_with_index() {
@@ -617,6 +634,15 @@ mod tests {
         assert!(b.active);
     }
 
+    /// Regression guard for the corrected byte-7 semantics: a *factory* model
+    /// reports the flag too, so callers must not treat it as "user model".
+    #[test]
+    fn byte7_is_not_a_user_model_flag() {
+        let m = parse_model_name(SLOT9_FACTORY_ACTIVE).expect("slot9 parse");
+        assert_eq!(m.index, 9);
+        assert_eq!(m.name, "Mar8001");
+        assert!(m.active, "factory model Mar8001 also reports byte7 != 0");
+    }
 
     #[test]
     fn parse_model_name_needs_marker() {
