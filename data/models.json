@@ -1,0 +1,422 @@
+{
+  "schema": "nanocore.models/v1",
+  "generated": "2026-09-22",
+  "source": [
+    "resources/factory_presets.json (firmware ampAssets/irAssets slot+code)",
+    "docs/manuals/NANOCORE-User-Manual.pdf (friendly 'based on' names, 1:1 by slot)",
+    "resources/strings_en.json (device strings: AMP+Fx2 slots 1-38, IR slots 1-30)"
+  ],
+  "note": "Indices are 0-based firmware slots. Device UI shows slot+1. Friendly names are ASCII approximations of the manual's brand references; verify against hardware.",
+  "amp": [
+    {
+      "index": 0,
+      "code": "BogXTC1",
+      "name": "Bogner XTC #1",
+      "category": "amp"
+    },
+    {
+      "index": 1,
+      "code": "BogXTC2",
+      "name": "Bogner XTC #2",
+      "category": "amp"
+    },
+    {
+      "index": 2,
+      "code": "ENGP1",
+      "name": "ENGL Powerball E645 #1",
+      "category": "amp"
+    },
+    {
+      "index": 3,
+      "code": "ENGP2",
+      "name": "ENGL Powerball E645 #2",
+      "category": "amp"
+    },
+    {
+      "index": 4,
+      "code": "Fd59Bm",
+      "name": "Fender 59 Bassman",
+      "category": "amp"
+    },
+    {
+      "index": 5,
+      "code": "Fd65Dk",
+      "name": "Fender 65 Darkface",
+      "category": "amp"
+    },
+    {
+      "index": 6,
+      "code": "Hiw103",
+      "name": "Hiwatt DR103",
+      "category": "amp"
+    },
+    {
+      "index": 7,
+      "code": "MarDSL1",
+      "name": "Marshall DSL50 #1",
+      "category": "amp"
+    },
+    {
+      "index": 8,
+      "code": "MarDSL2",
+      "name": "Marshall DSL50 #2",
+      "category": "amp"
+    },
+    {
+      "index": 9,
+      "code": "Mar8001",
+      "name": "Marshall JCM800 #1",
+      "category": "amp"
+    },
+    {
+      "index": 10,
+      "code": "Mar8002",
+      "name": "Marshall JCM800 #2",
+      "category": "amp"
+    },
+    {
+      "index": 11,
+      "code": "MesR1",
+      "name": "Mesa Boogie Rectifier #1",
+      "category": "amp"
+    },
+    {
+      "index": 12,
+      "code": "MesR2",
+      "name": "Mesa Boogie Rectifier #2",
+      "category": "amp"
+    },
+    {
+      "index": 13,
+      "code": "MesR3",
+      "name": "Mesa Boogie Rectifier #3",
+      "category": "amp"
+    },
+    {
+      "index": 14,
+      "code": "OgG120",
+      "name": "Orange Graphic 120",
+      "category": "amp"
+    },
+    {
+      "index": 15,
+      "code": "Pey51501",
+      "name": "Peavey 5150 #1",
+      "category": "amp"
+    },
+    {
+      "index": 16,
+      "code": "Pey51502",
+      "name": "Peavey 5150 #2",
+      "category": "amp"
+    },
+    {
+      "index": 17,
+      "code": "Pey6505",
+      "name": "Peavey 6505",
+      "category": "amp"
+    },
+    {
+      "index": 18,
+      "code": "RanT21",
+      "name": "Randall T2 #1",
+      "category": "amp"
+    },
+    {
+      "index": 19,
+      "code": "RanT22",
+      "name": "Randall T2 #2",
+      "category": "amp"
+    },
+    {
+      "index": 20,
+      "code": "RoJC120",
+      "name": "Roland JC-120",
+      "category": "amp"
+    },
+    {
+      "index": 21,
+      "code": "SLO1001",
+      "name": "Soldano SLO-100 #1",
+      "category": "amp"
+    },
+    {
+      "index": 22,
+      "code": "SLO1002",
+      "name": "Soldano SLO-100 #2",
+      "category": "amp"
+    },
+    {
+      "index": 23,
+      "code": "SLO1003",
+      "name": "Soldano SLO-100 #3",
+      "category": "amp"
+    },
+    {
+      "index": 24,
+      "code": "VXAC30",
+      "name": "VOX AC30",
+      "category": "amp"
+    },
+    {
+      "index": 25,
+      "code": "ApSVTVR",
+      "name": "Ampeg SVT VR",
+      "category": "amp"
+    },
+    {
+      "index": 26,
+      "code": "ApSVTCL",
+      "name": "Ampeg SVT CL",
+      "category": "amp"
+    },
+    {
+      "index": 27,
+      "code": "Adn900",
+      "name": "Ashdown ABM900 EVO II",
+      "category": "amp"
+    },
+    {
+      "index": 28,
+      "code": "Hiw320",
+      "name": "Hiwatt Jupiter 320",
+      "category": "amp"
+    },
+    {
+      "index": 29,
+      "code": "MarSup",
+      "name": "Marshall Super Bass",
+      "category": "amp"
+    },
+    {
+      "index": 30,
+      "code": "scream",
+      "name": "Ibanez TS9 (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 31,
+      "code": "Klone",
+      "name": "Ryra The Klone (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 32,
+      "code": "OCD",
+      "name": "Fulltone OCD (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 33,
+      "code": "DS2",
+      "name": "Boss DS-2 (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 34,
+      "code": "PiFUZZ v.2",
+      "name": "EHX Big Muff Pi (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 35,
+      "code": "Range",
+      "name": "Dallas-Arbiter Rangemaster (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 36,
+      "code": "AC",
+      "name": "Xotic AC Booster (drive)",
+      "category": "drive"
+    },
+    {
+      "index": 37,
+      "code": "Fiman",
+      "name": "Friedman Marty Friedman (drive)",
+      "category": "drive"
+    }
+  ],
+  "cab": [
+    {
+      "index": 0,
+      "code": "Bog412A",
+      "name": "Bogner 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 1,
+      "code": "Bog412B",
+      "name": "Bogner 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 2,
+      "code": "Eng412A",
+      "name": "ENGL E412 ProVintage30 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 3,
+      "code": "Eng412B",
+      "name": "ENGL E412 ProVintage30 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 4,
+      "code": "FdTR212",
+      "name": "Fender Twin Reverb Darkface 2x12",
+      "category": "cab"
+    },
+    {
+      "index": 5,
+      "code": "Fd59BM410",
+      "name": "Fender 1959 Bassman 4x10",
+      "category": "cab"
+    },
+    {
+      "index": 6,
+      "code": "Hiw412",
+      "name": "Hiwatt Brilliant 4x12",
+      "category": "cab"
+    },
+    {
+      "index": 7,
+      "code": "Mar412A",
+      "name": "Marshall V30 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 8,
+      "code": "Mar412B",
+      "name": "Marshall V30 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 9,
+      "code": "Mar96412A",
+      "name": "Marshall 1960B 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 10,
+      "code": "Mar96412B",
+      "name": "Marshall 1960B 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 11,
+      "code": "Mes412A",
+      "name": "Mesa/Boogie Oversized V30 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 12,
+      "code": "Mes412B",
+      "name": "Mesa/Boogie Oversized V30 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 13,
+      "code": "Mes412C",
+      "name": "Mesa/Boogie Oversized V30 4x12 C",
+      "category": "cab"
+    },
+    {
+      "index": 14,
+      "code": "Og412",
+      "name": "Orange Vintage30 4x12",
+      "category": "cab"
+    },
+    {
+      "index": 15,
+      "code": "pey412A",
+      "name": "Peavey 5150 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 16,
+      "code": "pey412B",
+      "name": "Peavey 5150 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 17,
+      "code": "peyVk412",
+      "name": "Peavey Valveking 4x12",
+      "category": "cab"
+    },
+    {
+      "index": 18,
+      "code": "Ran112A",
+      "name": "Randall RD112 1x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 19,
+      "code": "Ran112B",
+      "name": "Randall RD112 1x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 20,
+      "code": "Ran112C",
+      "name": "Randall RD112 1x12 C",
+      "category": "cab"
+    },
+    {
+      "index": 21,
+      "code": "SLO412A",
+      "name": "Soldano SLO412 4x12 A",
+      "category": "cab"
+    },
+    {
+      "index": 22,
+      "code": "SLO412B",
+      "name": "Soldano SLO412 4x12 B",
+      "category": "cab"
+    },
+    {
+      "index": 23,
+      "code": "SLO412C",
+      "name": "Soldano SLO412 4x12 C",
+      "category": "cab"
+    },
+    {
+      "index": 24,
+      "code": "AC30212",
+      "name": "VOX AC30 2x12",
+      "category": "cab"
+    },
+    {
+      "index": 25,
+      "code": "AP810",
+      "name": "Ampeg 8x10",
+      "category": "cab"
+    },
+    {
+      "index": 26,
+      "code": "Ap410",
+      "name": "Ampeg SVT 4x10",
+      "category": "cab"
+    },
+    {
+      "index": 27,
+      "code": "Adn410",
+      "name": "Ashdown 4x10",
+      "category": "cab"
+    },
+    {
+      "index": 28,
+      "code": "HiwB410",
+      "name": "Hiwatt B410 4x10",
+      "category": "cab"
+    },
+    {
+      "index": 29,
+      "code": "Mar412",
+      "name": "Marshall 4x12",
+      "category": "cab"
+    }
+  ]
+}

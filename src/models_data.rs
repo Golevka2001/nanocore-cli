@@ -1,7 +1,9 @@
 //! Embedded Nanocore amp / cab model tables.
 //!
-//! Generated from the device models table (do not edit by hand). Keep the two
-//! in sync. Sources: firmware `ampAssets`/`irAssets` (slot order), the official
+//! Mirror of `data/models.json` (vendored from `nanocore-reverse/resources/
+//! models.json`); the sync is enforced by `tests/data_sync.rs` — edit the JSON
+//! and this table together, `cargo test` fails if they drift apart.
+//! Sources: firmware `ampAssets`/`irAssets` (slot order), the official
 //! user manual (friendly "based on" names), and `strings_en.json` (device slot
 //! counts: AMP+Fx2 = 38, IR = 30). Indices are 0-based firmware slots.
 #![allow(dead_code)]

@@ -1,0 +1,1137 @@
+{
+  "schema": "nanocore.params/v2",
+  "generated_from": "docs/manuals/midi_cc_reference.md (OEM NANOCORE-MIDI-Control-User-Guide.pdf)",
+  "indexing": "In the SysEx write 00 07 00 [b3] 01 [b5] [b6] <float32>, b5 = block slot and b6 = index WITHIN THE BLOCK'S CURRENT EFFECT TYPE (not a flat block-wide list). Evidence: FX1 gate answers to b6=0,1 and FX1 compressor to b6=0..5, both in the same block slot b5=0.",
+  "blocks": {
+    "fx1": 0,
+    "fx2": 1,
+    "amp": 2,
+    "cab": 3,
+    "delay": 4,
+    "mod": 5,
+    "reverb": 6,
+    "eq": 7
+  },
+  "block_index_provenance": "resources/strings_en.json IDs 14-21 list FX1,FX2,AMP,CAB,DEL,MOD,REV,EQ -> 0..7; captures agree (FX1 writes b5=0x00, FX2 writes b5=0x01, `ENABLE slot=2` = AMP).",
+  "effect_types": {
+    "fx1": [
+      {
+        "id": 0,
+        "name": "Gate"
+      },
+      {
+        "id": 1,
+        "name": "Auto Gate"
+      },
+      {
+        "id": 2,
+        "name": "Gate + Compressor"
+      },
+      {
+        "id": 3,
+        "name": "Compressor"
+      }
+    ],
+    "fx2": [
+      {
+        "id": 0,
+        "name": "Drive 1"
+      },
+      {
+        "id": 1,
+        "name": "Drive 2"
+      },
+      {
+        "id": 2,
+        "name": "Drive 3"
+      },
+      {
+        "id": 3,
+        "name": "Drive 4"
+      },
+      {
+        "id": 4,
+        "name": "Drive 5"
+      },
+      {
+        "id": 5,
+        "name": "Boost 1"
+      },
+      {
+        "id": 6,
+        "name": "Boost 2"
+      },
+      {
+        "id": 7,
+        "name": "Boost 3"
+      },
+      {
+        "id": 8,
+        "name": "Pitch"
+      },
+      {
+        "id": 9,
+        "name": "Envelope Wah"
+      },
+      {
+        "id": 10,
+        "name": "Wah"
+      }
+    ],
+    "mod": [
+      {
+        "id": 0,
+        "name": "Chorus"
+      },
+      {
+        "id": 1,
+        "name": "Phaser"
+      },
+      {
+        "id": 2,
+        "name": "Flanger"
+      },
+      {
+        "id": 3,
+        "name": "Tremolo"
+      },
+      {
+        "id": 4,
+        "name": "Vibrato"
+      }
+    ],
+    "delay": [
+      {
+        "id": 0,
+        "name": "BBD"
+      },
+      {
+        "id": 1,
+        "name": "Digital"
+      },
+      {
+        "id": 2,
+        "name": "Duck"
+      },
+      {
+        "id": 3,
+        "name": "Ice"
+      },
+      {
+        "id": 4,
+        "name": "Reverse"
+      },
+      {
+        "id": 5,
+        "name": "LoFi"
+      },
+      {
+        "id": 6,
+        "name": "Smear"
+      },
+      {
+        "id": 7,
+        "name": "Mod Delay"
+      }
+    ],
+    "reverb": [
+      {
+        "id": 0,
+        "name": "Room"
+      },
+      {
+        "id": 1,
+        "name": "Plate"
+      },
+      {
+        "id": 2,
+        "name": "Hall"
+      },
+      {
+        "id": 3,
+        "name": "Concert"
+      },
+      {
+        "id": 4,
+        "name": "Shimmer"
+      },
+      {
+        "id": 5,
+        "name": "Cloud"
+      },
+      {
+        "id": 6,
+        "name": "Spring"
+      }
+    ],
+    "eq": [
+      {
+        "id": 0,
+        "name": "3-band EQ"
+      },
+      {
+        "id": 1,
+        "name": "6-band EQ"
+      },
+      {
+        "id": 2,
+        "name": "8-band EQ"
+      }
+    ]
+  },
+  "params_by_block": {
+    "fx1": {
+      "by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 50,
+            "name": "Gate Threshold"
+          },
+          {
+            "index": 1,
+            "cc": 50,
+            "name": "Release"
+          }
+        ],
+        "3": [
+          {
+            "index": 0,
+            "cc": 51,
+            "name": "Compressor Threshold"
+          },
+          {
+            "index": 1,
+            "cc": 52,
+            "name": "Ratio"
+          },
+          {
+            "index": 2,
+            "cc": 53,
+            "name": "Knee"
+          },
+          {
+            "index": 3,
+            "cc": 54,
+            "name": "Attack"
+          },
+          {
+            "index": 4,
+            "cc": 55,
+            "name": "Release"
+          },
+          {
+            "index": 5,
+            "cc": 56,
+            "name": "Makeup"
+          }
+        ]
+      },
+      "unknown_types": [
+        1,
+        2
+      ],
+      "notes": "Type 0 (Gate) param names come from the capture 开启噪音门，调整阈值和释放.mmon (two groups b6=0,1). Type 3 (Compressor) is guide CC51-56 and is confirmed by 切换到压缩，调整阈值、比率、软拐点、启动、释放、补偿.mmon. The guide gives NO parameter names for types 1 (Auto Gate) and 2 (Gate + Compressor); no capture covers them either."
+    },
+    "fx2": {
+      "by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 57,
+            "name": "Drive Gain / Boost"
+          },
+          {
+            "index": 1,
+            "cc": 58,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 59,
+            "name": "Level"
+          }
+        ],
+        "1": [
+          {
+            "index": 0,
+            "cc": 57,
+            "name": "Drive Gain / Boost"
+          },
+          {
+            "index": 1,
+            "cc": 58,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 59,
+            "name": "Level"
+          }
+        ],
+        "2": [
+          {
+            "index": 0,
+            "cc": 57,
+            "name": "Drive Gain / Boost"
+          },
+          {
+            "index": 1,
+            "cc": 58,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 59,
+            "name": "Level"
+          }
+        ],
+        "3": [
+          {
+            "index": 0,
+            "cc": 57,
+            "name": "Drive Gain / Boost"
+          },
+          {
+            "index": 1,
+            "cc": 58,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 59,
+            "name": "Level"
+          }
+        ],
+        "4": [
+          {
+            "index": 0,
+            "cc": 57,
+            "name": "Drive Gain / Boost"
+          },
+          {
+            "index": 1,
+            "cc": 58,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 59,
+            "name": "Level"
+          }
+        ],
+        "8": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Pitch"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Fine"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Mix"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Level"
+          }
+        ],
+        "9": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Freq"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Env"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Q"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Mix"
+          },
+          {
+            "index": 4,
+            "cc": 72,
+            "name": "Level"
+          }
+        ],
+        "10": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Freq"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Sweep"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Rate"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Shape"
+          },
+          {
+            "index": 4,
+            "cc": 72,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 73,
+            "name": "Level"
+          }
+        ]
+      },
+      "unknown_types": [
+        5,
+        6,
+        7
+      ],
+      "notes": "Drive types 0-4 map to guide CC57-59. Special types 8/9/10 come from the guide's FX2 special-type table. The guide lists no separate parameter names for Boost 1-3 (types 5-7); no capture covers them."
+    },
+    "amp": {
+      "fixed": [
+        {
+          "index": 0,
+          "cc": 60,
+          "name": "Amp Gain"
+        },
+        {
+          "index": 1,
+          "cc": 61,
+          "name": "Bass"
+        },
+        {
+          "index": 2,
+          "cc": 62,
+          "name": "Mid"
+        },
+        {
+          "index": 3,
+          "cc": 63,
+          "name": "Treble"
+        },
+        {
+          "index": 4,
+          "cc": 64,
+          "name": "Amp Level"
+        }
+      ]
+    },
+    "cab": {
+      "fixed": [
+        {
+          "index": 0,
+          "cc": 65,
+          "name": "Cab Low Cut"
+        },
+        {
+          "index": 1,
+          "cc": 66,
+          "name": "Cab High Cut"
+        },
+        {
+          "index": 2,
+          "cc": 67,
+          "name": "Cab Level"
+        }
+      ]
+    },
+    "mod": {
+      "by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Rate"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Depth"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Level"
+          }
+        ],
+        "1": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Rate"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Mix"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Level"
+          }
+        ],
+        "2": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Rate"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Mix"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Level"
+          }
+        ],
+        "3": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Rate"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Depth"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Wave"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Smooth"
+          },
+          {
+            "index": 4,
+            "cc": 72,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 73,
+            "name": "Level"
+          }
+        ],
+        "4": [
+          {
+            "index": 0,
+            "cc": 68,
+            "name": "Rate"
+          },
+          {
+            "index": 1,
+            "cc": 69,
+            "name": "Depth"
+          },
+          {
+            "index": 2,
+            "cc": 70,
+            "name": "Wave"
+          },
+          {
+            "index": 3,
+            "cc": 71,
+            "name": "Mix"
+          },
+          {
+            "index": 4,
+            "cc": 72,
+            "name": "Level"
+          }
+        ]
+      }
+    },
+    "delay": {
+      "by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Delay"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Age"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Mix"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Level"
+          }
+        ],
+        "1": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Mix"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Level"
+          }
+        ],
+        "2": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Filter"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Mix"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Level"
+          }
+        ],
+        "3": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Interval"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Mix"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Level"
+          }
+        ],
+        "4": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Mix"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Level"
+          }
+        ],
+        "5": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Bit Depth"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "LoFi Mix"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 79,
+            "name": "Level"
+          }
+        ],
+        "6": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Smear"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Filter"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 79,
+            "name": "Level"
+          }
+        ],
+        "7": [
+          {
+            "index": 0,
+            "cc": 74,
+            "name": "Time"
+          },
+          {
+            "index": 1,
+            "cc": 75,
+            "name": "Feedback"
+          },
+          {
+            "index": 2,
+            "cc": 76,
+            "name": "Mod Depth"
+          },
+          {
+            "index": 3,
+            "cc": 77,
+            "name": "Mod Rate"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 79,
+            "name": "Level"
+          }
+        ]
+      }
+    },
+    "reverb": {
+      "by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "Mod"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "1": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "Mod"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "2": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "LF Damp"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "3": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "HF Damp"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "4": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "Pitch"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "5": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "Tone"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Mod Depth"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "Mod Rate"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mix"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Level"
+          }
+        ],
+        "6": [
+          {
+            "index": 0,
+            "cc": 85,
+            "name": "Decay"
+          },
+          {
+            "index": 1,
+            "cc": 86,
+            "name": "PreDelay"
+          },
+          {
+            "index": 2,
+            "cc": 87,
+            "name": "Tone"
+          },
+          {
+            "index": 3,
+            "cc": 88,
+            "name": "Crossover"
+          },
+          {
+            "index": 4,
+            "cc": 89,
+            "name": "Mod"
+          },
+          {
+            "index": 5,
+            "cc": 90,
+            "name": "Mix"
+          }
+        ]
+      }
+    },
+    "eq": {
+      "bands_by_type": {
+        "0": [
+          {
+            "index": 0,
+            "cc": 91,
+            "name": "Low"
+          },
+          {
+            "index": 1,
+            "cc": 92,
+            "name": "Mid"
+          },
+          {
+            "index": 2,
+            "cc": 93,
+            "name": "High"
+          }
+        ],
+        "1": [
+          {
+            "index": 0,
+            "cc": 91,
+            "name": "120 Hz"
+          },
+          {
+            "index": 1,
+            "cc": 92,
+            "name": "250 Hz"
+          },
+          {
+            "index": 2,
+            "cc": 93,
+            "name": "500 Hz"
+          },
+          {
+            "index": 3,
+            "cc": 94,
+            "name": "1 kHz"
+          },
+          {
+            "index": 4,
+            "cc": 95,
+            "name": "2 kHz"
+          },
+          {
+            "index": 5,
+            "cc": 96,
+            "name": "4 kHz"
+          }
+        ],
+        "2": [
+          {
+            "index": 0,
+            "cc": 91,
+            "name": "60 Hz"
+          },
+          {
+            "index": 1,
+            "cc": 92,
+            "name": "120 Hz"
+          },
+          {
+            "index": 2,
+            "cc": 93,
+            "name": "250 Hz"
+          },
+          {
+            "index": 3,
+            "cc": 94,
+            "name": "500 Hz"
+          },
+          {
+            "index": 4,
+            "cc": 95,
+            "name": "1 kHz"
+          },
+          {
+            "index": 5,
+            "cc": 96,
+            "name": "2 kHz"
+          },
+          {
+            "index": 6,
+            "cc": 97,
+            "name": "4 kHz"
+          },
+          {
+            "index": 7,
+            "cc": 33,
+            "name": "8 kHz"
+          }
+        ]
+      }
+    }
+  },
+  "notes": [
+    "cc = standard MIDI CC (7-bit, one-way, documented). name = device/display name.",
+    "b3 in the SysEx write is NOT addressing: it only takes 0x00,0x08..0x38 and varies independently of block/param/value. Meaning undetermined; 0x00 was used in every capture."
+  ]
+}

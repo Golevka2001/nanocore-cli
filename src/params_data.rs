@@ -1,9 +1,11 @@
 //! Embedded Nanocore parameter tables.
 //!
-//! Generated from the device params table (schema `nanocore.params/v2`). That
-//! JSON is parsed out of the OEM MIDI CC reference, which transcribes
-//! the OEM `NANOCORE-MIDI-Control-User-Guide.pdf` - one human-reviewed source of
-//! truth, no second-hand transcription.
+//! Mirror of `data/params.json` (schema `nanocore.params/v2`, vendored from
+//! `nanocore-reverse/resources/params.json`); the sync is enforced by
+//! `tests/data_sync.rs` — edit the JSON and this table together, `cargo test`
+//! fails if they drift apart. That JSON is parsed out of the OEM MIDI CC
+//! reference, which transcribes the OEM `NANOCORE-MIDI-Control-User-Guide.pdf`
+//! - one human-reviewed source of truth, no second-hand transcription.
 //!
 //! ## Two ways to reach the same parameter
 //!
