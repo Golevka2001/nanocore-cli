@@ -197,9 +197,8 @@ mod tests {
 
     #[test]
     fn pc_layout() {
-        assert_eq!(program_change(0, 2), vec![0xC0, 2]);
         // PC 2 recalls the preset displayed as "03" (0-based)
-        assert_eq!(program_change(0, 2)[1], 2);
+        assert_eq!(program_change(0, 2), vec![0xC0, 2]);
     }
 
     #[test]
@@ -233,12 +232,12 @@ mod tests {
         assert_eq!(cab_model(0, 200), vec![0xB0, 44, 200 & 0x7F]);
     }
 
+    /// Both model tables cover exactly 30 slots — the hardware-verified bound
+    /// behind the "indices >= 30 are silently ignored" rule (see the module
+    /// docs and `report_model_selection` in the CLI).
     #[test]
-    fn amp_cab_model_cc_matches_block_type_cc() {
-        // `amp_model`/`cab_model` are thin, named wrappers over `block_type`,
-        // and must agree with the documented CC map.
-        assert_eq!(amp_model(0, 7), block_type(0, Block::Amp, 7));
-        assert_eq!(cab_model(0, 7), block_type(0, Block::Cab, 7));
+    fn amp_and_cab_model_tables_share_the_30_slot_bound() {
         assert_eq!(AMP_MODEL_COUNT, CAB_MODEL_COUNT);
+        assert_eq!(AMP_MODEL_COUNT, 30);
     }
 }

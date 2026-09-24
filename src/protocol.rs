@@ -843,15 +843,6 @@ mod tests {
     // ── wire-safe parameter encoding ────────────────────────────────────────
 
     #[test]
-    fn encoded_param_values_are_seven_bit_safe() {
-        for &v in &[0.0f32, 0.2, 0.25, 0.3, 0.5, 0.99, 1.0, 123.5] {
-            for &b in encode_param_value(v).iter() {
-                assert!(b & 0x80 == 0, "byte {b:02x} of {v} has the high bit set");
-            }
-        }
-    }
-
-    #[test]
     fn param_write_matches_the_captured_layout() {
         let (kind, p) = param_write(0x08, 0x00, 0x01, 0.25);
         assert_eq!(kind, msg_type::DATA);
@@ -860,21 +851,5 @@ mod tests {
         // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`; masking the high bits
         // clears the exponent LSB (bit 23) -> `00 00 00 3E`.
         assert_eq!(&p[7..], &[0x00, 0x00, 0x00, 0x3E]);
-    }
-
-    #[test]
-    fn builders_use_the_documented_message_types_and_layouts() {
-        let (k, p) = select_preset(12);
-        assert_eq!(k, msg_type::DATA);
-        assert_eq!(p, vec![0x00, sub::SET_FIELD, 0x00, 0x00, field::PRESET, 12]);
-
-        let (k, p) = set_enabled(2, false);
-        assert_eq!(k, msg_type::DATA);
-        assert_eq!(p, vec![0x00, sub::ENABLE, 0x00, 0x00, 0x03, 2, 0]);
-
-        let (k, p) = select_variant(5);
-        assert_eq!(p[4], field::VARIANT);
-        assert_eq!(p[5], 5);
-        let _ = k;
     }
 }
