@@ -1,7 +1,6 @@
 //! Payload builders and parsers for the confirmed message types.
 //!
-//! All byte layouts here are derived from real MIDI captures (see
-//! the protocol notes and ``).
+//! All byte layouts here are derived from real MIDI captures.
 
 use crate::field;
 use crate::msg_type;
