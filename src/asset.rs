@@ -610,24 +610,21 @@ mod tests {
         assert_eq!(write_begin(2, 4096), vec![0x00, 0x04, 0x00, 0x00, 0x00, 0x10, 0x00, 0x02]);
         assert_eq!(write_commit(2), vec![0x00, 0x01, 0x00, 0x00, 0x02]);
         assert_eq!(slot_query(3), vec![0x00, 0x01, 0x00, 0x00, 0x03]);
-        // Slot 0 of the import capture: crc32(ir/slot_00.bin) = 0xdab13b3e,
-        // LE bytes `3e 3b b1 da` -> `3e 3b 31 | 01 | 5a` (7-bit-safe carry).
-        let blob = std::fs::read("/tmp/np2/160452/ir/slot_00.bin")
-            .ok()
-            .map(|b| b.to_vec());
-        if let Some(blob) = blob {
-            assert_eq!(identity_hash(0, &blob), [0x00, 0x3e, 0x3b, 0x31]);
-            assert_eq!(
-                write_hash(0, 4096, &blob),
-                vec![0x00, 0x08, 0x00, 0x40, 0x00, 0x10, 0x00, 0x00, 0x3e, 0x3b, 0x31, 0x01, 0x5a]
-            );
-        }
-        // Synthetic fallback with the same crc so the test is meaningful
-        // without the capture extract on disk.
-        assert_eq!(identity_hash(7, b"123456789"), {
-            let le = crc32(b"123456789").to_le_bytes();
-            [7, le[0] & 0x7F, le[1] & 0x7F, le[2] & 0x7F]
-        });
+
+        // Anchored to the standard CRC-32 check vector (crc32("123456789") =
+        // 0xCBF43926, asserted in `crc32_matches_the_standard_vector`) instead
+        // of a blob on disk, so the expectations cannot drift with the formula
+        // under test. LE bytes `26 39 f4 cb` -> masked `26 39 74`; c3 = 0xCB
+        // splits into carry `01` | low `4b`. A 9-byte blob is "short" (!= 4096)
+        // so B3 bit 0 = 1, and c2's high bit (0xf4) lands in B3 bit 6 -> 0x41.
+        // The import capture agrees: crc32(ir/slot_00.bin) = 0xdab13b3e gives
+        // identity [00 3e 3b 31] and B3 0x40 by the same derivation.
+        assert_eq!(identity_hash(7, b"123456789"), [0x07, 0x26, 0x39, 0x74]);
+        assert_eq!(
+            write_hash(7, 9, b"123456789"),
+            vec![0x00, 0x08, 0x00, 0x41, 0x00, 0x00, 0x09, 0x07, 0x26, 0x39, 0x74, 0x01, 0x4b]
+        );
+
         // Name prefix counts strlen + 1 (implicit terminator): Og412 -> 06.
         assert_eq!(write_name(14, b"Og412")[1], 0x06);
         assert_eq!(write_name(0, b"Bog412\x00A")[1], 0x08);
@@ -637,6 +634,7 @@ mod tests {
     /// The `B3` byte over all 30 factory IRs, cross-checked against the
     /// `0x53` frames of `factory-reset.mmon` (contents = the APK's bundled
     /// `factory_presets/ir/NN.bin`). Requires the extracted APK tree.
+    #[ignore = "needs the extracted APK IR tree at /tmp/apkx/... (reverse-engineering workstation)"]
     #[test]
     fn hash_b3_matches_all_30_factory_irs() {
         let dir = std::path::Path::new("/tmp/apkx/assets/flutter_assets/assets/nanocore/factory_presets/ir");
