@@ -20,5 +20,5 @@ clap = { version = "4", features = ["derive"], optional = true }
 
 [[bin]]
 name = "nanocore-cli"
-path = "src/bin/nanocore-cli.rs"
+path = "src/bin/nanocore-cli/main.rs"
 required-features = ["midi"]
