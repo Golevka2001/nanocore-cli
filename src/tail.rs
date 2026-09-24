@@ -45,3 +45,54 @@ pub fn extract_tail(payload: &[u8]) -> Option<&[u8]> {
     let start = payload.windows(3).position(|w| w == [0xDA, 0x00, 0x0E])?;
     Some(&payload[start..])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A synthetic tail: the `DA 00 0E` header followed by a status string.
+    fn synthetic_tail() -> Vec<u8> {
+        let mut v = TAIL_HEADER.to_vec();
+        v.extend_from_slice(&STATUS_MARKER);
+        v.extend_from_slice(b"statusByte\x00From Nanocore\x00");
+        v
+    }
+
+    #[test]
+    fn finds_the_tail_header() {
+        let mut p = vec![0x00, 0x02, 0x00];
+        p.extend_from_slice(&synthetic_tail());
+        assert_eq!(find_tail(&p), Some(3));
+        assert_eq!(core_payload(&p), &[0x00, 0x02, 0x00]);
+        assert_eq!(extract_tail(&p), Some(&p[3..]));
+    }
+
+    /// Without the `DA 00 0E` header the marker itself anchors the tail
+    /// (one byte earlier, the observed position in real captures).
+    #[test]
+    fn falls_back_to_the_status_marker() {
+        let mut p = vec![0x01];
+        p.extend_from_slice(&STATUS_MARKER);
+        p.extend_from_slice(b"statusByte");
+        assert_eq!(find_tail(&p), Some(0));
+        assert!(core_payload(&p).is_empty());
+        // No header block -> no raw tail either.
+        assert_eq!(extract_tail(&p), None);
+    }
+
+    #[test]
+    fn payload_without_a_tail_is_returned_whole() {
+        let p = vec![0x01, 0x02, 0x03];
+        assert_eq!(find_tail(&p), None);
+        assert_eq!(core_payload(&p), &p[..]);
+        assert_eq!(extract_tail(&p), None);
+    }
+
+    /// The header search must not be fooled by payload bytes that merely
+    /// look like the marker's leading `0x5A`.
+    #[test]
+    fn marker_prefix_alone_is_not_a_tail() {
+        let p = vec![0x5A, b's', b't'];
+        assert_eq!(find_tail(&p), None);
+    }
+}
