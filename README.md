@@ -132,19 +132,55 @@ Tests use real captured byte sequences from the official app.
 ## CLI
 
 ```bash
-nanocore-cli list                        # enumerate MIDI ports
-nanocore-cli monitor                     # dump every inbound frame (raw + parsed)
-nanocore-cli ping                        # ping and wait for the reply
-nanocore-cli preset 5                    # select preset index 5
-nanocore-cli cab 3 / variant 2 / enable 0 on / volume 90
-nanocore-cli snapshot                    # request the 0x63 snapshot
-nanocore-cli raw 6d 00 02 00 00 09 01    # send arbitrary bytes
-nanocore-cli replay 7d 4e 43 70 ...      # replay a captured frame verbatim
-nanocore-cli probe 1                     # full preset-switch flow + 3s dump
+nanocore-cli ports                        # enumerate MIDI ports
+nanocore-cli preset set 5                 # select preset index 5
+nanocore-cli preset next / prev / list    # step / list the 64 preset slots
+nanocore-cli module amp off               # mute the amp
+nanocore-cli module amp model 3           # select amp model (CC43)
+nanocore-cli module cab model 8           # select cab/IR model (CC44)
+nanocore-cli module fx1 on                # enable a module
+nanocore-cli module delay params          # list a module's parameters (offline)
+nanocore-cli module delay param mix 0.3   # set a parameter (SysEx)
+nanocore-cli module delay model 2         # select an effect type (CC)
+nanocore-cli chain                        # usage for `chain set` / `chain show`
+nanocore-cli chain set 4 7 0 1 2 3 5 6    # write the chain order (echo-verified)
+nanocore-cli models / models --live       # built-in model tables / live checksum
+nanocore-cli show                         # readable state snapshot (best-effort)
+nanocore-cli volume 90                    # USB output volume
+nanocore-cli tuner on / off               # tuner (state read pending)
+nanocore-cli asset read ir 0 out.bin      # pull a raw IR blob out of slot 0
+# protocol / debugging (undocumented framing):
+nanocore-cli debug monitor                # dump every inbound frame
+nanocore-cli debug raw 6d 00 02 00 00 09 01
+nanocore-cli debug replay 7d 4e 43 70 ...
+nanocore-cli debug probe 1                # preset-switch flow + 3s dump
 ```
 
+The command surface mirrors the device model: a **preset** holds 8 effect
+**modules** (`fx1 fx2 amp cab mod delay reverb eq`), and parameters belong to
+their module:
+
+```text
+preset  →  preset set/next/prev/list/show
+module  →  module <m> on|off|model|params|param
+chain   →  chain set/show
+```
+
+Where a module's parameter list depends on its current effect type
+(`delay`/`reverb`/`fx1`/`fx2`/`mod`/`eq`), pass `--type N`
+(`nanocore-cli module delay params --type 1`). Once the snapshot decode is
+finished, `--type` will become optional and inferred from the device, and
+`module <m> param <name>` without a value will read the current value
+(currently it is a write; omit-VALUE reads are pending).
+
+Two caveats inherited from the hardware:
+* `module amp model` / `module cab model` accept **0–29**. The 8 FX2 drive
+  pedals live in amp slots 30–37 and are only reachable via `debug variant`.
+* `show` is best-effort for now — active preset, per-module state, volume and
+  tuner are marked `(TBD)` until the `0x63` snapshot decode is completed.
+
 Flags: `--in N` `--out N` `--hint NAME` `--timeout MS` `--retries N`
-`--expect HH` `--flags HH` `--no-wait`.
+`--expect HH` `--flags HH` `--no-wait` (protocol work, hidden from the help).
 
 ## Disclaimer & license
 

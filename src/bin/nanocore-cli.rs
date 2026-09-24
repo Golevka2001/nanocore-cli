@@ -1,20 +1,25 @@
 //! `nanocore-cli` — control and inspect a Nanocore (TPE-S10) guitar effects
 //! processor over MIDI.
 //!
-//! The command surface is organised by what you want to do, not by which
-//! transport a command happens to use underneath (standard MIDI CC/PC vs the
-//! device's SysEx app protocol — that distinction is an implementation detail):
+//! The command surface mirrors the device's own concept model — presets contain
+//! effect modules, and parameters belong to their module:
 //!
 //! ```text
-//! nanocore-cli preset 2                 select preset 2
-//! nanocore-cli fx amp off               mute the amp block
-//! nanocore-cli amp 5                    pick amp model 5 (Fender 65 Darkface)
-//! nanocore-cli chain delay eq fx1 ...   re-route the effect chain
-//! nanocore-cli asset read ir 0 out.bin  pull the raw IR blob out of slot 0
+//! nanocore-cli preset set 12                 select preset 12
+//! nanocore-cli preset next
+//! nanocore-cli module amp off                mute the amp module
+//! nanocore-cli module amp model 5            pick amp model 5 (Fender 65 Darkface)
+//! nanocore-cli module delay param mix 0.3    set a parameter on the delay module
+//! nanocore-cli module delay params           list that module's parameters
+//! nanocore-cli chain set delay eq fx1 ...    re-route the effect chain
+//! nanocore-cli show                          current device state (best-effort)
+//! nanocore-cli asset read ir 0 out.bin       pull the raw IR blob out of slot 0
 //! ```
 //!
-//! The few commands under "Protocol probe" send raw / undocumented frames;
-//! they exist for protocol work, not for making music.
+//! Everything that speaks raw / undocumented frames lives under `debug`; those
+//! commands exist for protocol work, not for making music. The low-level
+//! knobs (`--expect`, `--flags`, `--no-wait`, `--no-sysex`) are global-hidden
+//! and shared by all device commands.
 
 use std::io::Write;
 
@@ -36,14 +41,14 @@ use nanocore::{Frame, Transport};
     version,
     about = "Control and inspect a Nanocore (TPE-S10) guitar effects processor.",
     long_about = None,
-    after_help = "Blocks: fx1 fx2 amp cab mod delay reverb eq \
+    after_help = "Modules: fx1 fx2 amp cab mod delay reverb eq \
                   (`delay` may be shortened to `del`, `reverb` to `rev`)"
 )]
 struct Cli {
-    /// MIDI input port index (see `list`)
+    /// MIDI input port index (see `ports`)
     #[arg(long, global = true, value_name = "N")]
     in_port: Option<usize>,
-    /// MIDI output port index (see `list`)
+    /// MIDI output port index (see `ports`)
     #[arg(long, global = true, value_name = "N")]
     out_port: Option<usize>,
     /// Port-name substring used for auto-detection [default: nanocore]
@@ -60,7 +65,7 @@ struct Cli {
     retries: Option<u32>,
 
     // Protocol-probe knobs — hidden from the main help; they only matter for
-    // raw frame work (`raw`, `replay`, `monitor`, `probe`).
+    // `debug raw`, `debug replay`, `debug monitor`, `debug probe`.
     /// Only treat these reply types as an answer (comma-separated hex)
     #[arg(long, global = true, hide = true, value_name = "HH,HH")]
     expect: Option<String>,
@@ -80,68 +85,38 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    // ── presets ────────────────────────────────────────────────────────────
+    /// Manage presets
+    Preset {
+        #[command(subcommand)]
+        cmd: PresetCmd,
+    },
+
     // ── sound engine ──────────────────────────────────────────────────────
-    /// Select a preset by index (0–63, device shows index+1)
-    Preset { index: u8 },
-    /// Step to the previous preset
-    Prev,
-    /// Step to the next preset
-    Next,
-    /// Switch an effect block on/off (default: on)
-    Fx {
-        block: BlockArg,
-        state: Option<Power>,
+    /// Control the effect modules (fx1 fx2 amp cab mod delay reverb eq)
+    Module {
+        #[command(subcommand)]
+        cmd: ModuleCmd,
     },
-    /// Set an effect block's effect type; for amp/cab this selects the model
-    Type {
-        block: BlockArg,
-        /// Effect type id — amp/cab models are 0–29
-        id: u8,
-    },
-    /// Select the amp model (0–29; 30–37 are FX2 drive pedals, not amps)
-    Amp { index: u8 },
-    /// Select the cab/IR model (0–29)
-    Cab { index: u8 },
-    /// Set the effect-chain order: 8 positions, left → right
-    ///
-    /// Each position is a role name (`fx1 fx2 amp cab delay mod reverb eq`,
-    /// `del`/`rev` allowed) or its 0–7 index. With no arguments the role
-    /// table is printed. This is a live edit of the current preset.
+    /// Set or show the effect-chain order (8 positions, left → right)
     Chain {
-        /// Exactly 8 positions, each block exactly once
-        positions: Vec<String>,
+        #[command(subcommand)]
+        cmd: Option<ChainCmd>,
     },
+    /// Show a readable snapshot of the current device state
+    ///
+    /// Best-effort for now: the full snapshot decode (active preset, per-module
+    /// on/off + model, volume, tuner) is still in progress; what can be decoded
+    /// today is printed, the rest is marked (TBD).
+    Show,
     /// Set the USB output volume (0–100)
     Volume { percent: u8 },
-    /// Switch the tuner on/off (default: on)
+    /// Control the tuner
     Tuner { state: Option<Power> },
 
-    // ── parameters ────────────────────────────────────────────────────────
-    /// List a block's parameters (no device needed; omit BLOCK for an overview)
-    Params {
-        block: Option<BlockArg>,
-        /// Effect-type id for blocks whose parameters depend on it
-        /// (e.g. `delay --type 1` = Digital)
-        #[arg(long, value_name = "N")]
-        r#type: Option<u8>,
-    },
-    /// Set a named block parameter (0.0–1.0, device-normalised)
-    Param {
-        block: BlockArg,
-        /// Parameter name (e.g. `threshold`) or its b6 index
-        key: String,
-        value: f32,
-        /// Effect-type id for blocks whose parameters depend on it
-        #[arg(long, value_name = "N")]
-        r#type: Option<u8>,
-    },
-
-    // ── assets (amp models & IRs) ─────────────────────────────────────────
-    /// Read, check or write the raw amp/IR blobs stored in device slots
-    Asset {
-        #[command(subcommand)]
-        cmd: AssetCmd,
-    },
+    // ── device info ───────────────────────────────────────────────────────
+    /// List the available MIDI ports
+    Ports,
     /// List the built-in model tables, or query them from the device
     Models {
         /// Omit to list both tables
@@ -150,55 +125,109 @@ enum Command {
         #[arg(long)]
         live: bool,
     },
-    /// List the names of all 64 preset slots (read-only)
-    Presets,
 
-    // ── connection ────────────────────────────────────────────────────────
-    /// List the available MIDI ports
-    List,
-    /// Ping the device
-    Ping,
-    /// Read the current-preset state snapshot
-    Snapshot,
-    /// Print every frame the device emits (ctrl-c to stop)
-    Monitor,
+    // ── assets (amp models & IRs) ─────────────────────────────────────────
+    /// Read, check or write the raw amp/IR blobs stored in device slots
+    Asset {
+        #[command(subcommand)]
+        cmd: AssetCmd,
+    },
 
     // ── protocol probe (raw / undocumented) ───────────────────────────────
-    /// Raw Control Change (decimal; 0x.. prefix for hex)
-    Cc {
-        /// CC number 0–127
-        cc: String,
-        /// CC value 0–127
-        value: u8,
+    /// Low-level MIDI / protocol tools (raw frames, SysEx, debugging)
+    Debug {
+        #[command(subcommand)]
+        cmd: DebugCmd,
     },
-    /// Raw slot enable (SysEx; prefer `fx` for block on/off)
-    Enable {
-        slot: u8,
-        state: Option<Power>,
+}
+
+#[derive(Subcommand, Debug)]
+enum PresetCmd {
+    /// Select a preset by index (0–63, device shows index+1)
+    Set { index: u8 },
+    /// Step to the next preset
+    Next,
+    /// Step to the previous preset
+    Prev,
+    /// List the names of all 64 preset slots (read-only)
+    List,
+    /// Show the currently active preset (pending snapshot decode)
+    Show,
+}
+
+#[derive(Subcommand, Debug)]
+enum ModuleCmd {
+    /// List the modules and their parameter tables (no device needed)
+    List,
+    /// FX1 slot (noise gate, compressor, …)
+    Fx1 { #[command(subcommand)] action: Option<ModuleAction> },
+    /// FX2 slot (second FX / drive-pedal-slot effects)
+    Fx2 { #[command(subcommand)] action: Option<ModuleAction> },
+    /// Amp slot (amp-sim models)
+    Amp { #[command(subcommand)] action: Option<ModuleAction> },
+    /// Cab / IR slot (cab / impulse-response models)
+    Cab { #[command(subcommand)] action: Option<ModuleAction> },
+    /// Modulation slot (chorus, phaser, flanger, …)
+    Mod { #[command(subcommand)] action: Option<ModuleAction> },
+    /// Delay slot (`del`)
+    #[command(alias = "del")]
+    Delay { #[command(subcommand)] action: Option<ModuleAction> },
+    /// Reverb slot (`rev`)
+    #[command(alias = "rev")]
+    Reverb { #[command(subcommand)] action: Option<ModuleAction> },
+    /// EQ slot
+    Eq { #[command(subcommand)] action: Option<ModuleAction> },
+}
+
+#[derive(Subcommand, Debug)]
+enum ModuleAction {
+    /// Switch the module on
+    On,
+    /// Switch the module off
+    Off,
+    /// Select the model / effect type
+    ///
+    /// `amp` and `cab` take a model index 0–29 (CC43 / CC44); the other modules
+    /// take their effect-type id (CC40-CC48). Indices 30–37 of the amp table are
+    /// the FX2 drive pedals and are NOT reachable here — use `debug variant`.
+    Model { id: u8 },
+    /// List the module's parameters (no device needed)
+    Params {
+        /// Effect-type id for blocks whose parameters depend on it
+        /// (e.g. `delay --type 1` = Digital)
+        #[arg(long, value_name = "N")]
+        r#type: Option<u8>,
     },
-    /// Raw SysEx parameter write (b3/b5/b6 as hex — see the protocol notes)
-    Setparam {
-        b3: String,
-        b5: String,
-        b6: String,
-        /// Parameter value 0.0–1.0
-        value: f32,
+    /// Set a named module parameter (0.0–1.0, device-normalised)
+    ///
+    /// Omit VALUE to read the current value — the read path is pending the
+    /// effect-data / snapshot decode, so for now a write requires VALUE.
+    Param {
+        /// Parameter name (e.g. `threshold`) or its b6 index
+        key: String,
+        /// Parameter value 0.0–1.0; omit to read (pending)
+        value: Option<f32>,
+        /// Effect-type id for blocks whose parameters depend on it
+        #[arg(long, value_name = "N")]
+        r#type: Option<u8>,
     },
-    /// Amp model select via SysEx (same table as `amp`)
-    Variant { index: u8 },
-    /// Send a raw frame: first hex byte is the message type, rest the payload
-    Raw {
-        /// Hex bytes, e.g. `raw 6d 00 02 00 00 09 01`
-        bytes: Vec<String>,
+}
+
+#[derive(Subcommand, Debug)]
+enum ChainCmd {
+    /// Write the chain order (exactly 8 roles/indices, each module once)
+    Set {
+        /// 8 positions, each module exactly once (`fx1 fx2 amp cab delay mod reverb eq`)
+        positions: Vec<String>,
     },
-    /// Replay byte-exact frames (header included) and print replies for 2 s
-    Replay { bytes: Vec<String> },
-    /// Preset-switch discovery flow: select → snapshot → query → 3 s tail
-    Probe { index: Option<u8> },
+    /// Read the current chain order from the device
+    Show,
 }
 
 #[derive(Subcommand, Debug)]
 enum AssetCmd {
+    /// List the asset regions and their slot ranges (no device needed)
+    List,
     /// Fetch the blob, print its crc32, optionally save it
     Read {
         region: RegionArg,
@@ -232,6 +261,50 @@ enum AssetCmd {
         #[arg(long, value_name = "NAME")]
         name: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+#[command(arg_required_else_help = true)]
+enum DebugCmd {
+    /// Ping the device
+    Ping,
+    /// Read the current-preset state snapshot
+    Snapshot,
+    /// Print every frame the device emits (ctrl-c to stop)
+    Monitor,
+    /// Raw Control Change (decimal; 0x.. prefix for hex)
+    Cc {
+        /// CC number 0–127
+        cc: String,
+        /// CC value 0–127
+        value: u8,
+    },
+    /// Raw slot enable (SysEx; prefer `module <m> on/off` for module switching)
+    Enable {
+        slot: u8,
+        state: Option<Power>,
+    },
+    /// Raw SysEx parameter write (b3/b5/b6 as hex — see the protocol notes)
+    Setparam {
+        b3: String,
+        b5: String,
+        b6: String,
+        /// Parameter value 0.0–1.0
+        value: f32,
+    },
+    /// Amp model select via SysEx (same table as `module amp model`)
+    ///
+    /// Unlike the CC path this reaches slots 30–37 (the FX2 drive pedals).
+    Variant { index: u8 },
+    /// Send a raw frame: first hex byte is the message type, rest the payload
+    Raw {
+        /// Hex bytes, e.g. `raw 6d 00 02 00 00 09 01`
+        bytes: Vec<String>,
+    },
+    /// Replay byte-exact frames (header included) and print replies for 2 s
+    Replay { bytes: Vec<String> },
+    /// Preset-switch discovery flow: select → snapshot → query → 3 s tail
+    Probe { index: Option<u8> },
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -363,10 +436,18 @@ fn main() {
 
     let result = match cli.command {
         // No device needed at all.
-        Command::List => return cmd_list(),
+        Command::Ports => return cmd_list(),
+        Command::Chain { cmd: None } => return print_chain_help(),
         Command::Models { region, live } => cmd_models(region, live, &conn),
-        Command::Params { block, r#type } => cmd_params(block, r#type),
-        Command::Chain { positions } if positions.is_empty() => return print_chain_help(),
+        Command::Module { cmd } => cmd_module(cmd, &conn),
+        Command::Asset { cmd } => cmd_asset(cmd, &conn),
+        Command::Tuner { state: None } => {
+            eprintln!(
+                "error: tuner state read is not implemented yet (needs snapshot decode); \
+                 pass `tuner on` or `tuner off`"
+            );
+            std::process::exit(2);
+        }
         // Everything else goes through the device.
         command => run(command, &conn),
     };
@@ -381,10 +462,9 @@ fn run(command: Command, conn: &Conn) -> Result<(), String> {
     // can never reach MIDI.
     enum Preflight {
         Chain(u8, Vec<u8>),
-        Standard(Vec<u8>),
     }
     let preflight: Option<Preflight> = match &command {
-        Command::Chain { positions } => {
+        Command::Chain { cmd: Some(ChainCmd::Set { positions }) } => {
             let order = parse_chain_positions(positions)?;
             let (kind, payload) = protocol::chain_write(&order)
                 .ok_or("internal: chain_write rejected a valid order")?;
@@ -396,171 +476,33 @@ fn run(command: Command, conn: &Conn) -> Result<(), String> {
             println!("tx: type=0x{kind:02x} payload[{}] {}", payload.len(), hex(&payload));
             Some(Preflight::Chain(kind, payload))
         }
-        Command::Amp { index } => {
-            report_model_selection(Block::Amp, *index)?;
-            Some(Preflight::Standard(midicc::amp_model(conn.channel, *index)))
-        }
-        Command::Cab { index } => {
-            report_model_selection(Block::Cab, *index)?;
-            Some(Preflight::Standard(midicc::cab_model(conn.channel, *index)))
-        }
         _ => None,
     };
 
     let mut dev = open_device(conn)?;
 
     match command {
-        Command::List | Command::Models { .. } | Command::Params { .. } => unreachable!(),
-        Command::Chain { .. } => {
-            let (kind, payload) = match preflight.expect("chain preflight") {
-                Preflight::Chain(k, p) => (k, p),
-                _ => unreachable!(),
-            };
-            chain_write_cmd(&mut dev, kind, payload)
-        }
-        Command::Preset { index } => {
-            send_standard(&mut dev, &midicc::program_change(conn.channel, index))
-        }
-        Command::Prev => send_standard(&mut dev, &midicc::global::prev_preset(conn.channel)),
-        Command::Next => send_standard(&mut dev, &midicc::global::next_preset(conn.channel)),
-        Command::Tuner { state } => send_standard(
-            &mut dev,
-            &midicc::global::tuner(conn.channel, state.map(Power::on).unwrap_or(true)),
-        ),
-        Command::Fx { block, state } => send_standard(
-            &mut dev,
-            &midicc::block_enable(
-                conn.channel,
-                block.midicc(),
-                state.map(Power::on).unwrap_or(true),
-            ),
-        ),
-        Command::Type { block, id } => {
-            report_model_selection(block.midicc(), id)?;
-            send_standard(&mut dev, &midicc::block_type(conn.channel, block.midicc(), id))
-        }
-        Command::Amp { .. } | Command::Cab { .. } => {
-            match preflight.expect("model preflight") {
-                Preflight::Standard(bytes) => {
-                    dev.transport().set_sysex(false);
-                    dev.transport().send(&bytes).map_err(|e| e.to_string())
-                }
-                _ => unreachable!(),
+        Command::Preset { cmd } => cmd_preset(&mut dev, conn, cmd),
+        Command::Chain { cmd: Some(cmd) } => match cmd {
+            ChainCmd::Set { .. } => {
+                let (kind, payload) = match preflight.expect("chain preflight") {
+                    Preflight::Chain(k, p) => (k, p),
+                };
+                chain_write_cmd(&mut dev, kind, payload)
             }
-        }
+            ChainCmd::Show => cmd_chain_show(&mut dev),
+        },
+        Command::Show => cmd_show(&mut dev),
         Command::Volume { percent } => {
             let (k, p) = protocol::set_usb_volume(percent);
             transact(&mut dev, conn, k, p, &[])
         }
-        Command::Param { block, key, value, r#type, .. } => {
-            cmd_param(&mut dev, conn, block.key(), &key, value, r#type)
-        }
-        Command::Asset { cmd } => cmd_asset(&mut dev, cmd),
-        Command::Presets => {
-            let entries = dev.read_preset_names()?;
-            for e in &entries {
-                println!(
-                    "  #{:<2} {:<12} {}",
-                    e.slot,
-                    e.name,
-                    if e.named { "" } else { "(empty)" }
-                );
-            }
-            Ok(())
-        }
-        Command::Ping => {
-            let (k, p) = protocol::ping();
-            transact(&mut dev, conn, k, p, &[nanocore::msg_type::PING])
-        }
-        Command::Snapshot => {
-            let (k, p) = protocol::request_snapshot();
-            transact(&mut dev, conn, k, p, &[nanocore::msg_type::SNAPSHOT])
-        }
-        Command::Monitor => {
-            println!("monitoring... (ctrl-c to stop)");
-            loop {
-                let raw = dev.transport().receive().map_err(|e| e.to_string())?;
-                if !raw.is_empty() {
-                    println!("raw[{}]: {}", raw.len(), hex(&raw));
-                    for f in Frame::split_stream(&raw) {
-                        describe(&f);
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(20));
-                let _ = std::io::stdout().flush();
-            }
-        }
-        Command::Cc { cc, value } => {
-            // CC numbers default to **decimal** so they can be copied straight
-            // out of the OEM MIDI CC reference; `0x..` selects hex.
-            let cc_num = match cc.strip_prefix("0x") {
-                Some(hex) => u8::from_str_radix(hex, 16)
-                    .map_err(|_| format!("bad hex CC number {cc:?}"))?,
-                None => cc
-                    .parse()
-                    .map_err(|_| format!("CC number must be decimal 0-127 ({cc:?}); use 0x.. for hex"))?,
-            };
-            if cc_num > 127 {
-                return Err(format!("CC number must be 0-127, got {cc_num}"));
-            }
-            if value > 127 {
-                return Err(format!("CC value must be 0-127, got {value}"));
-            }
-            send_standard(&mut dev, &midicc::control_change(conn.channel, cc_num, value))
-        }
-        Command::Enable { slot, state } => {
-            let (k, p) = protocol::set_enabled(slot, state.map(Power::on).unwrap_or(true));
-            transact(&mut dev, conn, k, p, &[])
-        }
-        Command::Setparam { b3, b5, b6, value } => {
-            let p = |s: &str| u8::from_str_radix(s.trim_start_matches("0x"), 16)
-                .map_err(|_| format!("{s:?} must be hex"));
-            let (b3, b5, b6) = (p(&b3)?, p(&b5)?, p(&b6)?);
-            let (k, payload) = protocol::param_write(b3, b5, b6, value);
-            transact(&mut dev, conn, k, payload, &[])
-        }
-        Command::Variant { index } => {
-            match models_data::lookup_amp(index) {
-                Some(m) => println!("variant {index} -> {} ({})", m.name, m.code),
-                None => println!("variant {index} (unknown slot; device has 0-37)"),
-            }
-            let (k, p) = protocol::select_variant(index);
-            transact(&mut dev, conn, k, p, &[])
-        }
-        Command::Raw { bytes } => {
-            let bytes = parse_hex(&bytes)?;
-            if bytes.len() < 2 {
-                return Err("raw needs at least a message type".into());
-            }
-            if bytes[1..].iter().any(|b| b & 0x80 != 0) {
-                eprintln!(
-                    "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
-                     bytes and the device will discard the message (7-bit-safe encoding?)"
-                );
-            }
-            transact(&mut dev, conn, bytes[0], bytes[1..].to_vec(), &conn.expect.clone())
-        }
-        Command::Replay { bytes } => {
-            let bytes = parse_hex(&bytes)?;
-            println!("replay[{}]: {}", bytes.len(), hex(&bytes));
-            dev.transport().send(&bytes).map_err(|e| e.to_string())?;
-            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
-            let mut got = 0;
-            while std::time::Instant::now() < deadline {
-                let raw = dev.transport().receive().map_err(|e| e.to_string())?;
-                if !raw.is_empty() {
-                    for f in Frame::split_stream(&raw) {
-                        println!("rx:");
-                        describe(&f);
-                        got += 1;
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-            println!("{got} frame(s) in 2s");
-            Ok(())
-        }
-        Command::Probe { index } => probe(&mut dev, conn, index),
+        Command::Tuner { state: Some(state) } => send_standard(
+            &mut dev,
+            &midicc::global::tuner(conn.channel, Power::on(state)),
+        ),
+        Command::Debug { cmd } => cmd_debug(&mut dev, conn, cmd),
+        _ => unreachable!("command handled without opening a device"),
     }
 }
 
@@ -608,42 +550,107 @@ fn cmd_models(region: Option<RegionArg>, live: bool, conn: &Conn) -> Result<(), 
     Ok(())
 }
 
-fn cmd_params(block: Option<BlockArg>, r#type: Option<u8>) -> Result<(), String> {
-    match block {
-        None => {
-            for &(key, slot) in params_data::BLOCKS {
-                let summary = match params_data::params(key, r#type) {
-                    Some(ps) => format!("{} parameter(s)", ps.len()),
-                    None => "needs --type N (or no published list for that type)".into(),
-                };
-                println!("  {key:<7} b5={slot}  {summary}");
-            }
-            println!("\nusage: nanocore-cli params <block> [--type N]");
-            Ok(())
+// ── module ──────────────────────────────────────────────────────────────────
+
+fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), String> {
+    match cmd {
+        ModuleCmd::List => cmd_module_list(),
+        ModuleCmd::Fx1 { action } => module_action(BlockArg::Fx1, action, conn),
+        ModuleCmd::Fx2 { action } => module_action(BlockArg::Fx2, action, conn),
+        ModuleCmd::Amp { action } => module_action(BlockArg::Amp, action, conn),
+        ModuleCmd::Cab { action } => module_action(BlockArg::Cab, action, conn),
+        ModuleCmd::Mod { action } => module_action(BlockArg::Mod, action, conn),
+        ModuleCmd::Delay { action } => module_action(BlockArg::Delay, action, conn),
+        ModuleCmd::Reverb { action } => module_action(BlockArg::Reverb, action, conn),
+        ModuleCmd::Eq { action } => module_action(BlockArg::Eq, action, conn),
+    }
+}
+
+fn module_action(
+    block: BlockArg,
+    action: Option<ModuleAction>,
+    conn: &Conn,
+) -> Result<(), String> {
+    match action {
+        None => print_module_help(block),
+        Some(ModuleAction::Params { r#type }) => cmd_params(block, r#type),
+        Some(ModuleAction::Param { key, value, r#type }) => {
+            let Some(value) = value else {
+                return Err(format!(
+                    "reading a parameter value is not implemented yet (needs \
+                     effect-data / snapshot read); pass a value to write:\n  \
+                     nanocore-cli module {} param {key} <0..1>",
+                    block.key()
+                ));
+            };
+            let mut dev = open_device(conn)?;
+            cmd_param(&mut dev, conn, block.key(), &key, value, r#type)
         }
-        Some(block) => {
-            let key = block.key();
-            let slot = params_data::block_slot(key)
-                .ok_or_else(|| format!("unknown block {key:?}"))?;
-            let ps = params_data::params(key, r#type).ok_or_else(|| {
-                format!(
-                    "block {key:?} is type-dependent: pass `--type N`, and note that some \
-                     types have no published parameter list (fx1 types 1-2, fx2 types 5-7)"
-                )
-            })?;
-            println!(
-                "{key} (b5={slot}){}:",
-                match r#type {
-                    Some(t) => format!(", effect type {t}"),
-                    None => String::new(),
-                }
-            );
-            for p in ps {
-                println!("  b6={:<2} {:<24} CC{}", p.index, p.name, p.cc);
-            }
-            Ok(())
+        Some(ModuleAction::Model { id }) => {
+            report_model_selection(block.midicc(), id)?;
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &midicc::block_type(conn.channel, block.midicc(), id))
+        }
+        Some(ModuleAction::On) => {
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &midicc::block_enable(conn.channel, block.midicc(), true))
+        }
+        Some(ModuleAction::Off) => {
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &midicc::block_enable(conn.channel, block.midicc(), false))
         }
     }
+}
+
+fn cmd_module_list() -> Result<(), String> {
+    println!("modules (b5 slot — the device string-table order):");
+    for &(key, slot) in params_data::BLOCKS {
+        let summary = match params_data::params(key, None) {
+            Some(ps) => format!("type-independent: {} parameter(s)", ps.len()),
+            None => "type-dependent: `module <m> params --type N` to list".into(),
+        };
+        println!("  {key:<7} b5={slot}  {summary}");
+    }
+    println!();
+    println!("usage: nanocore-cli module <module> <action>");
+    println!("       module <module> on | off");
+    println!("       module <module> model <N>");
+    println!("       module <module> params [--type N]");
+    println!("       module <module> param <name|b6> <0..1> [--type N]");
+    Ok(())
+}
+
+fn print_module_help(block: BlockArg) -> Result<(), String> {
+    let key = block.key();
+    let slot = params_data::block_slot(key)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "?".into());
+    println!("{key} (b5={slot}, CC on/off {}, CC type {})", block.midicc().onoff_cc(), block.midicc().type_cc());
+    println!("  actions: on | off | model <N> | params [--type N] | param <name> [value] [--type N]");
+    Ok(())
+}
+
+fn cmd_params(block: BlockArg, r#type: Option<u8>) -> Result<(), String> {
+    let key = block.key();
+    let slot = params_data::block_slot(key)
+        .ok_or_else(|| format!("unknown module {key:?}"))?;
+    let ps = params_data::params(key, r#type).ok_or_else(|| {
+        format!(
+            "module {key:?} is type-dependent: pass `--type N`, and note that some \
+             types have no published parameter list (fx1 types 1-2, fx2 types 5-7)"
+        )
+    })?;
+    println!(
+        "{key} (b5={slot}){}:",
+        match r#type {
+            Some(t) => format!(", effect type {t}"),
+            None => String::new(),
+        }
+    );
+    for p in ps {
+        println!("  b6={:<2} {:<24} CC{}", p.index, p.name, p.cc);
+    }
+    Ok(())
 }
 
 fn cmd_param(
@@ -655,17 +662,17 @@ fn cmd_param(
     r#type: Option<u8>,
 ) -> Result<(), String> {
     let slot = params_data::block_slot(block)
-        .ok_or_else(|| format!("unknown block {block:?} (fx1 fx2 amp cab delay mod reverb eq)"))?;
+        .ok_or_else(|| format!("unknown module {block:?} (fx1 fx2 amp cab delay mod reverb eq)"))?;
     let info = match key.parse::<u8>() {
         Ok(i) => params_data::param_by_index(block, r#type, i),
         Err(_) => params_data::param_by_name(block, r#type, key),
     };
     let info = info.ok_or_else(|| {
         format!(
-            "no parameter {key:?} for block {block:?}{}. \
-             Run `nanocore-cli params {block}` to list them; type-dependent blocks \
-             additionally need `--type N`. Some types have no published parameter \
-             list (fx1 types 1-2, fx2 types 5-7).",
+            "no parameter {key:?} for module {block:?}{}. \
+             Run `nanocore-cli module {block} params` to list them; type-dependent \
+             modules additionally need `--type N`. Some types have no published \
+             parameter list (fx1 types 1-2, fx2 types 5-7).",
             match r#type {
                 Some(t) => format!(" type {t}"),
                 None => String::new(),
@@ -683,15 +690,261 @@ fn cmd_param(
     transact(dev, conn, k, p, &[])
 }
 
-fn cmd_asset(dev: &mut Nanocore<MidiTransport>, cmd: AssetCmd) -> Result<(), String> {
+/// Validate + describe an Amp/Cab **model** selection made over standard CC.
+///
+/// `CC43` (Amp) and `CC44` (Cab) are documented as "Type CC" but the OEM guide
+/// prints no type table for either block and claims model selection is
+/// unassigned. Hardware testing shows they *are* model selectors over the
+/// 30-entry tables, and that indices `>= 30` are silently ignored — so reject
+/// them here instead of letting the write disappear without effect.
+///
+/// For every other module this is a no-op: their "type" is a real effect-type ID
+/// with its own table in the OEM MIDI CC reference.
+fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
+    let (label, count, name) = match block {
+        Block::Amp => (
+            "amp",
+            midicc::AMP_MODEL_COUNT,
+            models_data::lookup_amp(id).map(|m| format!("{} ({})", m.name, m.code)),
+        ),
+        Block::Cab => (
+            "cab",
+            midicc::CAB_MODEL_COUNT,
+            models_data::lookup_cab(id).map(|m| format!("{} ({})", m.name, m.code)),
+        ),
+        _ => return Ok(()),
+    };
+    if id >= count {
+        return Err(format!(
+            "{label} model index must be 0-{} (device has {count} models); \
+             {id} would be silently ignored — drive pedals 30-37 belong to FX2 and \
+             need `debug variant`, not the {label} module",
+            count - 1
+        ));
+    }
+    match name {
+        Some(n) => println!("module {label} model {id} -> {n}   (standard CC{})", block.type_cc()),
+        None => println!("module {label} model {id} (not in embedded table; device has 0-{})", count - 1),
+    }
+    Ok(())
+}
+
+// ── preset ──────────────────────────────────────────────────────────────────
+
+fn cmd_preset(
+    dev: &mut Nanocore<MidiTransport>,
+    conn: &Conn,
+    cmd: PresetCmd,
+) -> Result<(), String> {
     match cmd {
+        PresetCmd::Set { index } => {
+            send_standard(dev, &midicc::program_change(conn.channel, index))
+        }
+        PresetCmd::Next => send_standard(dev, &midicc::global::next_preset(conn.channel)),
+        PresetCmd::Prev => send_standard(dev, &midicc::global::prev_preset(conn.channel)),
+        PresetCmd::List => {
+            let entries = dev.read_preset_names()?;
+            for e in &entries {
+                println!(
+                    "  #{:<2} {:<12} {}",
+                    e.slot,
+                    e.name,
+                    if e.named { "" } else { "(empty)" }
+                );
+            }
+            Ok(())
+        }
+        PresetCmd::Show => Err(
+            "the active preset is not decoded yet (full snapshot decode pending). \
+             Try `preset list` for the slot names."
+                .into(),
+        ),
+    }
+}
+
+// ── chain ───────────────────────────────────────────────────────────────────
+
+fn print_chain_help() {
+    println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
+    println!();
+    println!("  Left-to-right order, using these role names (or their 0-7 indices):");
+    for (i, (cli, disp)) in protocol::CHAIN_ROLES.iter().enumerate() {
+        println!("    {i}  {cli:<8} ({disp})");
+    }
+    println!();
+    println!("  nanocore-cli chain set <8 roles|indices>   write the chain order");
+    println!("  nanocore-cli chain show                    read the current order");
+    println!();
+    println!("  examples:");
+    println!("    nanocore-cli chain set delay eq fx1 fx2 amp cab mod reverb");
+    println!("    nanocore-cli chain set 4 7 0 1 2 3 5 6          # same thing");
+    println!();
+    println!("  NOTE: this order is NOT the CC module order — in the chain, DEL comes");
+    println!("  before MOD (CC25 is Mod, CC26 is Delay). This is a live edit to the");
+    println!("  current preset; reload a factory preset afterwards to get back.");
+}
+
+/// Parse and validate the 8 chain positions.
+///
+/// Accepts role names (`delay`, `del`, `mod`, ...) or 0-7 indices, in any mix.
+/// Rejects anything that is not a permutation of `0..8` so a bad order can
+/// never reach the device.
+fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
+    let n = protocol::CHAIN_LEN;
+    if tokens.len() != n {
+        return Err(format!(
+            "need exactly {n} chain positions, got {}.\nroles: {}",
+            tokens.len(),
+            protocol::CHAIN_ROLES
+                .iter()
+                .map(|(c, _)| *c)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+    }
+    let mut order: Vec<u8> = Vec::with_capacity(n);
+    for (i, tok) in tokens.iter().enumerate() {
+        let v = match tok.parse::<u8>() {
+            Ok(v) if (v as usize) < n => v,
+            Ok(v) => return Err(format!("position {}: index {v} out of range (0-{})", i + 1, n - 1)),
+            Err(_) => protocol::chain_role_index(tok).ok_or_else(|| {
+                format!(
+                    "position {}: unknown role {tok:?}. roles: {}",
+                    i + 1,
+                    protocol::CHAIN_ROLES
+                        .iter()
+                        .map(|(c, _)| *c)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            })?,
+        };
+        order.push(v);
+    }
+    let mut sorted = order.clone();
+    sorted.sort_unstable();
+    if sorted != (0..n as u8).collect::<Vec<_>>() {
+        return Err(format!(
+            "order must contain each module exactly once; got [{}] = {}",
+            order.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "),
+            render_chain(&order)
+        ));
+    }
+    Ok(order)
+}
+
+/// Write a pre-validated chain order and verify via the device's own echo.
+fn chain_write_cmd(
+    dev: &mut Nanocore<MidiTransport>,
+    kind: u8,
+    payload: Vec<u8>,
+) -> Result<(), String> {
+    let order = protocol::parse_chain_write(&payload)
+        .ok_or("internal: device frame does not decode back to the chain")?;
+
+    let ack = dev
+        .transact_with_flags(0x00, kind, payload, &[])
+        .map_err(|e| match e {
+            Error::Timeout { attempts, elapsed } => {
+                format!("no reply to the chain write after {attempts} attempt(s) in {elapsed:?}")
+            }
+            Error::Transport(t) => t.to_string(),
+        })?;
+    println!("rx (ack):");
+    describe(&ack);
+
+    match protocol::parse_chain_ack(&ack.payload) {
+        Some(echoed) if echoed == order => {
+            println!("ack echoes: {}", render_chain(&echoed));
+            println!("OK: device accepted the chain order we sent.");
+            Ok(())
+        }
+        Some(echoed) => {
+            println!(
+                "WARN: ack echoes a different order (sent {}, ack {})",
+                render_chain(&order),
+                render_chain(&echoed)
+            );
+            Ok(())
+        }
+        None => {
+            println!(
+                "note: acknowledged, but the ack did not decode as a chain echo \
+                 (payload {} bytes): {}",
+                ack.payload.len(),
+                hex(&ack.payload)
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Read the current chain order off a device snapshot.
+///
+/// The `chainOrder` tail is one of the few snapshot areas that is decoded, so
+/// this works today; the rest of `show` is still marked (TBD).
+fn cmd_chain_show(dev: &mut Nanocore<MidiTransport>) -> Result<(), String> {
+    let s = dev.read_snapshot().map_err(|e| e.to_string())?;
+    match protocol::parse_chain_order(&s.payload) {
+        Some(order) => {
+            println!("chain (left -> right): {}", render_chain(&order));
+            Ok(())
+        }
+        None => Err("snapshot did not contain a decodable chainOrder".into()),
+    }
+}
+
+/// Show a readable snapshot of the current device state.
+///
+/// Best-effort: only the decoded parts (chainOrder, payload shape) are printed;
+/// the rest is marked (TBD) until the `0x63` snapshot decode is completed.
+fn cmd_show(dev: &mut Nanocore<MidiTransport>) -> Result<(), String> {
+    let s = dev.read_snapshot().map_err(|e| e.to_string())?;
+    println!("Current device state (partial — full snapshot decode pending):");
+    match protocol::parse_chain_order(&s.payload) {
+        Some(order) => println!("  chain:    {}", render_chain(&order)),
+        None => println!("  chain:    (not decodable from this snapshot)"),
+    }
+    println!("  preset:   (TBD) active preset index/name not decoded yet");
+    println!("  modules:  (TBD) per-module on/off + model not decoded yet");
+    println!("  volume:   (TBD) USB output volume not decoded yet");
+    println!("  tuner:    (TBD) tuner state not decoded yet");
+    println!(
+        "  data:     snapshot {} bytes, {} float candidate(s)",
+        s.payload.len(),
+        protocol::scan_snapshot_floats(&s.payload).len()
+    );
+    Ok(())
+}
+
+// ── asset ───────────────────────────────────────────────────────────────────
+
+fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
+    match cmd {
+        AssetCmd::List => {
+            println!("asset regions (device blob storage):");
+            println!(
+                "  amp   region 0x{:02x} — slots 0-37 (30 amp sims + 8 FX2 drive pedals), {} bytes each",
+                asset::REGION_AMP,
+                asset::AMP_TOTAL
+            );
+            println!(
+                "  ir    region 0x{:02x} — slots 0-29, {} bytes each (write supported)",
+                asset::REGION_IR,
+                asset::IR_TOTAL
+            );
+            println!("  operations: read | verify | write (ir only)");
+            Ok(())
+        }
         AssetCmd::Read { region, slot, out } => {
-            asset_read(dev, region, slot, out, None)
+            let mut dev = open_device(conn)?;
+            asset_read(&mut dev, region, slot, out, None)
         }
         AssetCmd::Verify { region, slot, reference, out } => {
             let want = std::fs::read(&reference)
                 .map_err(|e| format!("cannot read {reference}: {e}"))?;
-            asset_read(dev, region, slot, out, Some(&want))
+            let mut dev = open_device(conn)?;
+            asset_read(&mut dev, region, slot, out, Some(&want))
         }
         AssetCmd::Write { region, slot, file, name } => {
             if region != RegionArg::Ir {
@@ -712,6 +965,7 @@ fn cmd_asset(dev: &mut Nanocore<MidiTransport>, cmd: AssetCmd) -> Result<(), Str
                  an interrupted write has been observed to wipe the preset-name table \n\
                  (recoverable via a factory reset in the official app)"
             );
+            let mut dev = open_device(conn)?;
             let back = dev.write_ir_slot(slot, &blob, name.as_deref(), |msg| {
                 eprint!("\r{msg}");
             })?;
@@ -802,123 +1056,6 @@ fn asset_read(
     Ok(())
 }
 
-// ── chain ───────────────────────────────────────────────────────────────────
-
-fn print_chain_help() {
-    println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
-    println!();
-    println!("  Left-to-right order, using these role names (or their 0-7 indices):");
-    for (i, (cli, disp)) in protocol::CHAIN_ROLES.iter().enumerate() {
-        println!("    {i}  {cli:<8} ({disp})");
-    }
-    println!();
-    println!("  nanocore-cli chain <8 roles|indices>   write the chain order");
-    println!();
-    println!("  examples:");
-    println!("    nanocore-cli chain delay eq fx1 fx2 amp cab mod reverb");
-    println!("    nanocore-cli chain 4 7 0 1 2 3 5 6        # same thing");
-    println!();
-    println!("  NOTE: this order is NOT the CC block order — in the chain, DEL comes");
-    println!("  before MOD (CC25 is Mod, CC26 is Delay). This is a live edit to the");
-    println!("  current preset; reload a factory preset afterwards to get back.");
-}
-
-/// Parse and validate the 8 chain positions.
-///
-/// Accepts role names (`delay`, `del`, `mod`, ...) or 0-7 indices, in any mix.
-/// Rejects anything that is not a permutation of `0..8` so a bad order can
-/// never reach the device.
-fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
-    let n = protocol::CHAIN_LEN;
-    if tokens.len() != n {
-        return Err(format!(
-            "need exactly {n} chain positions, got {}.\nroles: {}",
-            tokens.len(),
-            protocol::CHAIN_ROLES
-                .iter()
-                .map(|(c, _)| *c)
-                .collect::<Vec<_>>()
-                .join(" ")
-        ));
-    }
-    let mut order: Vec<u8> = Vec::with_capacity(n);
-    for (i, tok) in tokens.iter().enumerate() {
-        let v = match tok.parse::<u8>() {
-            Ok(v) if (v as usize) < n => v,
-            Ok(v) => return Err(format!("position {}: index {v} out of range (0-{})", i + 1, n - 1)),
-            Err(_) => protocol::chain_role_index(tok).ok_or_else(|| {
-                format!(
-                    "position {}: unknown role {tok:?}. roles: {}",
-                    i + 1,
-                    protocol::CHAIN_ROLES
-                        .iter()
-                        .map(|(c, _)| *c)
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                )
-            })?,
-        };
-        order.push(v);
-    }
-    let mut sorted = order.clone();
-    sorted.sort_unstable();
-    if sorted != (0..n as u8).collect::<Vec<_>>() {
-        return Err(format!(
-            "order must contain each block exactly once; got [{}] = {}",
-            order.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "),
-            render_chain(&order)
-        ));
-    }
-    Ok(order)
-}
-
-/// Write a pre-validated chain order and verify via the device's own echo.
-fn chain_write_cmd(
-    dev: &mut Nanocore<MidiTransport>,
-    kind: u8,
-    payload: Vec<u8>,
-) -> Result<(), String> {
-    let order = protocol::parse_chain_write(&payload)
-        .map(|p| p)
-        .ok_or("internal: device frame does not decode back to the chain")?;
-
-    let ack = dev
-        .transact_with_flags(0x00, kind, payload, &[])
-        .map_err(|e| match e {
-            Error::Timeout { attempts, elapsed } => {
-                format!("no reply to the chain write after {attempts} attempt(s) in {elapsed:?}")
-            }
-            Error::Transport(t) => t.to_string(),
-        })?;
-    println!("rx (ack):");
-    describe(&ack);
-
-    match protocol::parse_chain_ack(&ack.payload) {
-        Some(echoed) if echoed == order => {
-            println!("ack echoes: {}", render_chain(&echoed));
-            println!("OK: device accepted the chain order we sent.");
-            Ok(())
-        }
-        Some(echoed) => {
-            println!(
-                "WARN: ack echoes a different order (sent {}, ack {})",
-                render_chain(&order),
-                render_chain(&echoed)
-            );
-            Ok(())
-        }
-        None => {
-            println!(
-                "note: acknowledged, but the ack did not decode as a chain echo \
-                 (payload {} bytes): {}",
-                ack.payload.len(),
-                hex(&ack.payload)
-            );
-            Ok(())
-        }
-    }
-}
-
 // ── models ──────────────────────────────────────────────────────────────────
 
 fn print_models(rows: &[models_data::ModelInfo]) {
@@ -994,6 +1131,110 @@ fn query_models_live(dev: &mut Nanocore<MidiTransport>) -> Result<(), String> {
     Ok(())
 }
 
+// ── debug ───────────────────────────────────────────────────────────────────
+
+fn cmd_debug(
+    dev: &mut Nanocore<MidiTransport>,
+    conn: &Conn,
+    cmd: DebugCmd,
+) -> Result<(), String> {
+    match cmd {
+        DebugCmd::Ping => {
+            let (k, p) = protocol::ping();
+            transact(dev, conn, k, p, &[nanocore::msg_type::PING])
+        }
+        DebugCmd::Snapshot => {
+            let (k, p) = protocol::request_snapshot();
+            transact(dev, conn, k, p, &[nanocore::msg_type::SNAPSHOT])
+        }
+        DebugCmd::Monitor => {
+            println!("monitoring... (ctrl-c to stop)");
+            loop {
+                let raw = dev.transport().receive().map_err(|e| e.to_string())?;
+                if !raw.is_empty() {
+                    println!("raw[{}]: {}", raw.len(), hex(&raw));
+                    for f in Frame::split_stream(&raw) {
+                        describe(&f);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                let _ = std::io::stdout().flush();
+            }
+        }
+        DebugCmd::Cc { cc, value } => {
+            // CC numbers default to **decimal** so they can be copied straight
+            // out of the OEM MIDI CC reference; `0x..` selects hex.
+            let cc_num = match cc.strip_prefix("0x") {
+                Some(hex) => u8::from_str_radix(hex, 16)
+                    .map_err(|_| format!("bad hex CC number {cc:?}"))?,
+                None => cc
+                    .parse()
+                    .map_err(|_| format!("CC number must be decimal 0-127 ({cc:?}); use 0x.. for hex"))?,
+            };
+            if cc_num > 127 {
+                return Err(format!("CC number must be 0-127, got {cc_num}"));
+            }
+            if value > 127 {
+                return Err(format!("CC value must be 0-127, got {value}"));
+            }
+            send_standard(dev, &midicc::control_change(conn.channel, cc_num, value))
+        }
+        DebugCmd::Enable { slot, state } => {
+            let (k, p) = protocol::set_enabled(slot, state.map(Power::on).unwrap_or(true));
+            transact(dev, conn, k, p, &[])
+        }
+        DebugCmd::Setparam { b3, b5, b6, value } => {
+            let p = |s: &str| u8::from_str_radix(s.trim_start_matches("0x"), 16)
+                .map_err(|_| format!("{s:?} must be hex"));
+            let (b3, b5, b6) = (p(&b3)?, p(&b5)?, p(&b6)?);
+            let (k, payload) = protocol::param_write(b3, b5, b6, value);
+            transact(dev, conn, k, payload, &[])
+        }
+        DebugCmd::Variant { index } => {
+            match models_data::lookup_amp(index) {
+                Some(m) => println!("variant {index} -> {} ({})", m.name, m.code),
+                None => println!("variant {index} (unknown slot; device has 0-37)"),
+            }
+            let (k, p) = protocol::select_variant(index);
+            transact(dev, conn, k, p, &[])
+        }
+        DebugCmd::Raw { bytes } => {
+            let bytes = parse_hex(&bytes)?;
+            if bytes.len() < 2 {
+                return Err("raw needs at least a message type".into());
+            }
+            if bytes[1..].iter().any(|b| b & 0x80 != 0) {
+                eprintln!(
+                    "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
+                     bytes and the device will discard the message (7-bit-safe encoding?)"
+                );
+            }
+            transact(dev, conn, bytes[0], bytes[1..].to_vec(), &conn.expect.clone())
+        }
+        DebugCmd::Replay { bytes } => {
+            let bytes = parse_hex(&bytes)?;
+            println!("replay[{}]: {}", bytes.len(), hex(&bytes));
+            dev.transport().send(&bytes).map_err(|e| e.to_string())?;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
+            let mut got = 0;
+            while std::time::Instant::now() < deadline {
+                let raw = dev.transport().receive().map_err(|e| e.to_string())?;
+                if !raw.is_empty() {
+                    for f in Frame::split_stream(&raw) {
+                        println!("rx:");
+                        describe(&f);
+                        got += 1;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            println!("{got} frame(s) in 2s");
+            Ok(())
+        }
+        DebugCmd::Probe { index } => probe(dev, conn, index),
+    }
+}
+
 // ── probe ───────────────────────────────────────────────────────────────────
 
 /// Run the preset-switch flow documented in the protocol notes:
@@ -1006,7 +1247,9 @@ fn probe(
 ) -> Result<(), String> {
     let idx = index.unwrap_or(0);
 
-    let steps: Vec<(&str, (u8, Vec<u8>), Vec<u8>)> = vec![
+    /// One discovery step: label, (msg type, payload), expected reply types.
+    type Step<'a> = (&'a str, (u8, Vec<u8>), Vec<u8>);
+    let steps: Vec<Step> = vec![
         ("1 select preset", protocol::select_preset(idx), vec![]),
         ("2 read snapshot", protocol::request_snapshot(), vec![nanocore::msg_type::SNAPSHOT]),
         ("3 query", (nanocore::msg_type::QUERY, vec![0x00, 0x04, 0x00, 0x08]), vec![]),
@@ -1056,22 +1299,22 @@ fn describe(frame: &Frame) {
         frame.payload.len()
     );
     println!("  payload: {}", hex(&frame.payload));
-    if frame.kind == 0x06 {
-        if let Some(ep) = protocol::parse_effect_data(&frame.payload) {
-            println!("  effect data: slot {} params {:?}", ep.slot, ep.params);
-        }
+    if frame.kind == 0x06
+        && let Some(ep) = protocol::parse_effect_data(&frame.payload)
+    {
+        println!("  effect data: slot {} params {:?}", ep.slot, ep.params);
     }
-    if frame.kind == 0x40 {
-        if let Some(entries) = protocol::parse_preset_list(&frame.payload) {
-            println!("  presets ({}):", entries.len());
-            for e in &entries {
-                println!(
-                    "    #{:<2} {:<12} {}",
-                    e.slot,
-                    e.name,
-                    if e.named { "" } else { "(empty)" }
-                );
-            }
+    if frame.kind == 0x40
+        && let Some(entries) = protocol::parse_preset_list(&frame.payload)
+    {
+        println!("  presets ({}):", entries.len());
+        for e in &entries {
+            println!(
+                "    #{:<2} {:<12} {}",
+                e.slot,
+                e.name,
+                if e.named { "" } else { "(empty)" }
+            );
         }
     }
     if let Some(order) = protocol::parse_chain_order(&frame.payload) {
@@ -1177,44 +1420,6 @@ fn transact(
         }
         Err(Error::Transport(e)) => Err(e.to_string()),
     }
-}
-
-/// Validate + describe an Amp/Cab **model** selection made over standard CC.
-///
-/// `CC43` (Amp) and `CC44` (Cab) are documented as "Type CC" but the OEM guide
-/// prints no type table for either block and claims model selection is
-/// unassigned. Hardware testing shows they *are* model selectors over the
-/// 30-entry tables, and that indices `>= 30` are silently ignored — so reject
-/// them here instead of letting the write disappear without effect.
-///
-/// For every other block this is a no-op: their "type" is a real effect-type ID
-/// with its own table in the OEM MIDI CC reference.
-fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
-    let (label, count, name) = match block {
-        Block::Amp => (
-            "amp",
-            midicc::AMP_MODEL_COUNT,
-            models_data::lookup_amp(id).map(|m| format!("{} ({})", m.name, m.code)),
-        ),
-        Block::Cab => (
-            "cab",
-            midicc::CAB_MODEL_COUNT,
-            models_data::lookup_cab(id).map(|m| format!("{} ({})", m.name, m.code)),
-        ),
-        _ => return Ok(()),
-    };
-    if id >= count {
-        return Err(format!(
-            "{label} model index must be 0-{} (device has {count} models); \
-             {id} would be silently ignored — drive pedals 30-37 belong to FX2, not the {label} block",
-            count - 1
-        ));
-    }
-    match name {
-        Some(n) => println!("{label} {id} -> {n}   (standard CC{})", block.type_cc()),
-        None => println!("{label} {id} (not in embedded table; device has 0-{})", count - 1),
-    }
-    Ok(())
 }
 
 /// Render a chain order as `DEL FX1 FX2 ...` using the device display names.
