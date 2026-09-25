@@ -51,10 +51,10 @@ fn model_id_candidates() -> Vec<CompletionCandidate> {
 )]
 pub struct Cli {
     /// MIDI 输入端口索引（见 `ports`）
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, alias = "in", global = true, value_name = "N")]
     pub in_port: Option<usize>,
     /// MIDI 输出端口索引（见 `ports`）
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, alias = "out", global = true, value_name = "N")]
     pub out_port: Option<usize>,
     /// 用于自动探测的端口名子串 [default: nanocore]
     #[arg(long, global = true, value_name = "NAME")]

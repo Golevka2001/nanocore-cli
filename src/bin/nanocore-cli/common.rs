@@ -83,18 +83,47 @@ pub fn describe(frame: &Frame) {
     }
 }
 
+/// 解析一个方向的 MIDI 端口索引，优先级：显式索引 > hint 匹配 > 唯一端口。
+///
+/// 前两级都无法确定时，只有在恰好只有一个可用端口（无歧义）时才采用它；
+/// 否则报错并列出端口——静默回落到 #0 可能打到无关的 MIDI 设备上。
+fn resolve_port(
+    explicit: Option<usize>,
+    ports: &[(usize, String)],
+    hint: &str,
+    dir: &str,
+    flag: &str,
+) -> Result<usize, String> {
+    if let Some(i) = explicit {
+        return Ok(i);
+    }
+    if let Some(i) = midi::find_port(ports, hint) {
+        return Ok(i);
+    }
+    match ports {
+        [(i, _)] => Ok(*i),
+        [] => Err(format!("no {dir} ports available (hint {hint:?} unmatched)")),
+        _ => {
+            let list = ports
+                .iter()
+                .map(|(i, n)| format!("  #{i} {n}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(format!(
+                "no {dir} port matches hint {hint:?}; pass {flag} N explicitly. available:\n{list}"
+            ))
+        }
+    }
+}
+
 pub fn open_device(conn: &Conn) -> Result<Dev, String> {
     let transport = match (conn.in_port, conn.out_port) {
         (Some(i), Some(o)) => MidiTransport::open(i, o).map_err(|e| e.to_string()),
         _ => {
             let ins = midi::input_ports().map_err(|e| e.to_string())?;
             let outs = midi::output_ports().map_err(|e| e.to_string())?;
-            let i = conn
-                .in_port
-                .unwrap_or_else(|| midi::find_port(&ins, &conn.hint).unwrap_or(0));
-            let o = conn
-                .out_port
-                .unwrap_or_else(|| midi::find_port(&outs, &conn.hint).unwrap_or(0));
+            let i = resolve_port(conn.in_port, &ins, &conn.hint, "input", "--in-port")?;
+            let o = resolve_port(conn.out_port, &outs, &conn.hint, "output", "--out-port")?;
             eprintln!(
                 "input  #{} {:?}\noutput #{} {:?}",
                 i,
