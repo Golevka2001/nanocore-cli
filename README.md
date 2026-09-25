@@ -72,21 +72,15 @@ dev.set_usb_volume(90)?;
 
 ## Shell completions
 
-Dynamic completion (data-driven candidates: model names for `module … model`,
-chain roles for `chain set`, …) — add to your shell config, regenerates itself
-on every shell start:
+Dynamic completion only — candidates are computed by the binary at Tab time
+(data-driven: model names for `module … model`, chain roles for `chain set`,
+subcommands/flags always fresh). Add one line to your shell config; it
+regenerates itself on every shell start:
 
 ```bash
 fish: COMPLETE=fish nanocore-cli | source      # ~/.config/fish/completions/nanocore-cli.fish
 bash: source <(COMPLETE=bash nanocore-cli)     # ~/.bashrc
 zsh:  source <(COMPLETE=zsh nanocore-cli)      # ~/.zshrc
-```
-
-Prefer a static script (subcommands + flags only, no re-sourcing needed)?
-
-```bash
-nanocore-cli completions fish > ~/.config/fish/completions/nanocore-cli.fish
-# bash/zsh/powershell: see `nanocore-cli completions --help`
 ```
 
 ## Frame format

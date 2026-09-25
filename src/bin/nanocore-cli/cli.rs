@@ -146,28 +146,6 @@ pub enum Command {
         #[command(subcommand)]
         cmd: DebugCmd,
     },
-
-    // ── shell completions ─────────────────────────────────────────────────
-    /// Print a static shell completion script for nanocore-cli
-    ///
-    /// This is the *static* variant: subcommands, flags and enum values, frozen
-    /// at generation time. Typical install locations:
-    ///   fish:       … > ~/.config/fish/completions/nanocore-cli.fish
-    ///   bash:       … > ~/.local/share/bash-completion/completions/nanocore-cli
-    ///   zsh:        … > ~/.zfunc/_nanocore-cli  (ensure compinit picks up ~/.zfunc)
-    ///   powershell: … | Out-String | Invoke-Expression   (in your $PROFILE)
-    ///
-    /// For *dynamic* completion (data-driven candidates: model names for
-    /// `module … model`, chain roles for `chain set`, …) source the binary
-    /// itself instead — it regenerates the hook on every shell start:
-    ///   fish: COMPLETE=fish nanocore-cli | source  (in fish/completions/)
-    ///   bash: source <(COMPLETE=bash nanocore-cli)   (in ~/.bashrc)
-    ///   zsh:  source <(COMPLETE=zsh nanocore-cli)    (in ~/.zshrc)
-    Completions {
-        /// Target shell
-        #[arg(value_enum)]
-        shell: clap_complete::Shell,
-    },
 }
 
 #[derive(Subcommand, Debug)]

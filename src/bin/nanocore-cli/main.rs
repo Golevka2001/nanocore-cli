@@ -63,12 +63,6 @@ fn main() {
     let result = match cli.command {
         // No device needed at all.
         Command::Ports => return cmd_list(),
-        Command::Completions { shell } => {
-            let mut cmd = Cli::command();
-            let name = cmd.get_name().to_string();
-            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
-            return;
-        }
         Command::Chain { cmd: None } => return chain::print_chain_help(),
         Command::Models { region, live } => cmd_models(region, live, &conn),
         Command::Module { cmd } => cmd_module(cmd, &conn),
