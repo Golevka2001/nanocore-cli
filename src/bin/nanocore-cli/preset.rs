@@ -1,15 +1,11 @@
-//! `preset` commands: select / step / list the preset slots.
+//! `preset` 命令：选择 / 步进 / 列出预设槽位。
 
 use nanocore::midicc;
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{send_standard, Dev};
+use crate::common::{Dev, send_standard};
 
-pub fn cmd_preset(
-    dev: &mut Dev,
-    conn: &Conn,
-    cmd: PresetCmd,
-) -> Result<(), String> {
+pub fn cmd_preset(dev: &mut Dev, conn: &Conn, cmd: PresetCmd) -> Result<(), String> {
     match cmd {
         PresetCmd::Set { index } => {
             send_standard(dev, &midicc::program_change(conn.channel, index))

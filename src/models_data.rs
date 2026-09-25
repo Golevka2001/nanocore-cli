@@ -1,24 +1,23 @@
-//! Embedded Nanocore amp / cab model tables.
+//! 内嵌的 Nanocore 音箱 / 箱体模型表。
 //!
-//! Mirror of `data/models.json` (vendored from `nanocore-reverse/resources/
-//! models.json`); the sync is enforced by `tests/data_sync.rs` — edit the JSON
-//! and this table together, `cargo test` fails if they drift apart.
-//! Sources: firmware `ampAssets`/`irAssets` (slot order), the official
-//! user manual (friendly "based on" names), and `strings_en.json` (device slot
-//! counts: AMP+Fx2 = 38, IR = 30). Indices are 0-based firmware slots.
+//! 与 `data/models.json` 保持镜像；
+//! 同步由 `tests/data_sync.rs` 强制保证 —— 修改 JSON 时须一并修改本表，
+//! 二者不一致时 `cargo test` 会失败。
+//! 来源：固件 `ampAssets`/`irAssets`（槽位顺序）、官方用户手册（友好的 "based on" 名称）、
+//! 以及 `strings_en.json`（设备槽位数：AMP+Fx2 = 38、IR = 30）。索引均为 0 起始的固件槽位。
 #![allow(dead_code)]
 
-/// One model entry. `index` is the 0-based firmware slot (device UI shows `index + 1`).
+/// 单个模型条目。`index` 为 0 起始的固件槽位（设备 UI 显示 `index + 1`）。
 pub struct ModelInfo {
     pub index: u8,
     pub code: &'static str,
-    /// Friendly name (ASCII approximation of the manual's brand reference).
+    /// 友好名称（对手册中品牌参照名的 ASCII 近似写法）。
     pub name: &'static str,
-    /// `"amp"` | `"drive"` (FX2 drive pedal) | `"cab"`.
+    /// `"amp"` | `"drive"`（FX2 踏板效果）| `"cab"`。
     pub category: &'static str,
 }
 
-/// Amp-sim + FX2 drive-pedal models (firmware `ampAssets`, 38 entries, slots 0-37).
+/// 音箱模拟 + FX2 踏板效果模型（固件 `ampAssets`，38 条，槽位 0-37）。
 pub const AMP: &[ModelInfo] = &[
     ModelInfo { index: 0, code: "BogXTC1", name: "Bogner XTC #1", category: "amp" },
     ModelInfo { index: 1, code: "BogXTC2", name: "Bogner XTC #2", category: "amp" },
@@ -60,7 +59,7 @@ pub const AMP: &[ModelInfo] = &[
     ModelInfo { index: 37, code: "Fiman", name: "Friedman Marty Friedman (drive)", category: "drive" },
 ];
 
-/// Cabinet / IR models (firmware `irAssets`, 30 entries, slots 0-29).
+/// 箱体 / IR 模型（固件 `irAssets`，30 条，槽位 0-29）。
 pub const CAB: &[ModelInfo] = &[
     ModelInfo { index: 0, code: "Bog412A", name: "Bogner 4x12 A", category: "cab" },
     ModelInfo { index: 1, code: "Bog412B", name: "Bogner 4x12 B", category: "cab" },
@@ -94,12 +93,12 @@ pub const CAB: &[ModelInfo] = &[
     ModelInfo { index: 29, code: "Mar412", name: "Marshall 4x12", category: "cab" },
 ];
 
-/// Look up an amp/drive model by 0-based slot.
+/// 按 0 起始的槽位查找音箱 / 踏板效果模型。
 pub fn lookup_amp(index: u8) -> Option<&'static ModelInfo> {
     AMP.iter().find(|m| m.index == index)
 }
 
-/// Look up a cabinet / IR model by 0-based slot.
+/// 按 0 起始的槽位查找箱体 / IR 模型。
 pub fn lookup_cab(index: u8) -> Option<&'static ModelInfo> {
     CAB.iter().find(|m| m.index == index)
 }

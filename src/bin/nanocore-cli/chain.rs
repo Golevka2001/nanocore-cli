@@ -1,10 +1,10 @@
-//! `chain` commands: write / show the effect-chain order, plus the `show`
-//! device-state snapshot (which today decodes the chainOrder area).
+//! `chain` 命令：写入 / 显示效果链序，外加 `show` 设备状态快照
+//! （目前仅解码 chainOrder 区域）。
 
 use nanocore::client::Error;
 use nanocore::protocol;
 
-use crate::common::{describe, hex, render_chain, Dev};
+use crate::common::{Dev, describe, hex, render_chain};
 
 pub fn print_chain_help() {
     println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
@@ -26,11 +26,10 @@ pub fn print_chain_help() {
     println!("  current preset; reload a factory preset afterwards to get back.");
 }
 
-/// Parse and validate the 8 chain positions.
+/// 解析并校验 8 个链位置。
 ///
-/// Accepts role names (`delay`, `del`, `mod`, ...) or 0-7 indices, in any mix.
-/// Rejects anything that is not a permutation of `0..8` so a bad order can
-/// never reach the device.
+/// 接受角色名（`delay`、`del`、`mod` 等）或 0-7 索引，可任意混用。
+/// 拒绝任何不是 `0..8` 排列的输入，确保错误的链序永远不会到达设备。
 pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
     let n = protocol::CHAIN_LEN;
     if tokens.len() != n {
@@ -48,7 +47,13 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
     for (i, tok) in tokens.iter().enumerate() {
         let v = match tok.parse::<u8>() {
             Ok(v) if (v as usize) < n => v,
-            Ok(v) => return Err(format!("position {}: index {v} out of range (0-{})", i + 1, n - 1)),
+            Ok(v) => {
+                return Err(format!(
+                    "position {}: index {v} out of range (0-{})",
+                    i + 1,
+                    n - 1
+                ));
+            }
             Err(_) => protocol::chain_role_index(tok).ok_or_else(|| {
                 format!(
                     "position {}: unknown role {tok:?}. roles: {}",
@@ -68,19 +73,19 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
     if sorted != (0..n as u8).collect::<Vec<_>>() {
         return Err(format!(
             "order must contain each module exactly once; got [{}] = {}",
-            order.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "),
+            order
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
             render_chain(&order)
         ));
     }
     Ok(order)
 }
 
-/// Write a pre-validated chain order and verify via the device's own echo.
-pub fn chain_write_cmd(
-    dev: &mut Dev,
-    kind: u8,
-    payload: Vec<u8>,
-) -> Result<(), String> {
+/// 写入一个已预校验的链序，并通过设备自身的回显进行确认。
+pub fn chain_write_cmd(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), String> {
     let order = protocol::parse_chain_write(&payload)
         .ok_or("internal: device frame does not decode back to the chain")?;
 
@@ -121,10 +126,10 @@ pub fn chain_write_cmd(
     }
 }
 
-/// Read the current chain order off a device snapshot.
+/// 从设备快照中读取当前链序。
 ///
-/// The `chainOrder` tail is one of the few snapshot areas that is decoded, so
-/// this works today; the rest of `show` is still marked (TBD).
+/// `chainOrder` 尾部是少数已解码的快照区域之一，因此当前可用；
+/// `show` 的其余部分仍标注 (TBD)。
 pub fn cmd_chain_show(dev: &mut Dev) -> Result<(), String> {
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     match protocol::parse_chain_order(&s.payload) {
@@ -136,10 +141,10 @@ pub fn cmd_chain_show(dev: &mut Dev) -> Result<(), String> {
     }
 }
 
-/// Show a readable snapshot of the current device state.
+/// 以可读形式显示当前设备状态快照。
 ///
-/// Best-effort: only the decoded parts (chainOrder, payload shape) are printed;
-/// the rest is marked (TBD) until the `0x63` snapshot decode is completed.
+/// 尽力而为：仅打印已解码的部分（chainOrder、载荷形状）；
+/// 其余标注 (TBD)，直至 `0x63` 快照解码完成。
 pub fn cmd_show(dev: &mut Dev) -> Result<(), String> {
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     println!("Current device state (partial — full snapshot decode pending):");

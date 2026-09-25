@@ -1,18 +1,16 @@
-//! Retry / timeout behaviour of [`Nanocore::transact`], exercised with a
-//! scripted transport so it runs offline and fast.
+//! [`Nanocore::transact`] 的重试 / 超时行为，通过脚本化传输层离线快速运行。
 
 use std::cell::RefCell;
 use std::time::Duration;
 
+use nanocore::Transport;
 use nanocore::client::{Error, Nanocore, RetryConfig};
 use nanocore::frame::{Direction, Frame};
 use nanocore::protocol;
-use nanocore::Transport;
 
-/// A transport that answers only after it has seen `reply_after` sends.
+/// 只有在累计收到 `reply_after` 次发送之后才会应答的传输层。
 ///
-/// The reply echoes the sequence number of the most recent request, which is
-/// what the real device does.
+/// 应答回显最近一次请求的序列号，与真实设备的行为一致。
 struct Scripted {
     sent: RefCell<Vec<Vec<u8>>>,
     reply_after: usize,
@@ -21,10 +19,18 @@ struct Scripted {
 
 impl Scripted {
     fn never() -> Self {
-        Self { sent: RefCell::new(vec![]), reply_after: usize::MAX, reply_kind: 0x07 }
+        Self {
+            sent: RefCell::new(vec![]),
+            reply_after: usize::MAX,
+            reply_kind: 0x07,
+        }
     }
     fn after(n: usize, reply_kind: u8) -> Self {
-        Self { sent: RefCell::new(vec![]), reply_after: n, reply_kind }
+        Self {
+            sent: RefCell::new(vec![]),
+            reply_after: n,
+            reply_kind,
+        }
     }
     fn sends(&self) -> usize {
         self.sent.borrow().len()
@@ -54,7 +60,7 @@ impl Transport for Scripted {
     }
 }
 
-/// A transport with a fixed inbox, for checking how stray frames are handled.
+/// 带固定收件箱的传输层，用于检查杂散帧的处理方式。
 struct Inbox(std::cell::RefCell<Vec<u8>>);
 
 impl Inbox {
@@ -102,7 +108,7 @@ fn retries_until_max_then_times_out() {
         Err(Error::Timeout { attempts, .. }) => assert_eq!(attempts, 3),
         other => panic!("expected timeout, got {other:?}"),
     }
-    // 1 initial attempt + 2 retries.
+    // 1 次初始尝试 + 2 次重试。
     assert_eq!(dev.into_inner().sends(), 3);
 }
 
@@ -118,7 +124,7 @@ fn succeeds_on_a_later_attempt() {
 
 #[test]
 fn wrong_reply_type_is_not_accepted() {
-    // Device answers with 0x65 while we asked for 0x68 -> keep waiting.
+    // 设备以 0x65 应答，而我们等待的是 0x68 -> 继续等待。
     let t = Scripted::after(0, 0x65);
     let mut dev = Nanocore::with_config(t, fast_config(1));
     let (k, p) = protocol::ping();
@@ -130,14 +136,16 @@ fn wrong_reply_type_is_not_accepted() {
 
 #[test]
 fn unsolicited_frames_with_foreign_seq_never_match() {
-    // The device's unsolicited status frames carry its own counter; they must
-    // not be mistaken for a reply to our request.
+    // 设备主动上报的状态帧携带其自身的计数器；不得把它们误认为对我们请求的应答。
     let noise = Frame::new(Direction::Rx, 0x00, 0x0F49, 0x65, vec![0x00; 13]);
     let mut dev = Nanocore::with_config(Inbox::with(&noise), fast_config(0));
     let (k, p) = protocol::ping();
-    // Our request uses seq 0, the noise frame has 0x0F49 -> no match.
-    assert!(matches!(dev.transact_expect(k, p, &[]), Err(Error::Timeout { .. })));
-    // ...but it is buffered rather than dropped, so it can be inspected.
+    // 我们的请求使用 seq 0，杂散帧为 0x0F49 -> 不匹配。
+    assert!(matches!(
+        dev.transact_expect(k, p, &[]),
+        Err(Error::Timeout { .. })
+    ));
+    // ……但该帧被缓冲而非丢弃，因此事后仍可检查。
     let pending = dev.drain_pending();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].seq, 0x0F49);
@@ -145,7 +153,7 @@ fn unsolicited_frames_with_foreign_seq_never_match() {
 
 #[test]
 fn pending_frames_survive_until_consumed() {
-    // A reply that arrives before we look for it must not be lost.
+    // 在我们读取之前到达的应答不得丢失。
     let expected = Frame::new(Direction::Rx, 0x00, 0, 0x68, vec![0xAA]);
     let mut dev = Nanocore::with_config(Inbox::with(&expected), fast_config(0));
     let (k, p) = protocol::ping();

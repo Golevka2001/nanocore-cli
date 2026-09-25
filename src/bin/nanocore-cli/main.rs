@@ -1,8 +1,7 @@
-//! `nanocore-cli` — control and inspect a Nanocore (TPE-S10) guitar effects
-//! processor over MIDI.
+//! `nanocore-cli` — 通过 MIDI 控制和检查 Nanocore（TPE-S10）吉他效果处理器。
 //!
-//! The command surface mirrors the device's own concept model — presets contain
-//! effect modules, and parameters belong to their module:
+//! 命令面遵循设备自身的概念模型——预设（preset）包含效果模块（module），
+//! 参数隶属于各自的模块：
 //!
 //! ```text
 //! nanocore-cli preset set 12                 select preset 12
@@ -16,14 +15,12 @@
 //! nanocore-cli asset read ir 0 out.bin       pull the raw IR blob out of slot 0
 //! ```
 //!
-//! Everything that speaks raw / undocumented frames lives under `debug`; those
-//! commands exist for protocol work, not for making music. The low-level
-//! knobs (`--expect`, `--flags`, `--no-wait`, `--no-sysex`) are global-hidden
-//! and shared by all device commands.
+//! 所有涉及原始/未公开帧的操作都归入 `debug`；这些命令面向协议研究，
+//! 而非演奏。底层旋钮（`--expect`、`--flags`、`--no-wait`、`--no-sysex`）
+//! 为全局隐藏参数，由所有设备命令共享。
 //!
-//! Module layout: [`cli`] holds the clap command tree, [`common`] the shared
-//! plumbing, and the remaining modules one command family each
-//! (preset / module / chain / asset / models / debug / probe).
+//! 模块布局：[`cli`] 定义 clap 命令树，[`common`] 提供共享的基础辅助代码，
+//! 其余模块各对应一个命令族（preset / module / chain / asset / models / debug / probe）。
 
 mod asset;
 mod chain;
@@ -32,8 +29,8 @@ mod common;
 mod debug;
 mod models;
 mod module;
-mod probe;
 mod preset;
+mod probe;
 
 use clap::{CommandFactory, Parser};
 
@@ -49,19 +46,18 @@ use crate::models::cmd_models;
 use crate::module::cmd_module;
 use crate::preset::cmd_preset;
 
-// ─── entry point ────────────────────────────────────────────────────────────
+// ─── 入口 ────────────────────────────────────────────────────────────
 
 fn main() {
-    // Dynamic shell completion: when invoked by a completion hook
-    // (COMPLETE=<shell> set), compute candidates and exit before anything
-    // else touches stdout. Inert otherwise.
+    // 动态 shell 补全：当由补全钩子调用时（设置了 COMPLETE=<shell>），
+    // 先计算候选项并在其他任何代码触碰 stdout 之前退出。否则不做任何事。
     clap_complete::CompleteEnv::with_factory(|| Cli::command()).complete();
 
     let cli = Cli::parse();
     let conn = Conn::from_cli(&cli);
 
     let result = match cli.command {
-        // No device needed at all.
+        // 完全不需要设备。
         Command::Ports => return cmd_list(),
         Command::Chain { cmd: None } => return chain::print_chain_help(),
         Command::Models { region, live } => cmd_models(region, live, &conn),
@@ -74,7 +70,7 @@ fn main() {
             );
             std::process::exit(2);
         }
-        // Everything else goes through the device.
+        // 其余命令都通过设备执行。
         command => run(command, &conn),
     };
     if let Err(e) = result {
@@ -84,22 +80,31 @@ fn main() {
 }
 
 fn run(command: Command, conn: &Conn) -> Result<(), String> {
-    // Commands that validate their arguments before the port opens, so a typo
-    // can never reach MIDI.
+    // 在打开端口前自行校验参数的命令，确保手误永远不会传到 MIDI。
     enum Preflight {
         Chain(u8, Vec<u8>),
     }
     let preflight: Option<Preflight> = match &command {
-        Command::Chain { cmd: Some(ChainCmd::Set { positions }) } => {
+        Command::Chain {
+            cmd: Some(ChainCmd::Set { positions }),
+        } => {
             let order = parse_chain_positions(positions)?;
             let (kind, payload) = protocol::chain_write(&order)
                 .ok_or("internal: chain_write rejected a valid order")?;
             println!("chain (left -> right): {}", render_chain(&order));
             println!(
                 "                    as: [{}]",
-                order.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+                order
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
-            println!("tx: type=0x{kind:02x} payload[{}] {}", payload.len(), hex(&payload));
+            println!(
+                "tx: type=0x{kind:02x} payload[{}] {}",
+                payload.len(),
+                hex(&payload)
+            );
             Some(Preflight::Chain(kind, payload))
         }
         _ => None,

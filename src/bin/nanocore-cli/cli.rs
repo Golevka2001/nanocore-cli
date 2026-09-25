@@ -1,4 +1,4 @@
-//! CLI definition: the clap command tree and the `Conn` options bundle.
+//! CLI 定义：clap 命令树与 `Conn` 选项集合。
 
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
@@ -9,8 +9,7 @@ use nanocore::midicc::Block;
 use nanocore::models_data;
 use nanocore::protocol;
 
-/// Completion candidates for `chain set` positions: role names, device display
-/// names (lowercased, as `chain_role_index` accepts them) and 0-7 indices.
+/// `chain set` 位置的补全候选：角色名、设备显示名（小写，`chain_role_index` 可接受的形式）以及 0-7 的索引。
 fn chain_position_candidates() -> Vec<CompletionCandidate> {
     let mut out: Vec<CompletionCandidate> = protocol::CHAIN_ROLES
         .iter()
@@ -28,8 +27,7 @@ fn chain_position_candidates() -> Vec<CompletionCandidate> {
     out
 }
 
-/// Completion candidates for `module <m> model <N>`: the amp / drive table
-/// with the model name as help text (the cab table shares the 0-29 range).
+/// `module <m> model <N>` 的补全候选：音箱 / 踏板效果表，以型号名作为帮助文本（箱体表共用 0-29 范围）。
 fn model_id_candidates() -> Vec<CompletionCandidate> {
     (0u8..=37)
         .map(|i| match models_data::lookup_amp(i) {
@@ -40,7 +38,7 @@ fn model_id_candidates() -> Vec<CompletionCandidate> {
         .collect()
 }
 
-// ─── CLI definition ─────────────────────────────────────────────────────────
+// ─── CLI 定义 ─────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
 #[command(
@@ -52,37 +50,36 @@ fn model_id_candidates() -> Vec<CompletionCandidate> {
                   (`delay` may be shortened to `del`, `reverb` to `rev`)"
 )]
 pub struct Cli {
-    /// MIDI input port index (see `ports`)
+    /// MIDI 输入端口索引（见 `ports`）
     #[arg(long, global = true, value_name = "N")]
     pub in_port: Option<usize>,
-    /// MIDI output port index (see `ports`)
+    /// MIDI 输出端口索引（见 `ports`）
     #[arg(long, global = true, value_name = "N")]
     pub out_port: Option<usize>,
-    /// Port-name substring used for auto-detection [default: nanocore]
+    /// 用于自动探测的端口名子串 [default: nanocore]
     #[arg(long, global = true, value_name = "NAME")]
     pub hint: Option<String>,
-    /// MIDI channel for CC/PC commands (0–15; the device treats 0 as omni)
+    /// CC/PC 命令使用的 MIDI 通道（0–15；设备将 0 视为 omni）
     #[arg(long, global = true, value_name = "0-15", default_value_t = 0)]
     pub ch: u8,
-    /// Initial reply timeout in ms (doubles per retry, 8× hard cap)
+    /// 应答超时初值，单位毫秒（每次重试翻倍，硬上限为 8 倍）
     #[arg(long, global = true, value_name = "MS")]
     pub timeout: Option<u64>,
-    /// Maximum retries for a transaction [default: 3]
+    /// 单次事务的最大重试次数 [default: 3]
     #[arg(long, global = true, value_name = "N")]
     pub retries: Option<u32>,
 
-    // Protocol-probe knobs — hidden from the main help; they only matter for
-    // `debug raw`, `debug replay`, `debug monitor`, `debug probe`.
-    /// Only treat these reply types as an answer (comma-separated hex)
+    // 协议探测旋钮——主帮助中隐藏；仅对 `debug raw`、`debug replay`、`debug monitor`、`debug probe` 有意义。
+    /// 仅将这些应答类型视为有效应答（逗号分隔的十六进制）
     #[arg(long, global = true, hide = true, value_name = "HH,HH")]
     pub expect: Option<String>,
-    /// Frame flags byte (hex) [default: 00]
+    /// 帧标志字节（十六进制）[default: 00]
     #[arg(long, global = true, hide = true, value_name = "HH")]
     pub flags: Option<String>,
-    /// Fire and forget: do not wait for a reply
+    /// 即发即忘：不等待应答
     #[arg(long, global = true, hide = true)]
     pub no_wait: bool,
-    /// Send without the F0…F7 SysEx wrapper
+    /// 发送时不带 F0…F7 SysEx 包装
     #[arg(long, global = true, hide = true)]
     pub no_sysex: bool,
 
@@ -92,56 +89,55 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    // ── presets ────────────────────────────────────────────────────────────
-    /// Manage presets
+    // ── 预设 ────────────────────────────────────────────────────────────
+    /// 管理预设
     Preset {
         #[command(subcommand)]
         cmd: PresetCmd,
     },
 
-    // ── sound engine ──────────────────────────────────────────────────────
-    /// Control the effect modules (fx1 fx2 amp cab mod delay reverb eq)
+    // ── 音频引擎 ──────────────────────────────────────────────────────
+    /// 控制效果模块（fx1 fx2 amp cab mod delay reverb eq）
     Module {
         #[command(subcommand)]
         cmd: ModuleCmd,
     },
-    /// Set or show the effect-chain order (8 positions, left → right)
+    /// 设置或显示效果链序（8 个槽位，从左到右）
     Chain {
         #[command(subcommand)]
         cmd: Option<ChainCmd>,
     },
-    /// Show a readable snapshot of the current device state
+    /// 以可读形式显示当前设备状态快照
     ///
-    /// Best-effort for now: the full snapshot decode (active preset, per-module
-    /// on/off + model, volume, tuner) is still in progress; what can be decoded
-    /// today is printed, the rest is marked (TBD).
+    /// 目前尽力而为：完整快照解码（活动预设、各模块开关 + 型号、音量、调音表）仍在进行中；
+    /// 当前能解码的部分会打印输出，其余标注 (TBD)。
     Show,
-    /// Set the USB output volume (0–100)
+    /// 设置 USB 输出音量（0–100）
     Volume { percent: u8 },
-    /// Control the tuner
+    /// 控制调音表
     Tuner { state: Option<Power> },
 
-    // ── device info ───────────────────────────────────────────────────────
-    /// List the available MIDI ports
+    // ── 设备信息 ───────────────────────────────────────────────────────
+    /// 列出可用的 MIDI 端口
     Ports,
-    /// List the built-in model tables, or query them from the device
+    /// 列出内置型号表，或从设备查询
     Models {
-        /// Omit to list both tables
+        /// 省略时列出两张表
         region: Option<RegionArg>,
-        /// Query the real device instead of the built-in table (read-only)
+        /// 查询真实设备而非内置表（只读）
         #[arg(long)]
         live: bool,
     },
 
-    // ── assets (amp models & IRs) ─────────────────────────────────────────
-    /// Read, check or write the raw amp/IR blobs stored in device slots
+    // ── 资源（音箱型号与 IR）─────────────────────────────────────────
+    /// 读取、校验或写入存储在设备槽位中的原始音箱/IR 数据块
     Asset {
         #[command(subcommand)]
         cmd: AssetCmd,
     },
 
-    // ── protocol probe (raw / undocumented) ───────────────────────────────
-    /// Low-level MIDI / protocol tools (raw frames, SysEx, debugging)
+    // ── 协议探测（原始/未公开）───────────────────────────────
+    /// 底层 MIDI/协议工具（原始帧、SysEx、调试）
     Debug {
         #[command(subcommand)]
         cmd: DebugCmd,
@@ -150,74 +146,98 @@ pub enum Command {
 
 #[derive(Subcommand, Debug)]
 pub enum PresetCmd {
-    /// Select a preset by index (0–63, device shows index+1)
+    /// 按索引选择预设（0–63，设备显示索引+1）
     Set { index: u8 },
-    /// Step to the next preset
+    /// 切换到下一个预设
     Next,
-    /// Step to the previous preset
+    /// 切换到上一个预设
     Prev,
-    /// List the names of all 64 preset slots (read-only)
+    /// 列出全部 64 个预设槽位的名称（只读）
     List,
-    /// Show the currently active preset (pending snapshot decode)
+    /// 显示当前活动预设（待快照解码）
     Show,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ModuleCmd {
-    /// List the modules and their parameter tables (no device needed)
+    /// 列出模块及其参数表（无需设备）
     List,
-    /// FX1 slot (noise gate, compressor, …)
-    Fx1 { #[command(subcommand)] action: Option<ModuleAction> },
-    /// FX2 slot (second FX / drive-pedal-slot effects)
-    Fx2 { #[command(subcommand)] action: Option<ModuleAction> },
-    /// Amp slot (amp-sim models)
-    Amp { #[command(subcommand)] action: Option<ModuleAction> },
-    /// Cab / IR slot (cab / impulse-response models)
-    Cab { #[command(subcommand)] action: Option<ModuleAction> },
-    /// Modulation slot (chorus, phaser, flanger, …)
-    Mod { #[command(subcommand)] action: Option<ModuleAction> },
-    /// Delay slot (`del`)
+    /// FX1 槽位（噪声门、压缩器等）
+    Fx1 {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// FX2 槽位（第二 FX / 踏板效果类）
+    Fx2 {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// 音箱槽位（音箱仿真型号）
+    Amp {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// 箱体 / IR 槽位（箱体 / 脉冲响应型号）
+    Cab {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// 调制槽位（合唱、移相、镶边等）
+    Mod {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// 延迟槽位（`del`）
     #[command(alias = "del")]
-    Delay { #[command(subcommand)] action: Option<ModuleAction> },
-    /// Reverb slot (`rev`)
+    Delay {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// 混响槽位（`rev`）
     #[command(alias = "rev")]
-    Reverb { #[command(subcommand)] action: Option<ModuleAction> },
-    /// EQ slot
-    Eq { #[command(subcommand)] action: Option<ModuleAction> },
+    Reverb {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
+    /// EQ 槽位
+    Eq {
+        #[command(subcommand)]
+        action: Option<ModuleAction>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ModuleAction {
-    /// Switch the module on
+    /// 开启模块
     On,
-    /// Switch the module off
+    /// 关闭模块
     Off,
-    /// Select the model / effect type
+    /// 选择型号 / 效果类型
     ///
-    /// `amp` and `cab` take a model index 0–29 (CC43 / CC44); the other modules
-    /// take their effect-type id (CC40-CC48). Indices 30–37 of the amp table are
-    /// the FX2 drive pedals and are NOT reachable here — use `debug variant`.
+    /// `amp` 与 `cab` 接受型号索引 0–29（CC43 / CC44）；其余模块接受各自的
+    /// 效果类型 id（CC40-CC48）。音箱表索引 30–37 是 FX2 踏板效果，此处
+    /// 无法访问——请使用 `debug variant`。
     Model {
         #[arg(add = ArgValueCandidates::new(model_id_candidates))]
         id: u8,
     },
-    /// List the module's parameters (no device needed)
+    /// 列出模块的参数（无需设备）
     Params {
-        /// Effect-type id for blocks whose parameters depend on it
-        /// (e.g. `delay --type 1` = Digital)
+        /// 参数依赖效果类型的模块所需的效果类型 id
+        /// （如 `delay --type 1` = Digital）
         #[arg(long, value_name = "N")]
         r#type: Option<u8>,
     },
-    /// Set a named module parameter (0.0–1.0, device-normalised)
+    /// 设置指定名称的模块参数（0.0–1.0，设备归一化）
     ///
-    /// Omit VALUE to read the current value — the read path is pending the
-    /// effect-data / snapshot decode, so for now a write requires VALUE.
+    /// 省略 VALUE 可读取当前值——读取路径尚待效果数据/快照解码，
+    /// 因此目前写入时必须提供 VALUE。
     Param {
-        /// Parameter name (e.g. `threshold`) or its b6 index
+        /// 参数名（如 `threshold`）或其 b6 索引
         key: String,
-        /// Parameter value 0.0–1.0; omit to read (pending)
+        /// 参数值 0.0–1.0；省略则读取（待实现）
         value: Option<f32>,
-        /// Effect-type id for blocks whose parameters depend on it
+        /// 参数依赖效果类型的模块所需的效果类型 id
         #[arg(long, value_name = "N")]
         r#type: Option<u8>,
     },
@@ -225,50 +245,48 @@ pub enum ModuleAction {
 
 #[derive(Subcommand, Debug)]
 pub enum ChainCmd {
-    /// Write the chain order (exactly 8 roles/indices, each module once)
+    /// 写入链序（恰好 8 个角色/索引，每个模块一次）
     Set {
-        /// 8 positions, each module exactly once (`fx1 fx2 amp cab delay mod reverb eq`)
+        /// 8 个位置，每个模块恰好一次（`fx1 fx2 amp cab delay mod reverb eq`）
         #[arg(add = ArgValueCandidates::new(chain_position_candidates))]
         positions: Vec<String>,
     },
-    /// Read the current chain order from the device
+    /// 从设备读取当前链序
     Show,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum AssetCmd {
-    /// List the asset regions and their slot ranges (no device needed)
+    /// 列出资源区域及其槽位范围（无需设备）
     List,
-    /// Fetch the blob, print its crc32, optionally save it
+    /// 取回数据块，打印其 crc32，可选保存到文件
     Read {
         region: RegionArg,
         slot: u8,
-        /// Write the blob to this file
+        /// 将数据块写入此文件
         out: Option<String>,
     },
-    /// Fetch and compare byte-for-byte against a reference file
+    /// 取回数据块并与参考文件逐字节比较
     ///
-    /// Use e.g. the `ir/slot_00.bin` inside a `.npreset` bundle as reference.
+    /// 例如可使用 `.npreset` 包内的 `ir/slot_00.bin` 作为参考。
     Verify {
         region: RegionArg,
         slot: u8,
-        /// Reference file to compare against
+        /// 用于比较的参考文件
         reference: String,
-        /// Write the blob to this file
+        /// 将数据块写入此文件
         out: Option<String>,
     },
-    /// Write a blob into a slot and verify by reading it back (IR only)
+    /// 将数据块写入槽位并通过回读校验（仅 IR）
     ///
-    /// WARNING (experimental): an interrupted write session can leave the
-    /// device's preset-name table wiped (all slots show the placeholder
-    /// "preset"); root cause under investigation. Keep the session alive
-    /// until this command prints its final OK/MISMATCH line.
+    /// 警告（实验性）：写入会话中断可能导致设备的预设名表被清空（所有槽位显示占位名 "preset"）；
+    /// 根因调查中。请保持会话存活，直到本命令打印最终的 OK/MISMATCH 行。
     Write {
         region: RegionArg,
         slot: u8,
-        /// File holding the blob (must be the standard IR size, 4096 bytes)
+        /// 存放数据块的文件（必须是标准 IR 大小，4096 字节）
         file: String,
-        /// Slot name to write along with the blob (default: keep the current one)
+        /// 与数据块一起写入的槽位名（默认：保留当前名称）
         #[arg(long, value_name = "NAME")]
         name: Option<String>,
     },
@@ -277,44 +295,41 @@ pub enum AssetCmd {
 #[derive(Subcommand, Debug)]
 #[command(arg_required_else_help = true)]
 pub enum DebugCmd {
-    /// Ping the device
+    /// 对设备执行 ping
     Ping,
-    /// Read the current-preset state snapshot
+    /// 读取当前预设的状态快照
     Snapshot,
-    /// Print every frame the device emits (ctrl-c to stop)
+    /// 打印设备发出的每一帧（ctrl-c 停止）
     Monitor,
-    /// Raw Control Change (decimal; 0x.. prefix for hex)
+    /// 原始 Control Change（十进制；十六进制加 0x.. 前缀）
     Cc {
-        /// CC number 0–127
+        /// CC 编号 0–127
         cc: String,
-        /// CC value 0–127
+        /// CC 值 0–127
         value: u8,
     },
-    /// Raw slot enable (SysEx; prefer `module <m> on/off` for module switching)
-    Enable {
-        slot: u8,
-        state: Option<Power>,
-    },
-    /// Raw SysEx parameter write (b3/b5/b6 as hex — see the protocol notes)
+    /// 原始槽位开关（SysEx；模块开关建议使用 `module <m> on/off`）
+    Enable { slot: u8, state: Option<Power> },
+    /// 原始 SysEx 参数写入（b3/b5/b6 为十六进制——见协议笔记）
     Setparam {
         b3: String,
         b5: String,
         b6: String,
-        /// Parameter value 0.0–1.0
+        /// 参数值 0.0–1.0
         value: f32,
     },
-    /// Amp model select via SysEx (same table as `module amp model`)
+    /// 通过 SysEx 选择音箱型号（与 `module amp model` 同一张表）
     ///
-    /// Unlike the CC path this reaches slots 30–37 (the FX2 drive pedals).
+    /// 与 CC 路径不同，此命令可访问槽位 30–37（FX2 踏板效果）。
     Variant { index: u8 },
-    /// Send a raw frame: first hex byte is the message type, rest the payload
+    /// 发送原始帧：第一个十六进制字节为消息类型，其余为载荷
     Raw {
-        /// Hex bytes, e.g. `raw 6d 00 02 00 00 09 01`
+        /// 十六进制字节，如 `raw 6d 00 02 00 00 09 01`
         bytes: Vec<String>,
     },
-    /// Replay byte-exact frames (header included) and print replies for 2 s
+    /// 按字节原样重放帧（含头部）并在 2 秒内打印应答
     Replay { bytes: Vec<String> },
-    /// Preset-switch discovery flow: select → snapshot → query → 3 s tail
+    /// 预设切换探测流程：选择 → 快照 → 查询 → 3 秒尾随监听
     Probe { index: Option<u8> },
 }
 
@@ -346,7 +361,7 @@ impl BlockArg {
         }
     }
 
-    /// The key used by `params_data`.
+    /// `params_data` 使用的键名。
     pub fn key(self) -> &'static str {
         match self {
             BlockArg::Fx1 => "fx1",
@@ -395,7 +410,7 @@ impl Power {
     }
 }
 
-/// Connection options lifted off the global flags.
+/// 从全局标志提取出的连接选项。
 pub struct Conn {
     pub in_port: Option<usize>,
     pub out_port: Option<usize>,
@@ -423,7 +438,10 @@ impl Conn {
         Self {
             in_port: cli.in_port,
             out_port: cli.out_port,
-            hint: cli.hint.clone().unwrap_or_else(|| midi::DEFAULT_HINT.into()),
+            hint: cli
+                .hint
+                .clone()
+                .unwrap_or_else(|| midi::DEFAULT_HINT.into()),
             channel: cli.ch,
             timeout_ms: cli.timeout,
             retries: cli.retries,

@@ -1,15 +1,10 @@
-//! Sync guard between the embedded tables and their canonical JSON sources.
+//! 内嵌表与其权威 JSON 来源之间的同步守卫。
 //!
-//! `data/models.json` and `data/params.json` are vendored copies of
-//! `nanocore-reverse/resources/{models,params}.json` — the machine-readable
-//! sources transcribed from the firmware / OEM MIDI CC guide. The `*_data.rs`
-//! modules embed the same data as compile-time tables so the library stays
-//! dependency-free at runtime; serde_json is a dev-dependency only.
+//! `data/models.json` 和 `data/params.json` 是从固件/ OEM MIDI CC 指南转录而来的机器可读来源。
+//! `*_data.rs` 模块以编译期表的形式嵌入同一份数据，使库在运行时保持零依赖；serde_json 仅为开发依赖。
 //!
-//! These tests fail when either side is edited without the other, i.e. they
-//! replace the "keep the two in sync" comment with an executable check.
-//! When the upstream JSON changes, update the vendored copy in `data/` and
-//! the `*_data.rs` tables together.
+//! 任何一侧单独被修改时这些测试都会失败。
+//! JSON 源变更时，须同时更新 `data/` 中的副本和 `*_data.rs` 表。
 
 use serde_json::Value;
 
@@ -19,7 +14,7 @@ use nanocore::params_data;
 const MODELS_JSON: &str = include_str!("../data/models.json");
 const PARAMS_JSON: &str = include_str!("../data/params.json");
 
-/// Blocks whose parameter lists vary by effect type (`by_type` in the JSON).
+/// 参数列表按效果类型变化的块（JSON 中的 `by_type`）。
 const BY_TYPE_BLOCKS: [&str; 5] = ["fx1", "fx2", "mod", "delay", "reverb"];
 
 // ─── models ─────────────────────────────────────────────────────────────────
@@ -30,7 +25,9 @@ fn embedded_model_tables_match_models_json() {
     assert_eq!(m["schema"], "nanocore.models/v1", "schema drift");
 
     let check = |json: &Value, table: &[models_data::ModelInfo], what: &str| {
-        let entries = json.as_array().unwrap_or_else(|| panic!("{what}: not an array"));
+        let entries = json
+            .as_array()
+            .unwrap_or_else(|| panic!("{what}: not an array"));
         assert_eq!(
             entries.len(),
             table.len(),
@@ -42,7 +39,11 @@ fn embedded_model_tables_match_models_json() {
             assert_eq!(j["index"].as_u64().unwrap(), r.index as u64, "{what} index");
             assert_eq!(j["code"], r.code, "{what} slot {} code", r.index);
             assert_eq!(j["name"], r.name, "{what} slot {} name", r.index);
-            assert_eq!(j["category"], r.category, "{what} slot {} category", r.index);
+            assert_eq!(
+                j["category"], r.category,
+                "{what} slot {} category",
+                r.index
+            );
         }
     };
 
@@ -67,7 +68,9 @@ fn json_params(list: &Value) -> Vec<(u64, String, u64)> {
 }
 
 fn rs_params(ps: &[params_data::ParamInfo]) -> Vec<(u64, String, u64)> {
-    ps.iter().map(|p| (p.index as u64, p.name.to_owned(), p.cc as u64)).collect()
+    ps.iter()
+        .map(|p| (p.index as u64, p.name.to_owned(), p.cc as u64))
+        .collect()
 }
 
 #[test]
@@ -94,8 +97,7 @@ fn typed_param_lists_match_params_json() {
             .as_object()
             .unwrap_or_else(|| panic!("{block}: no by_type map in params.json"));
 
-        // Every type in the embedded table must exist in the JSON with the
-        // same parameter list, in the same order (order == b6 addressing).
+        // 内嵌表中的每个类型都必须存在于 JSON 中，且参数列表相同、顺序相同（顺序即 b6 寻址）。
         let rs_types: Vec<u8> = params_data::TYPED
             .iter()
             .filter(|(k, _, _)| *k == block)
@@ -105,18 +107,24 @@ fn typed_param_lists_match_params_json() {
             let j = by_type
                 .get(&t.to_string())
                 .unwrap_or_else(|| panic!("{block}: type {t} missing from params.json"));
-            assert_eq!(json_params(j), rs_params(ps), "{block} type {t}: parameter list drifted");
+            assert_eq!(
+                json_params(j),
+                rs_params(ps),
+                "{block} type {t}: parameter list drifted"
+            );
         }
-        // And vice versa: the JSON must not know types the table omits —
-        // the documented gaps (fx1 types 1-2, fx2 types 5-7) are encoded by
-        // absence on the Rust side and must stay absent. (Compared sorted:
-        // the JSON map is key-ordered lexicographically, "10" < "2".)
+        // 反向亦然：JSON 中不得出现表所省略的类型 —— 文档记载的空白
+        // （fx1 类型 1-2、fx2 类型 5-7）以 Rust 侧的缺席来编码，必须保持缺席。
+        // （比较时已排序：JSON map 的键按字典序排列，"10" < "2"。）
         let mut json_types: Vec<u8> = by_type
             .keys()
             .map(|k| k.parse::<u8>().expect("numeric type key"))
             .collect();
         json_types.sort_unstable();
-        assert_eq!(json_types, rs_types, "{block}: effect-type key sets diverged");
+        assert_eq!(
+            json_types, rs_types,
+            "{block}: effect-type key sets diverged"
+        );
     }
 }
 
@@ -125,7 +133,11 @@ fn fixed_param_lists_match_params_json() {
     let p: Value = serde_json::from_str(PARAMS_JSON).unwrap();
     for (block, slot, ps) in params_data::FIXED {
         let j = &p["params_by_block"][*block]["fixed"];
-        assert_eq!(json_params(j), rs_params(ps), "{block} (b5={slot}): fixed list drifted");
+        assert_eq!(
+            json_params(j),
+            rs_params(ps),
+            "{block} (b5={slot}): fixed list drifted"
+        );
     }
 }
 
@@ -140,6 +152,10 @@ fn eq_band_lists_match_params_json() {
         let j = bands
             .get(&t.to_string())
             .unwrap_or_else(|| panic!("eq: band table for type {t} missing from params.json"));
-        assert_eq!(json_params(j), rs_params(ps), "eq type {t}: band list drifted");
+        assert_eq!(
+            json_params(j),
+            rs_params(ps),
+            "eq type {t}: band list drifted"
+        );
     }
 }

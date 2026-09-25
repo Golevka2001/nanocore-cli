@@ -1,54 +1,50 @@
-//! Embedded Nanocore parameter tables.
+//! 内嵌的 Nanocore 参数表。
 //!
-//! Mirror of `data/params.json` (schema `nanocore.params/v2`, vendored from
-//! `nanocore-reverse/resources/params.json`); the sync is enforced by
-//! `tests/data_sync.rs` — edit the JSON and this table together, `cargo test`
-//! fails if they drift apart. That JSON is parsed out of the OEM MIDI CC
-//! reference, which transcribes the OEM `NANOCORE-MIDI-Control-User-Guide.pdf`
-//! - one human-reviewed source of truth, no second-hand transcription.
+//! 与 `data/params.json` 保持镜像（schema `nanocore.params/v2`）；
+//! 同步由 `tests/data_sync.rs` 强制保证 —— 修改 JSON 时须一并修改本表，
+//! 二者不一致时 `cargo test` 会失败。
+//! 该 JSON 解析自 OEM MIDI CC 参考表，后者转录自 OEM 的
+//! `NANOCORE-MIDI-Control-User-Guide.pdf` —— 经人工校对的唯一事实来源，无二手转录。
 //!
-//! ## Two ways to reach the same parameter
+//! ## 到达同一参数的两条路径
 //!
-//! * **Standard MIDI CC** - documented, 7-bit, one-way: [`ParamInfo::cc`].
-//! * **SysEx float32** - App protocol `0x6D`/sub-`0x07`:
-//!   `00 07 00 [b3] 01 [b5] [b6] <7-bit-safe float32>`, where `b5` =
-//!   [`block_slot`] and `b6` = [`ParamInfo::index`].
+//! * **标准 MIDI CC** —— 有文档记载、7 比特、单向：[`ParamInfo::cc`]。
+//! * **SysEx float32** —— App 协议 `0x6D`/子命令 `0x07`：
+//!   `00 07 00 [b3] 01 [b5] [b6] <7-bit-safe float32>`，
+//!   其中 `b5` = [`block_slot`]，`b6` = [`ParamInfo::index`]。
 //!
-//! ## `b6` is per effect type, not per block
+//! ## `b6` 按效果类型区分，而非按块区分
 //!
-//! [`ParamInfo::index`] is the index **within the block's current effect type**.
-//! FX1 gate answers to `b6 = 0,1` while FX1 compressor answers to `b6 = 0..5`,
-//! both at `b5 = 0` - so a flat block-wide list would be wrong. This is why the
-//! tables are keyed `(block, effect type)`.
+//! [`ParamInfo::index`] 是**块当前效果类型内**的索引。
+//! FX1 噪声门接受 `b6 = 0,1`，而 FX1 压缩器接受 `b6 = 0..5`，
+//! 两者都在 `b5 = 0` —— 因此整块一维的平铺列表是错误的。
+//! 这正是本表以 `(block, effect type)` 为键的原因。
 //!
-//! ## Provenance
+//! ## 依据来源
 //!
-//! * `b5` = block slot: the device string table IDs 14-21 order the blocks
-//!   FX1,FX2,AMP,CAB,DEL,MOD,REV,EQ -> 0..7; captures agree (FX1 writes
-//!   `b5=0x00`, FX2 writes `b5=0x01`, and the amp-enable frame is `ENABLE slot=2`).
-//! * `b6` = parameter index: the compressor capture (whose filename names all six
-//!   parameters in adjustment order) decodes to `b6 = 0..5` matching guide
-//!   CC51-56 - two independent sources agreeing.
-//! * `b3` is **not** addressing; see [`crate::protocol::DEFAULT_B3`].
+//! * `b5` = 块槽位：设备字符串表 ID 14-21 依次对应块 FX1,FX2,AMP,CAB,DEL,MOD,REV,EQ -> 0..7；
+//!   抓包结果一致（FX1 写 `b5=0x00`，FX2 写 `b5=0x01`，音箱启用帧为 `ENABLE slot=2`）。
+//! * `b6` = 参数索引：压缩器抓包（其文件名按调节顺序列出全部六个参数）解码为 `b6 = 0..5`，
+//!   与指南 CC51-56 一致 —— 两个独立来源互相印证。
+//! * `b3` 不参与寻址；参见 [`crate::protocol::DEFAULT_B3`]。
 //!
-//! ## Known gaps (from the guide itself, not guesses)
+//! ## 已知空白（出自指南本身，非猜测）
 //!
-//! The OEM guide gives no parameter names for FX1 types 1/2 (Auto Gate,
-//! Gate + Compressor) or FX2 types 5-7 (Boost 1-3), and no capture covers them
-//! either - so [`params`] returns `None` for those instead of inventing names.
+//! OEM 指南未给出 FX1 类型 1/2（Auto Gate、Gate + Compressor）和 FX2 类型 5-7（Boost 1-3）的参数名称，
+//! 也没有抓包覆盖它们 —— 因此 [`params`] 对这些情况返回 `None`，而非编造名称。
 #![allow(dead_code)]
 
-/// One parameter of a block / effect type.
+/// 一个块 / 效果类型的单个参数。
 pub struct ParamInfo {
-    /// `b6` in the SysEx write - index within this block's effect type.
+    /// SysEx 写入中的 `b6` —— 当前块效果类型内的索引。
     pub index: u8,
-    /// Display name (OEM guide).
+    /// 显示名称（OEM 指南）。
     pub name: &'static str,
-    /// Standard MIDI CC number controlling the same parameter.
+    /// 控制同一参数的标准 MIDI CC 编号。
     pub cc: u8,
 }
 
-/// `(block key, b5)`, ordered as the device string table lists them.
+/// `(块键, b5)`，按设备字符串表列出的顺序排列。
 pub const BLOCKS: &[(&str, u8)] = &[
     ("fx1", 0),
     ("fx2", 1),
@@ -60,8 +56,8 @@ pub const BLOCKS: &[(&str, u8)] = &[
     ("eq", 7),
 ];
 
-/// `(block key, effect type id, parameters)`. Only types with a known parameter
-/// list appear; absent types are the documented gaps.
+/// `(块键, 效果类型 ID, 参数列表)`。仅包含参数列表已知的类型；
+/// 缺失的类型即文档记载的空白。
 pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ("fx1", 0, &[
     ParamInfo { index: 0, name: "Gate Threshold", cc: 50 },
@@ -268,8 +264,7 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ]),
 ];
 
-/// `(block key, b5, parameters)` for blocks whose parameter list does not depend
-/// on the effect type.
+/// 参数列表不依赖效果类型的块的 `(块键, b5, 参数列表)`。
 pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 ("amp", 2, &[
     ParamInfo { index: 0, name: "Amp Gain", cc: 60 },
@@ -285,7 +280,7 @@ pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 ]),
 ];
 
-/// `(EQ type id, band parameters)`.
+/// `(EQ 类型 ID, 频段参数列表)`。
 pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
 (0, &[
     ParamInfo { index: 0, name: "Low", cc: 91 },
@@ -312,20 +307,19 @@ pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
 ]),
 ];
 
-/// `b5` for a block key (`fx1`, `fx2`, `amp`, `cab`, `delay`, `mod`, `reverb`, `eq`).
+/// 块键（`fx1`、`fx2`、`amp`、`cab`、`delay`、`mod`、`reverb`、`eq`）对应的 `b5`。
 pub fn block_slot(key: &str) -> Option<u8> {
     BLOCKS.iter().find(|(k, _)| *k == key).map(|(_, s)| *s)
 }
 
-/// EQ band parameters for an EQ type.
+/// 某 EQ 类型的频段参数。
 pub fn eq_bands(type_id: u8) -> Option<&'static [ParamInfo]> {
     EQ_BANDS.iter().find(|(t, _)| *t == type_id).map(|(_, ps)| *ps)
 }
 
-/// All parameters of a block for its current effect type.
+/// 块在其当前效果类型下的全部参数。
 ///
-/// Returns `None` when the block's parameters depend on the effect type and that
-/// type is unknown or has no published parameter list (see module docs).
+/// 当块的参数依赖效果类型、而该类型未知或没有已发布的参数列表时返回 `None`（见模块文档）。
 pub fn params(block: &str, type_id: Option<u8>) -> Option<&'static [ParamInfo]> {
     if block == "eq" {
         return type_id.and_then(eq_bands);
@@ -340,12 +334,12 @@ pub fn params(block: &str, type_id: Option<u8>) -> Option<&'static [ParamInfo]> 
     FIXED.iter().find(|(k, _, _)| *k == block).map(|(_, _, ps)| *ps)
 }
 
-/// Look up a parameter by its `b6` index.
+/// 按 `b6` 索引查找参数。
 pub fn param_by_index(block: &str, type_id: Option<u8>, index: u8) -> Option<&'static ParamInfo> {
     params(block, type_id)?.iter().find(|p| p.index == index)
 }
 
-/// Look up a parameter by name (case-, space- and punctuation-insensitive).
+/// 按名称查找参数（忽略大小写、空格和标点）。
 pub fn param_by_name(block: &str, type_id: Option<u8>, name: &str) -> Option<&'static ParamInfo> {
     let norm = |s: &str| -> String {
         s.chars()
@@ -358,9 +352,8 @@ pub fn param_by_name(block: &str, type_id: Option<u8>, name: &str) -> Option<&'s
     if let Some(p) = all.iter().find(|p| norm(p.name) == want) {
         return Some(p);
     }
-    // Fall back to a suffix match, but only when it is unambiguous, so a short
-    // name like "gain" resolves to "Amp Gain" while "level" stays an error if
-    // several parameters end with it.
+    // 退回到后缀匹配，但仅在结果无歧义时使用：像 "gain" 这样的短名称可解析到 "Amp Gain"，
+    // 而若多个参数都以 "level" 结尾，则保持报错。
     let mut hits = all.iter().filter(|p| norm(p.name).ends_with(&want));
     let first = hits.next()?;
     if hits.next().is_some() {
@@ -383,8 +376,8 @@ mod tests {
         assert_eq!(block_slot("nope"), None);
     }
 
-    /// b6 is per effect type: FX1 gate answers 0,1 and FX1 compressor 0..5, both
-    /// at b5=0. The compressor order is pinned by the capture and by CC51-56.
+    /// b6 按效果类型区分：FX1 噪声门接受 0,1，FX1 压缩器接受 0..5，
+    /// 两者都在 b5=0。压缩器的顺序由抓包和 CC51-56 共同锁定。
     #[test]
     fn compressor_param_order_matches_capture() {
         let comp = params("fx1", Some(3)).expect("fx1 compressor");
@@ -394,10 +387,10 @@ mod tests {
         );
         assert_eq!(comp.iter().map(|p| p.index).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5]);
         let makeup = param_by_name("fx1", Some(3), "makeup").expect("makeup");
-        assert_eq!(makeup.index, 5); // b6 = 5 in the capture
+        assert_eq!(makeup.index, 5); // 抓包中 b6 = 5
         assert_eq!(makeup.cc, 56);
 
-        // Gate is a different type in the same block, and only has two params.
+        // 噪声门是同一块中的另一类型，且只有两个参数。
         let gate = params("fx1", Some(0)).expect("fx1 gate");
         assert_eq!(gate.iter().map(|p| p.name).collect::<Vec<_>>(), vec!["Gate Threshold", "Release"]);
     }
@@ -409,14 +402,13 @@ mod tests {
         assert_eq!(param_by_name("cab", None, "low cut").unwrap().cc, 65);
         assert_eq!(param_by_name("amp", None, "Amp-Level").unwrap().cc, 64);
         assert!(param_by_name("amp", None, "nope").is_none());
-        // Exact match wins even when it is also a suffix of a longer name:
-        // delay type 5 has both "Mix" and "Lo-Fi Mix".
+        // 即使完全匹配同时也是更长名称的后缀，完全匹配仍然优先：
+        // delay 类型 5 同时有 "Mix" 和 "Lo-Fi Mix"。
         assert_eq!(param_by_name("delay", Some(5), "mix").unwrap().cc, 78);
         assert_eq!(param_by_name("delay", Some(5), "lofi mix").unwrap().cc, 77);
-        // Suffix fallback helps when there is no exact match.
+        // 无完全匹配时，后缀回退可以帮上忙。
         assert_eq!(param_by_name("amp", None, "gain").unwrap().name, "Amp Gain");
-        // ...but an ambiguous suffix is refused rather than guessed: the 8-band EQ
-        // has 1 kHz / 2 kHz / 4 kHz.
+        // ……但歧义的后缀会被拒绝而非猜测：8 频段 EQ 同时有 1 kHz / 2 kHz / 4 kHz。
         assert!(param_by_name("eq", Some(2), "khz").is_none());
         assert_eq!(param_by_name("eq", Some(2), "1khz").unwrap().cc, 95);
     }
@@ -427,20 +419,19 @@ mod tests {
         assert_eq!(params("delay", Some(0)).unwrap().len(), 5); // BBD
         assert_eq!(params("delay", Some(1)).unwrap()[0].name, "Time");
         assert_eq!(params("delay", Some(0)).unwrap()[3].name, "Mix"); // index == b6
-        // type-dependent block: unknown type or no type -> unresolvable
+        // 依赖类型的块：类型未知或缺省 -> 无法解析
         assert!(params("delay", Some(99)).is_none());
         assert!(params("delay", None).is_none());
     }
 
-    /// The guide publishes no parameter names for these types; we must return
-    /// None rather than invent them.
+    /// 指南未发布这些类型的参数名称；必须返回 None 而非编造。
     #[test]
     fn documented_gaps_stay_unknown() {
-        // fx1 type 1: no published parameter list
+        // fx1 类型 1：无已发布的参数列表
         assert!(params("fx1", Some(1)).is_none());
-        // fx1 type 2: no published parameter list
+        // fx1 类型 2：无已发布的参数列表
         assert!(params("fx1", Some(2)).is_none());
-        // fx2 boost types 5-7 are gaps too
+        // fx2 boost 类型 5-7 同为空白
         for t in 5u8..=7 { assert!(params("fx2", Some(t)).is_none()); }
     }
 
@@ -456,7 +447,7 @@ mod tests {
     #[test]
     fn fixed_blocks_ignore_type() {
         assert_eq!(params("amp", None).unwrap().len(), 5);
-        assert_eq!(params("amp", Some(7)).unwrap().len(), 5); // type ignored
+        assert_eq!(params("amp", Some(7)).unwrap().len(), 5); // 类型被忽略
         assert_eq!(params("cab", Some(3)).unwrap().len(), 3);
     }
 }

@@ -1,10 +1,9 @@
-//! `asset` commands: read / verify / write the raw amp/IR blobs stored in
-//! device slots.
+//! `asset` 命令：读取 / 校验 / 写入存储在设备槽位中的原始音箱/IR 数据块。
 
 use nanocore::asset;
 
 use crate::cli::{AssetCmd, Conn, RegionArg};
-use crate::common::{open_device, Dev};
+use crate::common::{Dev, open_device};
 
 pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
     match cmd {
@@ -27,18 +26,27 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             let mut dev = open_device(conn)?;
             asset_read(&mut dev, region, slot, out, None)
         }
-        AssetCmd::Verify { region, slot, reference, out } => {
-            let want = std::fs::read(&reference)
-                .map_err(|e| format!("cannot read {reference}: {e}"))?;
+        AssetCmd::Verify {
+            region,
+            slot,
+            reference,
+            out,
+        } => {
+            let want =
+                std::fs::read(&reference).map_err(|e| format!("cannot read {reference}: {e}"))?;
             let mut dev = open_device(conn)?;
             asset_read(&mut dev, region, slot, out, Some(&want))
         }
-        AssetCmd::Write { region, slot, file, name } => {
+        AssetCmd::Write {
+            region,
+            slot,
+            file,
+            name,
+        } => {
             if region != RegionArg::Ir {
                 return Err("asset write currently supports ir slots only".into());
             }
-            let blob = std::fs::read(&file)
-                .map_err(|e| format!("cannot read {file}: {e}"))?;
+            let blob = std::fs::read(&file).map_err(|e| format!("cannot read {file}: {e}"))?;
             if blob.len() as u32 != asset::IR_TOTAL {
                 return Err(format!(
                     "IR blob must be exactly {} bytes (got {})",
@@ -60,7 +68,10 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             match back == blob {
                 true => {
                     let crc = asset::crc32(&back);
-                    println!("OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).", back.len());
+                    println!(
+                        "OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).",
+                        back.len()
+                    );
                     Ok(())
                 }
                 false => {
@@ -81,7 +92,7 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
     }
 }
 
-/// Shared body of `asset read` / `asset verify`.
+/// `asset read` / `asset verify` 的共享实现体。
 fn asset_read(
     dev: &mut Dev,
     region: RegionArg,

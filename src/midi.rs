@@ -1,7 +1,7 @@
-//! Real MIDI transport backed by `midir`.
+//! 基于 `midir` 的真实 MIDI 传输层。
 //!
-//! Gated behind the `midi` feature so the core library stays dependency-free.
-//! Backend: CoreMIDI (macOS), ALSA (Linux), WinMM (Windows).
+//! 通过 `midi` feature 门控，使核心库保持无依赖。
+//! 后端：CoreMIDI（macOS）、ALSA（Linux）、WinMM（Windows）。
 //!
 //! ```no_run
 //! use nanocore::client::Nanocore;
@@ -21,20 +21,20 @@ use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 
 use crate::transport::Transport;
 
-/// Client name registered with the OS MIDI stack.
+/// 向 OS MIDI 栈注册的客户端名称。
 pub const CLIENT_NAME: &str = "nanocore";
 
-/// Substring used to auto-detect the device among the system ports.
+/// 在系统端口中自动检测设备所用的子串。
 pub const DEFAULT_HINT: &str = "nanocore";
 
 fn io_err<E: std::fmt::Display>(e: E) -> io::Error {
     io::Error::other(e.to_string())
 }
 
-/// A port descriptor: `(index, name)`.
+/// 端口描述符：`(index, name)`。
 pub type PortInfo = (usize, String);
 
-/// Enumerate available MIDI input ports.
+/// 枚举可用的 MIDI 输入端口。
 pub fn input_ports() -> io::Result<Vec<PortInfo>> {
     let mi = MidiInput::new(CLIENT_NAME).map_err(io_err)?;
     mi.ports()
@@ -44,7 +44,7 @@ pub fn input_ports() -> io::Result<Vec<PortInfo>> {
         .collect()
 }
 
-/// Enumerate available MIDI output ports.
+/// 枚举可用的 MIDI 输出端口。
 pub fn output_ports() -> io::Result<Vec<PortInfo>> {
     let mo = MidiOutput::new(CLIENT_NAME).map_err(io_err)?;
     mo.ports()
@@ -54,7 +54,7 @@ pub fn output_ports() -> io::Result<Vec<PortInfo>> {
         .collect()
 }
 
-/// Index of the first port whose name contains `hint` (case-insensitive).
+/// 名称包含 `hint`（不区分大小写）的第一个端口的索引。
 pub fn find_port(ports: &[PortInfo], hint: &str) -> Option<usize> {
     let hint = hint.to_lowercase();
     ports
@@ -63,10 +63,9 @@ pub fn find_port(ports: &[PortInfo], hint: &str) -> Option<usize> {
         .map(|(i, _)| *i)
 }
 
-/// A live bidirectional MIDI connection.
+/// 一条活动的双向 MIDI 连接。
 ///
-/// The input connection must stay alive for as long as we want to receive,
-/// so it is kept as a field.
+/// 只要还想接收数据，输入连接就必须保持存活，因此将其保留为字段。
 pub struct MidiTransport {
     out: MidiOutputConnection,
     _in: MidiInputConnection<()>,
@@ -75,7 +74,7 @@ pub struct MidiTransport {
 }
 
 impl MidiTransport {
-    /// Open the given input/output port indices.
+    /// 打开给定的输入/输出端口索引。
     pub fn open(in_index: usize, out_index: usize) -> io::Result<Self> {
         let rx: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
 
@@ -114,7 +113,7 @@ impl MidiTransport {
         Ok(Self { out: conn_out, _in: conn_in, rx, sysex: true })
     }
 
-    /// Open the first input/output ports whose names contain `hint`.
+    /// 打开名称包含 `hint` 的第一个输入/输出端口。
     pub fn open_by_name(hint: &str) -> io::Result<Self> {
         let ins = input_ports()?;
         let outs = output_ports()?;
@@ -137,21 +136,20 @@ impl MidiTransport {
         Self::open(in_index, out_index)
     }
 
-    /// Wrap outgoing frames in `F0 ... F7`.
+    /// 用 `F0 ... F7` 包裹发出的帧。
     ///
-    /// The device only accepts SysEx-wrapped frames — a bare `7D 4E 43 ...`
-    /// is silently dropped — so this is on by default. Turn it off only to
-    /// replay raw bytes verbatim.
+    /// 设备只接受 SysEx 包裹的帧——裸的 `7D 4E 43 ...` 会被静默丢弃——
+    /// 因此默认开启。仅在需要逐字节重放原始数据时关闭。
     pub fn set_sysex(&mut self, on: bool) {
         self.sysex = on;
     }
 
-    /// Number of bytes currently buffered from the device.
+    /// 当前从设备缓冲的字节数。
     pub fn buffered(&self) -> usize {
         self.rx.lock().map(|q| q.len()).unwrap_or(0)
     }
 
-    /// Close the output connection (the input connection is dropped).
+    /// 关闭输出连接（输入连接随 self 一起 drop）。
     pub fn close(self) {
         let _ = self.out.close();
     }

@@ -1,21 +1,21 @@
-//! Frame encoding/decoding.
+//! 帧的编码与解码。
 
 use std::fmt;
 
-/// Frame magic: `7D 4E 43` (`}NC`).
+/// 帧魔数：`7D 4E 43`（`}NC`）。
 pub const MAGIC: [u8; 3] = [0x7D, 0x4E, 0x43];
 
-/// Byte 5 of every observed frame is constant.
+/// 观测到的所有帧中字节 5 均为常量。
 const CONST5: u8 = 0x02;
 
-/// MIDI SysEx start / end bytes. The device transports Nanocore frames as
-/// SysEx packets, so `F0 ... F7` surrounds each one on the wire.
+/// MIDI SysEx 起始 / 结束字节。设备以 SysEx 包传输 Nanocore 帧，
+/// 因此每一帧在线上都被 `F0 ... F7` 包裹。
 pub const SYSEX_START: u8 = 0xF0;
 pub const SYSEX_END: u8 = 0xF7;
 
-/// Strip a SysEx wrapper: leading `F0`s and trailing `F7`s.
+/// 去除 SysEx 包装：前导的 `F0` 和结尾的 `F7`。
 ///
-/// Only the *edges* are trimmed — an `F7` inside a binary payload is data.
+/// 只修剪*边缘*——二进制载荷内部出现的 `F7` 属于数据。
 fn strip_sysex_wrapping(bytes: &[u8]) -> &[u8] {
     let mut s = bytes;
     while s.first() == Some(&SYSEX_START) {
@@ -27,14 +27,14 @@ fn strip_sysex_wrapping(bytes: &[u8]) -> &[u8] {
     s
 }
 
-/// Direction byte.
+/// 方向字节。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// 0x70: app -> device.
+    /// 0x70：app -> 设备。
     Tx,
-    /// 0x71: device -> app (reply).
+    /// 0x71：设备 -> app（应答）。
     Rx,
-    /// 0x72: device -> app (unsolicited event).
+    /// 0x72：设备 -> app（主动非请求的事件）。
     Event,
 }
 
@@ -56,17 +56,17 @@ impl Direction {
     }
 }
 
-/// A decoded Nanocore message.
+/// 一条解码后的 Nanocore 消息。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
     pub direction: Direction,
-    /// Byte 4 (observed 0x00 normal, 0x02 live, 0x22 preset write, 0x40 RX).
+    /// 字节 4（观测值：0x00 正常、0x02 live、0x22 预设写入、0x40 RX）。
     pub flags: u8,
-    /// Little-endian counter in bytes 6..8 (echoed by the device).
+    /// 字节 6..8 中的小端计数器（由设备回显）。
     pub seq: u16,
-    /// Message type (byte 8).
+    /// 消息类型（字节 8）。
     pub kind: u8,
-    /// Bytes after the type byte.
+    /// 类型字节之后的字节。
     pub payload: Vec<u8>,
 }
 
@@ -75,17 +75,16 @@ impl Frame {
         Self { direction, flags, seq, kind, payload }
     }
 
-    /// True if every payload byte is a legal MIDI data byte (high bit clear).
+    /// 载荷的每个字节是否均为合法的 MIDI 数据字节（最高位为 0）。
     ///
-    /// The transport is a SysEx stream, so any payload byte >= 0x80 is
-    /// interpreted as a status byte and the message is discarded. Float
-    /// parameters therefore have to be encoded 7-bit safe — see
-    /// [`crate::protocol::encode_param_value`].
+    /// 传输层是 SysEx 流，因此任何 >= 0x80 的载荷字节都会被解释为状态字节，
+    /// 导致消息被丢弃。所以 float 参数必须以 7 比特安全方式编码——
+    /// 见 [`crate::protocol::encode_param_value`]。
     pub fn is_seven_bit_safe(&self) -> bool {
         self.payload.iter().all(|b| b & 0x80 == 0)
     }
 
-    /// Encode into the on-wire byte sequence.
+    /// 编码为线上字节序列。
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(9 + self.payload.len());
         out.extend_from_slice(&MAGIC);
@@ -99,11 +98,10 @@ impl Frame {
         out
     }
 
-    /// Decode a single frame. The input may contain trailing bytes
-    /// (e.g. the next frame); only this frame is consumed.
+    /// 解码单帧。输入末尾可能带有多余字节（如下一帧）；只消费本帧。
     ///
-    /// On the wire frames are wrapped in SysEx (`F0 7D 4E 43 ... F7`), so a
-    /// leading `F0` / trailing `F7` belonging to the MIDI layer is stripped.
+    /// 线上帧由 SysEx 包裹（`F0 7D 4E 43 ... F7`），
+    /// 因此属于 MIDI 层的前导 `F0` / 结尾 `F7` 会被剥离。
     pub fn decode(bytes: &[u8]) -> Result<(Frame, usize), DecodeError> {
         let bytes = strip_sysex_wrapping(bytes);
         if bytes.len() < 9 {
@@ -123,19 +121,17 @@ impl Frame {
         Ok((Frame { direction, flags, seq, kind, payload }, bytes.len()))
     }
 
-    /// Split a byte stream into consecutive frames.
+    /// 将字节流切分为连续的帧。
     ///
-    /// Frames carry no explicit length, but each one is terminated by `F7`
-    /// (SysEx end) and starts with the `7D 4E 43` magic, so we split on the
-    /// magic and cut at the terminator.
+    /// 帧本身不携带显式长度，但每帧以 `F7`（SysEx 结束）终止，
+    /// 并以 `7D 4E 43` 魔数开头，因此按魔数切分、在终止符处截断。
     pub fn split_stream(data: &[u8]) -> Vec<Frame> {
         let mut frames = Vec::new();
         let mut i = 0;
         while i + 3 <= data.len() {
             if data[i..i + 3] == MAGIC {
-                // A terminator is an F7 that is followed by the end of the
-                // buffer, another F0, or the next frame's magic — an F7 in
-                // the middle of a binary payload is just data.
+                // 终止符是指后随缓冲区结尾、另一个 F0 或下一帧魔数的 F7——
+                // 二进制载荷中间的 F7 只是数据。
                 let end = (i..data.len())
                     .find(|&j| {
                         data[j] == SYSEX_END
@@ -206,7 +202,7 @@ mod tests {
     fn encode_decode_round_trip() {
         let f = sample();
         let wire = f.encode();
-        // Header: magic | dir | flags | const 0x02 | LE seq | type.
+        // 帧头：magic | dir | flags | 常量 0x02 | 小端 seq | type。
         assert_eq!(
             &wire[..9],
             &[0x7D, 0x4E, 0x43, 0x70, 0x00, 0x02, 0x34, 0x12, 0x6D]
@@ -238,7 +234,7 @@ mod tests {
         );
 
         let mut bad_dir = MAGIC.to_vec();
-        bad_dir.push(0x00); // not a direction byte
+        bad_dir.push(0x00); // 不是方向字节
         bad_dir.resize(9, 0);
         assert_eq!(Frame::decode(&bad_dir), Err(DecodeError::BadDirection(0x00)));
     }
@@ -261,8 +257,8 @@ mod tests {
         assert_eq!(Frame::split_stream(&wire), vec![f1, f2]);
     }
 
-    /// An `F7` inside a binary payload is data, not a frame terminator —
-    /// unless it is followed by the end of the stream, an `F0`, or a magic.
+    /// 二进制载荷内的 `F7` 属于数据而非帧终止符——
+    /// 除非其后是流的结尾、`F0` 或魔数。
     #[test]
     fn split_stream_treats_payload_f7_as_data() {
         let f = Frame::new(Direction::Tx, 0, 1, 0x6D, vec![0xF7, 0x01]);

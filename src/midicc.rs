@@ -1,55 +1,55 @@
-//! Standard MIDI CC / Program Change control surface for Nanocore (fw 1.04+).
+//! Nanocore 的标准 MIDI CC / Program Change 控制面（固件 1.04 及以上）。
 //!
-//! These are the **official, documented** control messages — see
-//! the OEM MIDI CC reference (sourced from the OEM
-//! `NANOCORE-MIDI-Control-User-Guide.pdf`). They are ordinary 3-byte MIDI
-//! messages and travel *without* the custom `F0 7D 4E 43 …` SysEx wrapper.
+//! 这些是**官方文档化**的控制消息，出自 OEM 的
+//! `NANOCORE-MIDI-Control-User-Guide.pdf`。
+//! 它们是普通的 3 字节 MIDI 消息，
+//! *不*经过自定义的 `F0 7D 4E 43 …` SysEx 包装。
 //!
-//! This module is transport-agnostic: every builder returns the raw bytes to
-//! send. The `midir` transport sends them verbatim when `set_sysex(false)` is
-//! in effect (see `crate::midi::MidiTransport` and `nanocore-cli`).
+//! 本模块与传输层无关：每个构造函数都返回要发送的原始字节。
+//! 当 `set_sysex(false)` 生效时，`midir` 传输层会原样发送它们
+//! （参见 `crate::midi::MidiTransport` 与 `nanocore-cli`）。
 //!
-//! ## Correction to the OEM guide: CC43 / CC44 *do* select models
+//! ## 对 OEM 指南的更正：CC43 / CC44 *确实*可选择模型
 //!
-//! The guide's main CC map lists `CC43` / `CC44` as the Amp / Cab "Type CC",
-//! but then prints type tables for FX1/FX2/Mod/Delay/Reverb/EQ only, and states
-//! *"Model/profile and IR-slot selection are not assigned here."*
+//! 指南的主 CC 映射表将 `CC43` / `CC44` 列为音箱/箱体的"类型 CC"，
+//! 但之后只印出了 FX1/FX2/Mod/Delay/Reverb/EQ 的类型表，并声称
+//! *"此处未分配模型/配置与 IR 槽位选择。"*
 //!
-//! Hardware testing (fw 1.04) shows that statement is **wrong for the Amp and
-//! Cab blocks**: `CC43 = n` selects amp slot `n` and `CC44 = n` selects cab
-//! slot `n`, both over the 30-entry tables in [`crate::models_data`]. Values
-//! `>= 30` are ignored. Use [`amp_model`] / [`cab_model`]. This means ordinary
-//! third-party MIDI controllers can switch amp/cab models — no SysEx needed.
+//! 硬件实测（固件 1.04）表明该说法**对音箱和箱体块不成立**：
+//! `CC43 = n` 选择音箱槽位 `n`，`CC44 = n` 选择箱体槽位 `n`，
+//! 二者都作用于 [`crate::models_data`] 中的 30 项表。值 `>= 30` 会被忽略。
+//! 使用 [`amp_model`] / [`cab_model`]。
+//! 这意味着普通第三方 MIDI 控制器即可切换音箱/箱体模型——无需 SysEx。
 
-/// MIDI status byte for Control Change on `channel` (0–15).
+/// 在 `channel`（0–15）通道上 Control Change 的 MIDI 状态字节。
 #[inline]
 pub fn cc_status(channel: u8) -> u8 {
     0xB0u8 | (channel & 0x0F)
 }
 
-/// MIDI status byte for Program Change on `channel` (0–15).
+/// 在 `channel`（0–15）通道上 Program Change 的 MIDI 状态字节。
 #[inline]
 pub fn pc_status(channel: u8) -> u8 {
     0xC0u8 | (channel & 0x0F)
 }
 
-/// Build a 3-byte Control Change message: `[0xB0|ch, cc, value]`.
+/// 构造 3 字节的 Control Change 消息：`[0xB0|ch, cc, value]`。
 ///
-/// `cc` and `value` are masked to 7 bits — bytes `>= 0x80` are illegal in a
-/// MIDI data stream and would be dropped by the device.
+/// `cc` 和 `value` 会被掩码到 7 比特——
+/// `>= 0x80` 的字节在 MIDI 数据流中不合法，会被设备丢弃。
 pub fn control_change(channel: u8, cc: u8, value: u8) -> Vec<u8> {
     vec![cc_status(channel), cc & 0x7F, value & 0x7F]
 }
 
-/// Build a 2-byte Program Change message: `[0xC0|ch, program]`.
+/// 构造 2 字节的 Program Change 消息：`[0xC0|ch, program]`。
 ///
-/// Program number is 0-based and maps 1:1 to the device preset index
-/// (PC `2` recalls the preset the device displays as `03`).
+/// 程序号从 0 开始，与设备预设索引一一对应
+/// （PC `2` 调用设备显示为 `03` 的预设）。
 pub fn program_change(channel: u8, program: u8) -> Vec<u8> {
     vec![pc_status(channel), program & 0x7F]
 }
 
-/// An effect block addressable via the standard CC map.
+/// 可通过标准 CC 映射寻址的效果块。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
     Fx1,
@@ -63,7 +63,7 @@ pub enum Block {
 }
 
 impl Block {
-    /// CC that toggles this block on/off (value `0`=OFF, `127`=ON).
+    /// 切换该块开/关的 CC（值 `0`=OFF，`127`=ON）。
     pub fn onoff_cc(self) -> u8 {
         match self {
             Block::Fx1 => 20,
@@ -77,7 +77,7 @@ impl Block {
         }
     }
 
-    /// CC that selects this block's effect/model type (send the exact Type ID).
+    /// 选择该块效果/模型类型的 CC（发送确切的 Type ID）。
     pub fn type_cc(self) -> u8 {
         match self {
             Block::Fx1 => 40,
@@ -91,7 +91,7 @@ impl Block {
         }
     }
 
-    /// Parse a block from its CLI / CC-map name (case-insensitive).
+    /// 按 CLI / CC 映射名称解析块（不区分大小写）。
     pub fn from_name(name: &str) -> Option<Block> {
         match name.to_ascii_lowercase().as_str() {
             "fx1" => Some(Block::Fx1),
@@ -107,78 +107,76 @@ impl Block {
     }
 }
 
-/// Send a block on/off toggle (standard CC).
+/// 发送块开/关切换（标准 CC）。
 pub fn block_enable(channel: u8, block: Block, on: bool) -> Vec<u8> {
     control_change(channel, block.onoff_cc(), if on { 127 } else { 0 })
 }
 
-/// Send a block type/effect/model selection (standard CC).
+/// 发送块类型/效果/模型选择（标准 CC）。
 pub fn block_type(channel: u8, block: Block, type_id: u8) -> Vec<u8> {
     control_change(channel, block.type_cc(), type_id)
 }
 
-/// Number of selectable models in the Amp block (valid indices `0..=29`).
+/// 音箱块中可选模型的数量（有效索引 `0..=29`）。
 pub const AMP_MODEL_COUNT: u8 = 30;
 
-/// Number of selectable models in the Cab / IR block (valid indices `0..=29`).
+/// 箱体 / IR 块中可选模型的数量（有效索引 `0..=29`）。
 pub const CAB_MODEL_COUNT: u8 = 30;
 
-/// Select an Amp-block model by 0-based firmware slot (`0..=29`).
+/// 按从 0 开始的固件槽位（`0..=29`）选择音箱块模型。
 ///
-/// This rides on the standard **CC43** — the CC the OEM guide lists as the Amp
-/// block's "Type CC". The guide then claims *"Model/profile and IR-slot
-/// selection are not assigned here"* and prints **no** type table for Amp or
-/// Cab. **That claim is wrong for the Amp block.**
+/// 它借助标准的 **CC43**——OEM 指南将其列为音箱块的"类型 CC"。
+/// 指南随后声称 *"此处未分配模型/配置与 IR 槽位选择。"*，
+/// 并且**没有**给出音箱或箱体的类型表。**该说法对音箱块不成立。**
 ///
-/// Verified on hardware (`Nanocore`, fw 1.04), read-only snapshot diffing plus
-/// visual confirmation of the device display:
+/// 已在硬件上验证（`Nanocore`，固件 1.04），方法为只读快照对比，
+/// 并辅以对设备显示屏的目视确认：
 ///
-/// | sent | device display |
+/// | 发送 | 设备显示 |
 /// |------|----------------|
 /// | `CC43 = 20` | `RoJC120` (Roland JC-120) |
-/// | `CC43 = 29` | slot 29 (a user-imported NAM model) |
-/// | `CC43 = 30` | **unchanged** — out of range, rejected |
-/// | `CC43 = 37` | **unchanged** — out of range, rejected |
+/// | `CC43 = 29` | 槽位 29（用户导入的 NAM 模型） |
+/// | `CC43 = 30` | **无变化**——超出范围，被拒绝 |
+/// | `CC43 = 37` | **无变化**——超出范围，被拒绝 |
 ///
-/// So `CC43 = n` selects amp slot `n` from the same 30-entry table as the
-/// SysEx `SET_FIELD(VARIANT, n)` path (see `models_data::AMP`). Indices `>= 30`
-/// are silently ignored by the device, so callers should validate first.
-/// Note the drive-pedal entries at `models_data::AMP[30..38]` are **not**
-/// reachable here — they belong to the FX2 block.
+/// 因此 `CC43 = n` 从与 SysEx `SET_FIELD(VARIANT, n)` 路径相同的 30 项表中选择音箱槽位 `n`
+/// （参见 `models_data::AMP`）。索引 `>= 30` 会被设备静默忽略，调用方应先行校验。
+/// 注意 `models_data::AMP[30..38]` 处的踏板效果条目**无法**在此访问——
+/// 它们属于 FX2 块。
 pub fn amp_model(channel: u8, index: u8) -> Vec<u8> {
     control_change(channel, Block::Amp.type_cc(), index)
 }
 
-/// Select a Cab / IR-block model by 0-based firmware slot (`0..=29`).
+/// 按从 0 开始的固件槽位（`0..=29`）选择箱体 / IR 块模型。
 ///
-/// Rides on the standard **CC44**, same story as [`amp_model`]: the OEM guide
-/// gives no Cab type table and claims model selection is unassigned, but on
-/// hardware `CC44 = n` selects cab slot `n`.
+/// 借助标准的 **CC44**，情况与 [`amp_model`] 相同：OEM 指南
+/// 未给出箱体类型表，并声称模型选择未分配，但在硬件上
+/// `CC44 = n` 选择箱体槽位 `n`。
 ///
-/// | sent | device display |
+/// | 发送 | 设备显示 |
 /// |------|----------------|
 /// | `CC44 = 14` | `Og412` (Orange Vintage30 4x12) |
 /// | `CC44 = 29` | `Mar412` (Marshall 4x12) |
-/// | `CC44 = 30` | **unchanged** — out of range, rejected |
+/// | `CC44 = 30` | **无变化**——超出范围，被拒绝 |
 ///
-/// Indices `>= 30` are silently ignored, so callers should validate first.
+/// 索引 `>= 30` 会被静默忽略，调用方应先行校验。
 pub fn cab_model(channel: u8, index: u8) -> Vec<u8> {
     control_change(channel, Block::Cab.type_cc(), index)
 }
 
-/// Global controls (see `midi_cc_reference.md`).
+/// 全局控制（参见 `midi_cc_reference.md`）。
 pub mod global {
     use super::control_change;
 
-    /// Tuner on/off (CC80).
+    /// 调音器开/关（CC80）。
     pub fn tuner(channel: u8, on: bool) -> Vec<u8> {
         control_change(channel, 80, if on { 127 } else { 0 })
     }
-    /// Step to the previous preset (CC81, value 127).
+    /// 切换到上一个预设（CC81，值 127）。
     pub fn prev_preset(channel: u8) -> Vec<u8> {
         control_change(channel, 81, 127)
     }
-    /// Step to the next preset (CC82, value 127).
+    /// 切换到下一个预设（CC82，值 127）。
     pub fn next_preset(channel: u8) -> Vec<u8> {
         control_change(channel, 82, 127)
     }
@@ -190,14 +188,14 @@ mod tests {
 
     #[test]
     fn cc_layout_and_masking() {
-        // status = 0xB0 | channel, data bytes masked to 7 bits
+        // status = 0xB0 | channel，数据字节掩码到 7 比特
         assert_eq!(control_change(0, 60, 100), vec![0xB0, 60, 100]);
         assert_eq!(control_change(15, 0x80, 0xFF), vec![0xBF, 0x00, 0x7F]);
     }
 
     #[test]
     fn pc_layout() {
-        // PC 2 recalls the preset displayed as "03" (0-based)
+        // PC 2 调用显示为 "03" 的预设（从 0 开始）
         assert_eq!(program_change(0, 2), vec![0xC0, 2]);
     }
 
@@ -219,22 +217,22 @@ mod tests {
         assert_eq!(global::next_preset(0), vec![0xB0, 82, 127]);
     }
 
-    /// CC43 / CC44 model selection — the values below are the exact ones
-    /// verified on hardware (device display read back by eye).
+    /// CC43 / CC44 模型选择——
+    /// 下面的值与硬件上验证的值完全一致（设备显示屏经目视读取）。
     #[test]
     fn amp_and_cab_model_use_cc43_cc44() {
         assert_eq!(amp_model(0, 20), vec![0xB0, 43, 20]); // -> RoJC120
         assert_eq!(cab_model(0, 14), vec![0xB0, 44, 14]); // -> Og412
         assert_eq!(amp_model(0, AMP_MODEL_COUNT - 1), vec![0xB0, 43, 29]);
         assert_eq!(cab_model(0, CAB_MODEL_COUNT - 1), vec![0xB0, 44, 29]);
-        // Channel is honoured, data bytes stay 7-bit.
+        // 通道号被遵循，数据字节保持 7 比特。
         assert_eq!(amp_model(3, 5), vec![0xB3, 43, 5]);
         assert_eq!(cab_model(0, 200), vec![0xB0, 44, 200 & 0x7F]);
     }
 
-    /// Both model tables cover exactly 30 slots — the hardware-verified bound
-    /// behind the "indices >= 30 are silently ignored" rule (see the module
-    /// docs and `report_model_selection` in the CLI).
+    /// 两个模型表都恰好覆盖 30 个槽位——
+    /// 这是"索引 >= 30 会被静默忽略"规则背后经硬件验证的边界
+    /// （参见模块文档与 CLI 中的 `report_model_selection`）。
     #[test]
     fn amp_and_cab_model_tables_share_the_30_slot_bound() {
         assert_eq!(AMP_MODEL_COUNT, CAB_MODEL_COUNT);

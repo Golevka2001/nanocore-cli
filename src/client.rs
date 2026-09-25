@@ -1,16 +1,14 @@
-//! High-level client.
+//! 高层客户端。
 //!
-//! Besides fire-and-forget [`Nanocore::send`], this provides
-//! [`Nanocore::transact`] which correlates a request with the device's reply
-//! and retries on timeout.
+//! 除了即发即忘的 [`Nanocore::send`]，本模块还提供 [`Nanocore::transact`]，
+//! 它将请求与设备应答关联起来，并在超时时重试。
 //!
-//! The retry policy mirrors what the official app was observed to do
-//! (`liblivtra.so`, `FUN_00483094`):
+//! 重试策略镜像自对官方应用的观察（`liblivtra.so`，`FUN_00483094`）：
 //!
-//! * initial response timeout 120 ms
-//! * doubles on every retry, capped at 600 ms
-//! * total budget (hard limit) 1 s
-//! * retries **only** on timeout — never on a malformed or error response
+//! * 初始应答超时 120 ms
+//! * 每次重试翻倍，上限 600 ms
+//! * 总预算（硬上限）1 s
+//! * **仅在超时时**重试 —— 收到格式错误或错误应答时绝不重试
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -20,22 +18,22 @@ use crate::frame::{Direction, Frame};
 use crate::protocol;
 use crate::transport::Transport;
 
-/// Initial per-attempt response timeout used by the official app.
+/// 官方应用使用的单次尝试初始应答超时。
 pub const INITIAL_TIMEOUT: Duration = Duration::from_millis(120);
-/// Per-attempt timeout ceiling used by the official app.
+/// 官方应用使用的单次尝试超时上限。
 pub const MAX_TIMEOUT: Duration = Duration::from_millis(600);
-/// Total budget for a transaction including all retries.
+/// 一次事务（含全部重试）的总预算。
 pub const HARD_LIMIT: Duration = Duration::from_millis(1000);
-/// How often the transport is polled while waiting for a reply.
+/// 等待应答时轮询传输层的间隔。
 pub const POLL_INTERVAL: Duration = Duration::from_millis(5);
 
-/// Retry/timeout policy for [`Nanocore::transact`].
+/// [`Nanocore::transact`] 的重试/超时策略。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryConfig {
     pub initial_timeout: Duration,
     pub max_timeout: Duration,
     pub hard_limit: Duration,
-    /// Maximum number of *retries* (so `max_retries + 1` attempts total).
+    /// *重试*次数上限（即总共 `max_retries + 1` 次尝试）。
     pub max_retries: u32,
     pub poll_interval: Duration,
 }
@@ -52,12 +50,12 @@ impl Default for RetryConfig {
     }
 }
 
-/// Errors produced by [`Nanocore::transact`].
+/// [`Nanocore::transact`] 产生的错误。
 #[derive(Debug)]
 pub enum Error<E> {
-    /// The underlying transport failed.
+    /// 底层传输层失败。
     Transport(E),
-    /// The device never answered within the timeout budget.
+    /// 设备在超时预算内始终未应答。
     Timeout { attempts: u32, elapsed: Duration },
 }
 
@@ -81,14 +79,13 @@ impl<E> From<E> for Error<E> {
     }
 }
 
-/// High-level Nanocore controller. Wraps a [`Transport`] and manages the
-/// little-endian sequence counter.
+/// 高层 Nanocore 控制器。包装一个 [`Transport`] 并管理小端序列号计数器。
 pub struct Nanocore<T: Transport> {
     transport: T,
     seq: u16,
     config: RetryConfig,
-    /// Frames received but not yet consumed by a transaction — unsolicited
-    /// events, or a reply that arrived before its caller looked for it.
+    /// 已接收但尚未被事务消费的帧 —— 主动（非请求）的事件，
+    /// 或在其调用方查找之前就已到达的应答。
     pending: VecDeque<Frame>,
 }
 
@@ -109,7 +106,7 @@ impl<T: Transport> Nanocore<T> {
         &mut self.transport
     }
 
-    /// Override the retry/timeout policy.
+    /// 覆盖重试/超时策略。
     pub fn set_config(&mut self, config: RetryConfig) {
         self.config = config;
     }
@@ -120,36 +117,34 @@ impl<T: Transport> Nanocore<T> {
         s
     }
 
-    /// Send a message by type + payload with `flags = 0x00` (normal).
+    /// 以类型 + 载荷发送消息，`flags = 0x00`（普通）。
     ///
-    /// Fire and forget: no reply correlation, no retry.
+    /// 即发即忘：不关联应答，不重试。
     pub fn send(&mut self, kind: u8, payload: Vec<u8>) -> Result<(), T::Error> {
         let seq = self.next_seq();
         let frame = Frame::new(Direction::Tx, 0x00, seq, kind, payload);
         self.transport.send(&frame.encode())
     }
 
-    /// Receive and decode whatever frames are currently available.
+    /// 接收并解码当前可用的所有帧。
     pub fn receive(&mut self) -> Result<Vec<Frame>, T::Error> {
         let bytes = self.transport.receive()?;
         Ok(Frame::split_stream(&bytes))
     }
 
-    /// Pull available bytes from the transport into the pending queue and
-    /// return the frames that just arrived.
+    /// 从传输层拉取可用字节放入待处理队列，
+    /// 并返回刚刚到达的帧。
     fn pump(&mut self) -> Result<Vec<Frame>, T::Error> {
         let frames = self.receive()?;
         self.pending.extend(frames.iter().cloned());
         Ok(frames)
     }
 
-    /// Remove and return the oldest pending frame echoing `seq`, optionally
-    /// restricted to one of `kinds`.
+    /// 移除并返回待处理队列中最早的、回显 `seq` 的帧，
+    /// 可选择限定为 `kinds` 中的某一类型。
     ///
-    /// The device echoes the host's sequence number on replies (verified in
-    /// captures: TX `seq=0x0344` -> RX `seq=0x0344`). Its *unsolicited* status
-    /// frames carry the device's own counter instead, so they never match —
-    /// which is exactly what we want.
+    /// 设备在应答时回显主机的序列号（已在抓包中验证：TX `seq=0x0344` -> RX `seq=0x0344`）。
+    /// 其*主动（非请求）的*状态帧则携带设备自己的计数器，因此永远不会匹配 —— 这正是我们想要的效果。
     fn take_matching(&mut self, seq: u16, kinds: &[u8]) -> Option<Frame> {
         let pos = self.pending.iter().position(|f| {
             f.seq == seq && (kinds.is_empty() || kinds.contains(&f.kind))
@@ -157,11 +152,11 @@ impl<T: Transport> Nanocore<T> {
         self.pending.remove(pos)
     }
 
-    /// Send a command and wait for the device's reply.
+    /// 发送命令并等待设备应答。
     ///
-    /// A reply is any frame echoing the request's sequence number. Pass a
-    /// non-empty `expect` to additionally require one of the given message
-    /// types. Times out and retries according to [`RetryConfig`].
+    /// 应答指任何回显请求序列号的帧。
+    /// 传入非空的 `expect` 可额外要求帧属于给定的消息类型之一。
+    /// 按 [`RetryConfig`] 执行超时与重试。
     pub fn transact_expect(
         &mut self,
         kind: u8,
@@ -171,9 +166,9 @@ impl<T: Transport> Nanocore<T> {
         self.transact_with_flags(0x00, kind, payload, expect)
     }
 
-    /// Same as [`Nanocore::transact_expect`] but with an explicit flags byte.
+    /// 与 [`Nanocore::transact_expect`] 相同，但显式指定 flags 字节。
     ///
-    /// Observed flag values: `0x00` normal, `0x02` live, `0x22` preset write.
+    /// 观察到的 flags 值：`0x00` 普通，`0x02` 实时，`0x22` 预设写入。
     pub fn transact_with_flags(
         &mut self,
         flags: u8,
@@ -218,70 +213,65 @@ impl<T: Transport> Nanocore<T> {
         Err(Error::Timeout { attempts, elapsed: started.elapsed() })
     }
 
-    /// [`Nanocore::transact_expect`] accepting any reply type.
+    /// [`Nanocore::transact_expect`]，接受任意应答类型。
     pub fn transact(&mut self, kind: u8, payload: Vec<u8>) -> Result<Frame, Error<T::Error>> {
         self.transact_expect(kind, payload, &[])
     }
 
-    /// Remove and return all frames that were never consumed — unsolicited
-    /// events, or replies that arrived without a matching request. Useful for
-    /// diagnosing a timeout.
+    /// 移除并返回所有从未被消费的帧 —— 主动（非请求）的事件，
+    /// 或在没有匹配请求的情况下到达的应答。可用于诊断超时。
     pub fn drain_pending(&mut self) -> Vec<Frame> {
         self.pending.drain(..).collect()
     }
 
-    /// Send raw bytes on the transport **without** the SysEx frame wrapper.
+    /// 在传输层上发送原始字节，**不带** SysEx 帧包装。
     ///
-    /// Used for the standard MIDI control surface (Control Change / Program
-    /// Change), which the device accepts as bare 3-byte packets. Make sure the
-    /// transport is in non-SysEx mode first — e.g.
-    /// `self.transport().set_sysex(false)` for [`crate::midi::MidiTransport`].
+    /// 用于标准 MIDI 控制面（Control Change / Program Change），设备将其作为裸 3 字节包接受。
+    /// 请先确保传输层处于非 SysEx 模式 ——
+    /// 例如对 [`crate::midi::MidiTransport`] 调用 `self.transport().set_sysex(false)`。
     pub fn send_raw(&mut self, bytes: &[u8]) -> Result<(), T::Error> {
         self.transport.send(bytes)
     }
 
-    // -- checked convenience commands ----------------------------------------
+    // ─── 带校验的便捷命令 ────────────
 
-    /// Ping and return the device's reply (connectivity check).
+    /// Ping 并返回设备应答（连通性检查）。
     pub fn ping_checked(&mut self) -> Result<Frame, Error<T::Error>> {
         let (k, p) = protocol::ping();
         self.transact_expect(k, p, &[crate::msg_type::PING])
     }
 
-    /// Select a preset and wait for the acknowledgement.
+    /// 选择预设并等待确认。
     pub fn select_preset_checked(&mut self, index: u8) -> Result<Frame, Error<T::Error>> {
         let (k, p) = protocol::select_preset(index);
         self.transact(k, p)
     }
 
-    /// Request the snapshot and return the device's reply frame.
+    /// 请求快照并返回设备应答帧。
     pub fn read_snapshot(&mut self) -> Result<Frame, Error<T::Error>> {
         let (k, p) = protocol::request_snapshot();
         self.transact_expect(k, p, &[crate::msg_type::SNAPSHOT])
     }
 
-    /// Query the model name of a single amp / drive slot and return the reply.
+    /// 查询单个音箱 / 驱动槽位的模型名称并返回应答。
     ///
-    /// Read-only — sends a `0x36` query and waits for the `0x36` reply. The
-    /// reply payload is parsed by [`crate::protocol::parse_model_name`]. The
-    /// cab / IR slots are enumerated by a different message and are NOT covered
-    /// here.
+    /// 只读 —— 发送 `0x36` 查询并等待 `0x36` 应答。
+    /// 应答载荷由 [`crate::protocol::parse_model_name`] 解析。
+    /// 箱体 / IR 槽位由不同的消息枚举，此处不涵盖。
     pub fn query_model(&mut self, index: u8) -> Result<Frame, Error<T::Error>> {
         let (k, p) = protocol::model_query(index);
         self.transact_expect(k, p, &[crate::msg_type::MODEL_LIST])
     }
 
-    /// Read a whole amp model or IR blob using a plan from [`crate::asset::read_plan`].
+    /// 使用来自 [`crate::asset::read_plan`] 的读取计划读取完整的音箱模型或 IR 数据块。
     ///
-    /// Read-only. Sends each chunk request and concatenates the decoded replies
-    /// in ascending `addr` order (the device answers out of order).
+    /// 只读。逐个发送数据块请求，并按 `addr` 升序拼接解码后的应答（设备会乱序应答）。
     ///
-    /// `on_chunk(done, total)` is called after each reply so callers can show
-    /// progress; pass a closure that does nothing if you don't care.
+    /// 每收到一个应答就调用一次 `on_chunk(done, total)`，以便调用方显示进度；不需要时传入一个空闭包即可。
     ///
-    /// The plan is taken as a parameter rather than derived here so that an
-    /// unknown region or slot is rejected by the caller *before* any MIDI is
-    /// sent, instead of surfacing as a fake transport error.
+    /// 读取计划作为参数传入而非在此推导，
+    /// 这样未知区域或槽位会被调用方*在任何 MIDI 发出之前*拒绝，
+    /// 而不是表现为一个虚假的传输层错误。
     pub fn read_asset<F>(
         &mut self,
         plan: &[crate::asset::ChunkRequest],
@@ -301,7 +291,7 @@ impl<T: Transport> Nanocore<T> {
             on_chunk(i + 1, n);
         }
         let blob = crate::asset::assemble(&chunks);
-        // The plan is built for the standard blob size; drop any slack.
+        // 计划是按标准数据块大小构建的；裁掉多余的余量。
         Ok(if blob.len() > total as usize {
             blob[..total as usize].to_vec()
         } else {
@@ -309,21 +299,18 @@ impl<T: Transport> Nanocore<T> {
         })
     }
 
-    /// Write an IR blob back to a slot and verify by reading it again.
+    /// 将 IR 数据块写回槽位，并通过重新读取进行验证。
     ///
-    /// Replays the app's import flow for one slot:
-    /// `0x56` (query name) → PING → `0x49` (session) → PING → `0x50` (sync) →
-    /// `0x51` (begin) → `0x52`×N (data) → `0x53` (hash) → `0x55` (name) →
-    /// `0x57` (commit) → full read-back.
+    /// 针对单个槽位重放应用的导入流程：
+    /// `0x56`（查询名称）→ PING → `0x49`（会话）→ PING → `0x50`（同步）→
+    /// `0x51`（开始）→ `0x52`×N（数据）→ `0x53`（哈希）→ `0x55`（名称）→
+    /// `0x57`（提交）→ 完整回读。
     ///
-    /// The identity hash is **derived from `blob`** (`identity_hash`): the
-    /// device recomputes it on commit and silently rejects a mismatch.
-    /// The `B3` byte of the `0x53` frame is derived from the blob (it carries
-    /// the CRC's masked-out high bits — see `asset::write_hash`). The preamble
-    /// steps are best-effort: the device keeps its write session across
-    /// connections, and a session already open makes `0x49`/`0x50` go unanswered.
+    /// 恒等哈希**由 `blob` 派生**（`identity_hash`）：设备在提交时重新计算它，不匹配时静默拒绝。
+    /// `0x53` 帧的 `B3` 字节由 blob 派生（它承载 CRC 被掩掉的最高位 —— 见 `asset::write_hash`）。
+    /// 前导步骤尽力而为：设备的写入会话跨连接保留，会话已打开时 `0x49`/`0x50` 将得不到应答。
     ///
-    /// Returns the read-back bytes so the caller can compare them with `blob`.
+    /// 返回回读的字节，以便调用方与 `blob` 比较。
     pub fn write_ir_slot(
         &mut self,
         slot: u8,
@@ -331,10 +318,9 @@ impl<T: Transport> Nanocore<T> {
         name_override: Option<&str>,
         mut on_progress: impl FnMut(&str),
     ) -> Result<Vec<u8>, String> {
-        // Flash operations are slow: the device can take well over the default
-        // 1 s budget to answer session/commit frames (observed: a 0x49 ACK
-        // arriving after the whole 1 s budget expired). Use a generous policy
-        // for the whole write flow.
+        // Flash 操作很慢：设备应答会话/提交帧的时间可能远超默认的 1 s 预算
+        // （观察到：一个 0x49 ACK 在整个 1 s 预算耗尽之后才到达）。
+        // 整个写入流程使用宽松的策略。
         let saved = self.config;
         self.set_config(crate::client::RetryConfig {
             initial_timeout: Duration::from_millis(500),
@@ -358,12 +344,11 @@ impl<T: Transport> Nanocore<T> {
     ) -> Result<Vec<u8>, String> {
         use crate::asset;
 
-        // 1. Query the slot's name FIRST — while the device is still in its
-        //    normal (read-friendly) mode. Once the write session is open the
-        //    device only accepts the write flow. The identity hash is NOT
-        //    reused: the device recomputes it from the blob on commit and
-        //    silently rejects a mismatch, so it must be derived from the
-        //    content being written (verified 16/16 in the capture).
+        // 1. 首先查询槽位名称 —— 趁设备仍处于正常（读取友好）模式。
+        //    写入会话一旦打开，设备就只接受写入流程。
+        //    恒等哈希不会被复用：设备在提交时从 blob 重新计算它，
+        //    不匹配时静默拒绝，因此它必须由被写入的内容派生
+        //    （抓包中 16/16 验证通过）。
         let mut name: Vec<u8>;
         match self.transact_expect(
             asset::SLOT_QUERY,
@@ -379,8 +364,8 @@ impl<T: Transport> Nanocore<T> {
                 name = n;
             }
             Err(_) => {
-                // Mid-session the device may not answer 0x56; without an
-                // explicit override we cannot preserve the old name.
+                // 会话中途设备可能不应答 0x56；
+                // 没有显式覆盖名称时我们无法保留旧名称。
                 name = match name_override {
                     Some(n) => n.as_bytes().to_vec(),
                     None => return Err("slot query failed and no --name given".into()),
@@ -392,12 +377,11 @@ impl<T: Transport> Nanocore<T> {
         }
         on_progress(&format!("slot name {:?}", String::from_utf8_lossy(&name)));
 
-        // 2. Session open, capture order: PING -> 0x49 -> PING -> 0x50.
-        //    Both 0x49 and 0x50 replies echo our seq. However the device
-        //    keeps its write session across connections: a 0x49 while the
-        //    session is already open is ignored (no reply), and once open the
-        //    device skips straight to the write flow. So every preamble step
-        //    is best-effort; the data/commit frames are what matter.
+        // 2. 会话打开，抓包顺序：PING -> 0x49 -> PING -> 0x50。
+        //    0x49 和 0x50 的应答都回显我们的 seq。
+        //    但设备的写入会话跨连接保留：会话已打开时 0x49 会被忽略（无应答），
+        //    且一旦打开，设备会直接跳到写入流程。
+        //    所以每个前导步骤都是尽力而为；真正起作用的是数据/提交帧。
         let (pk, pp) = crate::protocol::ping();
         on_progress("ping 1");
         self.transact_expect(pk, pp.clone(), &[crate::msg_type::PING])
@@ -412,9 +396,9 @@ impl<T: Transport> Nanocore<T> {
             .is_ok();
         if session_ok {
             on_progress("session opened");
-            // In the app's capture a PING after 0x49 is echoed, but once the
-            // device is in write mode it may answer only with its own
-            // heartbeat (flags=0x02, own seq) — best-effort, never fatal.
+            // 在应用的抓包中，0x49 之后的 PING 会得到回显，
+            // 但设备一旦进入写入模式就可能只应答自己的心跳
+            // （flags=0x02，自己的 seq）—— 尽力而为，绝不视为致命错误。
             let _ = self.transact_expect(pk, pp, &[crate::msg_type::PING]);
         } else {
             on_progress("session already open (0x49 ignored)");
@@ -429,9 +413,9 @@ impl<T: Transport> Nanocore<T> {
             on_progress("sync unanswered (continuing)");
         }
 
-        // 3. Begin. If the device is mid-write from an earlier interrupted
-        //    attempt it ignores 0x51 and expects the data continuation — so a
-        //    timeout here is tolerated and the data frames decide the outcome.
+        // 3. 开始。如果设备正处于上一次中断写入的中间状态，
+        //    它会忽略 0x51 并等待数据续传 ——
+        //    所以这里的超时可以容忍，结果由数据帧决定。
         let total = blob.len() as u32;
         on_progress("begin");
         if self
@@ -447,7 +431,7 @@ impl<T: Transport> Nanocore<T> {
             on_progress("begin unanswered (continuing)");
         }
 
-        // 4. Data frames.
+        // 4. 数据帧。
         let n_chunks = blob.len().div_ceil(asset::WRITE_CHUNK_BYTES);
         for (ci, chunk) in blob.chunks(asset::WRITE_CHUNK_BYTES).enumerate() {
             self.transact_expect(
@@ -461,7 +445,7 @@ impl<T: Transport> Nanocore<T> {
             on_progress(&format!("chunk {}/{}", ci + 1, n_chunks));
         }
 
-        // 5. Hash (derived from the blob), 6. name, 7. commit.
+        // 5. 哈希（由 blob 派生），6. 名称，7. 提交。
         on_progress("hash");
         self.transact_expect(
             asset::WRITE_HASH,
@@ -482,23 +466,21 @@ impl<T: Transport> Nanocore<T> {
         )
         .map_err(|e| e.to_string())?;
 
-        // The app re-enumerates the slot table between the commit and its
-        // read-back; the flash write is not immediately visible. Re-query the
-        // slot and give the device a moment before reading back.
+        // 应用会在提交与其回读之间重新枚举槽位表；flash 写入不会立即可见。
+        // 重新查询槽位，并给设备留出时间后再回读。
         let _ = self.transact_expect(
             asset::SLOT_QUERY,
             asset::slot_query(slot),
             &[asset::SLOT_QUERY],
         );
-        // The flash write settles asynchronously: an immediate read-back can
-        // serve partially-stale data (observed: one stale byte range ~2.4 s
-        // into the blob seconds after the commit). Give it time, and retry
-        // the read-back until it matches or the budget runs out.
+        // flash 写入是异步落定的：立即回读可能读到部分过期的数据
+        // （观察到：提交后数秒，blob 中约 2.4 s 处的一个过期字节范围）。
+        // 留出时间，并重试回读直到匹配或预算耗尽。
         std::thread::sleep(std::time::Duration::from_millis(1200));
 
 
-        // 8. Read back and return. Retry the whole read a few times: right
-        //    after the commit the device can serve partially-stale data.
+        // 8. 回读并返回。整个读取重试几次：
+        //    提交后立即读取时设备可能返回部分过期的数据。
         let (total, plan) = asset::read_plan(asset::REGION_IR, slot)
             .ok_or_else(|| "no read plan for that slot".to_string()).map_err(|e| e.to_string())?;
         let mut back = Vec::new();
@@ -526,12 +508,11 @@ impl<T: Transport> Nanocore<T> {
         Ok(back)
     }
 
-    /// Read the names of all preset slots (0–63).
+    /// 读取全部预设槽位（0–63）的名称。
     ///
-    /// The device answers a `0x40` preset-list query with 8 fixed-size records
-    /// per reply, so 8 queries cover all 64 slots. The parser is strict: any
-    /// misalignment returns `None` and the whole read fails rather than
-    /// producing shifted names.
+    /// 设备对一次 `0x40` 预设列表查询每条应答返回 8 条固定大小的记录，
+    /// 因此 8 次查询即可覆盖全部 64 个槽位。
+    /// 解析器是严格的：任何错位都会返回 `None`，整个读取失败，而不是产出移位的名称。
     pub fn read_preset_names(&mut self) -> Result<Vec<protocol::PresetEntry>, String> {
         let mut out = Vec::with_capacity(64);
         for base in (0..64).step_by(8) {
@@ -546,7 +527,7 @@ impl<T: Transport> Nanocore<T> {
         Ok(out)
     }
 
-    // -- fire-and-forget convenience commands ---------------------------------
+    // ─── 即发即忘的便捷命令 ──────────
 
     pub fn ping(&mut self) -> Result<(), T::Error> {
         let (k, p) = protocol::ping();
@@ -599,34 +580,31 @@ impl<T: Transport> Nanocore<T> {
         self.send(k, p)
     }
 
-    /// Write the effect chain order (`0x6D` sub `0x0A`, field `0x05`).
+    /// 写入效果链序（`0x6D` sub `0x0A`，字段 `0x05`）。
     ///
-    /// `order` is the left-to-right chain as a permutation of `0..8`, using
-    /// [`protocol::CHAIN_ROLES`] indices (`0=FX1 1=FX2 2=AMP 3=CAB 4=DEL
-    /// 5=MOD 6=REV 7=EQ`). Panics if `order` is not a permutation — validate
-    /// user input before calling, or use [`Nanocore::set_chain_order_checked`].
+    /// `order` 是从左到右的链，为 `0..8` 的一个排列，使用 [`protocol::CHAIN_ROLES`] 索引
+    /// （`0=FX1 1=FX2 2=AMP 3=CAB 4=DEL 5=MOD 6=REV 7=EQ`）。
+    /// 若 `order` 不是排列则 panic —— 调用前请先校验用户输入，
+    /// 或使用 [`Nanocore::set_chain_order_checked`]。
     pub fn set_chain_order(&mut self, order: &[u8]) -> Result<(), T::Error> {
         let (k, p) = protocol::chain_write(order)
             .expect("chain order must contain each of 0..8 exactly once");
         self.send(k, p)
     }
 
-    /// Write the effect chain order (`0x6D` sub `0x0A`, field `0x05`) and verify.
+    /// 写入效果链序（`0x6D` sub `0x0A`，字段 `0x05`）并验证。
     ///
-    /// `order` is the left-to-right chain as a permutation of `0..8`, using
-    /// [`protocol::CHAIN_ROLES`] indices (`0=FX1 1=FX2 2=AMP 3=CAB 4=DEL
-    /// 5=MOD 6=REV 7=EQ`).
+    /// `order` 是从左到右的链，为 `0..8` 的一个排列，使用 [`protocol::CHAIN_ROLES`] 索引
+    /// （`0=FX1 1=FX2 2=AMP 3=CAB 4=DEL 5=MOD 6=REV 7=EQ`）。
     ///
-    /// Returns:
-    /// * `Ok(None)` — `order` is not a permutation; nothing was sent.
-    /// * `Ok(Some(order))` — the device acknowledged it. The ACK mirrors the
-    ///   9-byte chain field back (re-encoded with a different filler index), so
-    ///   this is the order the device reports it took.
+    /// 返回：
+    /// * `Ok(None)` —— `order` 不是排列；未发送任何内容。
+    /// * `Ok(Some(order))` —— 设备已确认。ACK 会把 9 字节链字段镜像回来（以不同的填充索引重新编码），
+    ///   因此这是设备报告其接受的链序。
     ///
-    /// The unsolicited `0x09` notification seen in app captures is additionally
-    /// harvested for a short window when present, but it carries the device's own
-    /// sequence number and **does not arrive in every session**, so it is never
-    /// required — the ACK is the reliable read-back.
+    /// 应用抓包中可见的主动（非请求）的 `0x09` 通知，在其出现时还会被额外采集一个短窗口；
+    /// 但它携带设备自己的序列号，且**并非每个会话都会到达**，
+    /// 因此绝不作为必要条件 —— ACK 才是可靠的回读。
     pub fn write_chain_order(&mut self, order: &[u8]) -> Result<Option<Vec<u8>>, Error<T::Error>> {
         let (kind, payload) = match protocol::chain_write(order) {
             Some(x) => x,
@@ -635,7 +613,7 @@ impl<T: Transport> Nanocore<T> {
         let ack = self.transact(kind, payload)?;
         let echoed = protocol::parse_chain_ack(&ack.payload);
 
-        // Optional: harvest a `0x09` notification (never a matched reply).
+        // 可选：采集一条 `0x09` 通知（它绝不是被匹配的应答）。
         let deadline = Instant::now() + std::time::Duration::from_millis(300);
         loop {
             let mut frames = self.drain_pending();
@@ -657,8 +635,8 @@ impl<T: Transport> Nanocore<T> {
         Ok(echoed)
     }
 
-    /// [`Nanocore::set_chain_order`] with validation: returns `Ok(false)` instead
-    /// of panicking when `order` is not a valid permutation.
+    /// 带校验的 [`Nanocore::set_chain_order`]：当 `order` 不是有效排列时
+    /// 返回 `Ok(false)` 而不是 panic。
     pub fn set_chain_order_checked(&mut self, order: &[u8]) -> Result<bool, T::Error> {
         match protocol::chain_write(order) {
             Some((k, p)) => self.send(k, p).map(|()| true),

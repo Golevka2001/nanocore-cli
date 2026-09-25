@@ -1,5 +1,4 @@
-//! `module` commands: list modules, on/off, model select, parameter listing
-//! and parameter writes.
+//! `module` 命令：列出模块、开关、型号选择、参数列表与参数写入。
 
 use nanocore::midicc::{self, Block};
 use nanocore::models_data;
@@ -7,7 +6,7 @@ use nanocore::params_data;
 use nanocore::protocol;
 
 use crate::cli::{BlockArg, Conn, ModuleAction, ModuleCmd};
-use crate::common::{open_device, send_standard, transact, Dev};
+use crate::common::{Dev, open_device, send_standard, transact};
 
 pub fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), String> {
     match cmd {
@@ -23,11 +22,7 @@ pub fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), String> {
     }
 }
 
-fn module_action(
-    block: BlockArg,
-    action: Option<ModuleAction>,
-    conn: &Conn,
-) -> Result<(), String> {
+fn module_action(block: BlockArg, action: Option<ModuleAction>, conn: &Conn) -> Result<(), String> {
     match action {
         None => print_module_help(block),
         Some(ModuleAction::Params { r#type }) => cmd_params(block, r#type),
@@ -46,15 +41,24 @@ fn module_action(
         Some(ModuleAction::Model { id }) => {
             report_model_selection(block.midicc(), id)?;
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::block_type(conn.channel, block.midicc(), id))
+            send_standard(
+                &mut dev,
+                &midicc::block_type(conn.channel, block.midicc(), id),
+            )
         }
         Some(ModuleAction::On) => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::block_enable(conn.channel, block.midicc(), true))
+            send_standard(
+                &mut dev,
+                &midicc::block_enable(conn.channel, block.midicc(), true),
+            )
         }
         Some(ModuleAction::Off) => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::block_enable(conn.channel, block.midicc(), false))
+            send_standard(
+                &mut dev,
+                &midicc::block_enable(conn.channel, block.midicc(), false),
+            )
         }
     }
 }
@@ -82,15 +86,20 @@ fn print_module_help(block: BlockArg) -> Result<(), String> {
     let slot = params_data::block_slot(key)
         .map(|s| s.to_string())
         .unwrap_or_else(|| "?".into());
-    println!("{key} (b5={slot}, CC on/off {}, CC type {})", block.midicc().onoff_cc(), block.midicc().type_cc());
-    println!("  actions: on | off | model <N> | params [--type N] | param <name> [value] [--type N]");
+    println!(
+        "{key} (b5={slot}, CC on/off {}, CC type {})",
+        block.midicc().onoff_cc(),
+        block.midicc().type_cc()
+    );
+    println!(
+        "  actions: on | off | model <N> | params [--type N] | param <name> [value] [--type N]"
+    );
     Ok(())
 }
 
 fn cmd_params(block: BlockArg, r#type: Option<u8>) -> Result<(), String> {
     let key = block.key();
-    let slot = params_data::block_slot(key)
-        .ok_or_else(|| format!("unknown module {key:?}"))?;
+    let slot = params_data::block_slot(key).ok_or_else(|| format!("unknown module {key:?}"))?;
     let ps = params_data::params(key, r#type).ok_or_else(|| {
         format!(
             "module {key:?} is type-dependent: pass `--type N`, and note that some \
@@ -137,7 +146,9 @@ fn cmd_param(
         )
     })?;
     if !(0.0..=1.0).contains(&value) {
-        return Err(format!("value must be 0.0-1.0 (device-normalised), got {value}"));
+        return Err(format!(
+            "value must be 0.0-1.0 (device-normalised), got {value}"
+        ));
     }
     println!(
         "param {block} [b5={slot}] b6={} {} (CC{}) = {value}",
@@ -147,16 +158,13 @@ fn cmd_param(
     transact(dev, conn, k, p, &[])
 }
 
-/// Validate + describe an Amp/Cab **model** selection made over standard CC.
+/// 校验并描述通过标准 CC 进行的 Amp/Cab **型号**选择。
 ///
-/// `CC43` (Amp) and `CC44` (Cab) are documented as "Type CC" but the OEM guide
-/// prints no type table for either block and claims model selection is
-/// unassigned. Hardware testing shows they *are* model selectors over the
-/// 30-entry tables, and that indices `>= 30` are silently ignored — so reject
-/// them here instead of letting the write disappear without effect.
+/// `CC43`（Amp）与 `CC44`（Cab）在文档中标记为 "Type CC"，但 OEM 指南未给出这两个模块的类型表，并声称型号选择未分配。
+/// 硬件实测表明它们*确实是*覆盖 30 项表的型号选择器，且索引 `>= 30` 会被静默忽略。
+/// 因此在此处拒绝，而不是让写入无声失效。
 ///
-/// For every other module this is a no-op: their "type" is a real effect-type ID
-/// with its own table in the OEM MIDI CC reference.
+/// 对其余模块这是空操作：它们的 "type" 是真实的效果类型 ID，在 OEM MIDI CC 参考中拥有自己的表。
 fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
     let (label, count, name) = match block {
         Block::Amp => (
@@ -180,8 +188,14 @@ fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
         ));
     }
     match name {
-        Some(n) => println!("module {label} model {id} -> {n}   (standard CC{})", block.type_cc()),
-        None => println!("module {label} model {id} (not in embedded table; device has 0-{})", count - 1),
+        Some(n) => println!(
+            "module {label} model {id} -> {n}   (standard CC{})",
+            block.type_cc()
+        ),
+        None => println!(
+            "module {label} model {id} (not in embedded table; device has 0-{})",
+            count - 1
+        ),
     }
     Ok(())
 }

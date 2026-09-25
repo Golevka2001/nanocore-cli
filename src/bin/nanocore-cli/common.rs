@@ -1,5 +1,4 @@
-//! Shared plumbing: port listing, device open, hex dumps, frame description,
-//! transactions and chain rendering.
+//! 共享基础辅助代码：端口列表、设备打开、十六进制转储、帧描述、事务与链序渲染。
 
 use nanocore::client::{Error, Nanocore, RetryConfig};
 use nanocore::midi::{self, MidiTransport};
@@ -8,7 +7,7 @@ use nanocore::{Frame, Transport};
 
 use crate::cli::Conn;
 
-/// An opened device connection over the real MIDI transport.
+/// 通过真实 MIDI 传输层建立的已打开设备连接。
 pub type Dev = Nanocore<MidiTransport>;
 
 #[allow(clippy::needless_pass_by_value)]
@@ -36,7 +35,11 @@ pub fn cmd_list() {
 }
 
 pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
+    bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn describe(frame: &Frame) {
@@ -122,8 +125,8 @@ fn retry_config(conn: &Conn) -> RetryConfig {
     c
 }
 
-/// Emit a standard MIDI message (CC / PC) as bare 3-byte packets — no SysEx
-/// wrapper. Flips the transport out of SysEx mode for the duration of the send.
+/// 以裸 3 字节包发送标准 MIDI 消息（CC / PC）——不带 SysEx 包装。
+/// 发送期间将传输层切出 SysEx 模式。
 pub fn send_standard(dev: &mut Dev, bytes: &[u8]) -> Result<(), String> {
     dev.transport().set_sysex(false);
     dev.transport().send(bytes).map_err(|e| e.to_string())
@@ -139,7 +142,7 @@ pub fn parse_hex(parts: &[String]) -> Result<Vec<u8>, String> {
         .collect()
 }
 
-/// Generic SysEx transact: send, wait for a (type-filtered) reply, describe it.
+/// 通用 SysEx 事务：发送，等待（按类型过滤的）应答，并输出其描述。
 pub fn transact(
     dev: &mut Dev,
     conn: &Conn,
@@ -147,7 +150,11 @@ pub fn transact(
     payload: Vec<u8>,
     expect: &[u8],
 ) -> Result<(), String> {
-    println!("tx: type=0x{kind:02x} payload[{}] {}", payload.len(), hex(&payload));
+    println!(
+        "tx: type=0x{kind:02x} payload[{}] {}",
+        payload.len(),
+        hex(&payload)
+    );
     if payload.iter().any(|b| b & 0x80 != 0) {
         eprintln!(
             "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
@@ -165,14 +172,14 @@ pub fn transact(
             describe(&reply);
             Ok(())
         }
-        Err(Error::Timeout { attempts, elapsed }) => {
-            Err(format!("timeout after {attempts} attempt(s) in {elapsed:?}"))
-        }
+        Err(Error::Timeout { attempts, elapsed }) => Err(format!(
+            "timeout after {attempts} attempt(s) in {elapsed:?}"
+        )),
         Err(Error::Transport(e)) => Err(e.to_string()),
     }
 }
 
-/// Render a chain order as `DEL FX1 FX2 ...` using the device display names.
+/// 使用设备显示名将链序渲染为 `DEL FX1 FX2 ...`。
 pub fn render_chain(order: &[u8]) -> String {
     order
         .iter()

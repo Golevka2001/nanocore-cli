@@ -1,21 +1,19 @@
-//! Nanocore (TPE-S10) protocol library.
+//! Nanocore (TPE-S10) 协议库。
 //!
-//! Frame layout (verified from MIDI captures):
+//! 帧布局（经 MIDI 抓包验证）：
 //!
 //! ```text
 //! 7D 4E 43 | dir | flags | 02 | seq_lo | seq_hi | type | payload...
 //! ```
 //!
-//! * `dir`   0x70 = TX (app -> device), 0x71 = RX, 0x72 = unsolicited event
-//! * `flags` observed values: 0x00 (normal), 0x02 (live/streaming),
-//!   0x22 (0x43 preset write), 0x40 (device RX)
-//! * byte 5 is constant `0x02`
-//! * `seq` is a little-endian u16 counter echoed by the device
-//! * `type` is the message type (e.g. 0x6D data, 0x63 snapshot, 0x68 ping)
+//! * `dir`   0x70 = TX（app -> 设备），0x71 = RX，0x72 = 主动（非请求）的事件
+//! * `flags` 观测到的取值：0x00（正常）、0x02（live/流式）、0x22（0x43 预设写入）、0x40（设备 RX）
+//! * 字节 5 恒为 `0x02`
+//! * `seq` 是小端 u16 计数器，由设备回显
+//! * `type` 是消息类型（如 0x6D 数据、0x63 快照、0x68 ping）
 //!
-//! The payload of several messages ends with a device-generated
-//! "compact state" tail (`DA 00 0E ... statusByte ... From Nanocore`).
-//! See [`tail`] for helpers.
+//! 多条消息的载荷以设备生成的"紧凑状态"元数据尾（`DA 00 0E ... statusByte ... From Nanocore`）结尾。
+//! 相关辅助函数见 [`tail`]。
 
 pub mod frame;
 pub mod protocol;
@@ -34,7 +32,7 @@ pub use frame::{Frame, Direction, MAGIC};
 pub use transport::Transport;
 pub use client::Nanocore;
 
-/// Message types (byte 8 of a frame).
+/// 消息类型（帧的字节 8）。
 pub mod msg_type {
     pub const PING: u8 = 0x68;
     pub const DATA: u8 = 0x6D;
@@ -42,37 +40,36 @@ pub mod msg_type {
     pub const PRESET_LIST: u8 = 0x40;
     pub const QUERY: u8 = 0x41;
     pub const EFFECT_DATA: u8 = 0x06;
-    /// Model-list enumeration: query one amp/drive slot name (`0x36`).
+    /// 型号列表枚举：查询单个 amp/drive 槽位名称（`0x36`）。
     pub const MODEL_LIST: u8 = 0x36;
     pub const SETTINGS: u8 = 0x65;
     pub const USB_VOLUME: u8 = 0x66;
     pub const PRESET_WRITE: u8 = 0x43;
-    /// Device-originated notification (unsolicited; carries the new chain order
-    /// after a chain write, among other things).
+    /// 设备发起的通知（主动非请求；链序写入后携带新的链序等信息）。
     pub const NOTIFY: u8 = 0x09;
 }
 
-/// `DATA` (0x6D) sub-commands.
+/// `DATA` (0x6D) 子命令。
 pub mod sub {
-    /// Generic "set scalar field" (preset index / cab / variant / ...).
+    /// 通用的"设置标量字段"（预设索引 / cab / variant / ...）。
     pub const SET_FIELD: u8 = 0x02;
-    /// Enable / disable an effect slot.
+    /// 启用 / 禁用一个效果槽位。
     pub const ENABLE: u8 = 0x03;
-    /// Write a single parameter value (float32).
+    /// 写入单个参数值（float32）。
     pub const PARAM_WRITE: u8 = 0x07;
-    /// Preset naming.
+    /// 预设命名。
     pub const NAME: u8 = 0x0A;
-    // Effect-type switch uses `4 * (param_count + 1)`.
+    // 效果类型切换使用 `4 * (param_count + 1)`。
 }
 
-/// Field ids used by [`sub::SET_FIELD`] and the settings messages.
+/// [`sub::SET_FIELD`] 及设置类消息使用的字段 id。
 pub mod field {
-    /// Effect variant / amp model.
+    /// 效果 variant / amp 型号。
     pub const VARIANT: u8 = 0x06;
-    /// Cabinet / IR.
+    /// 音箱 / IR。
     pub const CAB: u8 = 0x07;
-    /// USB volume (0-100), sent as a 0x66 settings message.
+    /// USB 音量（0-100），以 0x66 设置消息发送。
     pub const USB_VOLUME: u8 = 0x08;
-    /// Preset index (0-based).
+    /// 预设索引（从 0 开始）。
     pub const PRESET: u8 = 0x09;
 }

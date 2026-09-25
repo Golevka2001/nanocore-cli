@@ -1,33 +1,44 @@
-//! `debug probe`: the preset-switch discovery flow from the protocol notes.
+//! `debug probe`：协议笔记中的预设切换探测流程。
 
 use nanocore::protocol;
-use nanocore::{msg_type, Frame, Transport};
+use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::Conn;
-use crate::common::{describe, hex, Dev};
+use crate::common::{Dev, describe, hex};
 
-/// Run the preset-switch flow documented in the protocol notes:
-/// select preset -> read snapshot (0x63) -> query (0x41), then dump every
-/// frame the device emits for a few seconds.
-pub fn probe(
-    dev: &mut Dev,
-    conn: &Conn,
-    index: Option<u8>,
-) -> Result<(), String> {
+/// 按协议笔记中的记载执行预设切换流程：
+/// 选择预设 -> 读取快照（0x63）-> 查询（0x41），然后转储设备在数秒内发出的每一帧。
+pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), String> {
     let idx = index.unwrap_or(0);
 
-    /// One discovery step: label, (msg type, payload), expected reply types.
+    /// 一个探测步骤：标签、（消息类型, 载荷）、期望的应答类型。
     type Step<'a> = (&'a str, (u8, Vec<u8>), Vec<u8>);
     let steps: Vec<Step> = vec![
         ("1 select preset", protocol::select_preset(idx), vec![]),
-        ("2 read snapshot", protocol::request_snapshot(), vec![msg_type::SNAPSHOT]),
-        ("3 query", (msg_type::QUERY, vec![0x00, 0x04, 0x00, 0x08]), vec![]),
-        ("4 preset list", protocol::query_preset_list(0, 8), vec![msg_type::PRESET_LIST]),
+        (
+            "2 read snapshot",
+            protocol::request_snapshot(),
+            vec![msg_type::SNAPSHOT],
+        ),
+        (
+            "3 query",
+            (msg_type::QUERY, vec![0x00, 0x04, 0x00, 0x08]),
+            vec![],
+        ),
+        (
+            "4 preset list",
+            protocol::query_preset_list(0, 8),
+            vec![msg_type::PRESET_LIST],
+        ),
     ];
 
     for (label, (kind, payload), expect) in steps {
         println!("--- step {label} ---");
-        println!("tx: type=0x{kind:02x} payload[{}] {}", payload.len(), hex(&payload));
+        println!(
+            "tx: type=0x{kind:02x} payload[{}] {}",
+            payload.len(),
+            hex(&payload)
+        );
         match dev.transact_with_flags(conn.flags, kind, payload, &expect) {
             Ok(f) => {
                 println!("rx:");

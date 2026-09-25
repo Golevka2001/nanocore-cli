@@ -1,84 +1,80 @@
-//! Bulk asset transfer: amp-model and IR/cab payloads.
+//! 批量资源传输：音箱模型与 IR/箱体载荷。
 //!
-//! Nanocore stores each amp model (~12,242 bytes) and each IR (~4,096 bytes) as
-//! an opaque blob. The app reads one out with a sequence of small "chunk"
-//! requests; the device answers each with a fixed 239-byte payload that decodes
-//! back to 200 bytes of the blob.
+//! Nanocore 将每个音箱模型（约 12,242 字节）和每个 IR（约 4,096 字节）存储为不透明的 blob。
+//! 应用通过一系列小型"数据块"请求读出其中一个；
+//! 设备对每个请求应答一个固定 239 字节的载荷，解码后还原出 blob 的 200 字节。
 //!
-//! # Wire format
+//! # 线上格式
 //!
-//! Request (TX), 8 payload bytes:
+//! 请求（TX），8 字节载荷：
 //!
 //! ```text
 //! 00 04 00 [B3] [SLOT] [ADDR_lo] [ADDR_hi] [LEN]
 //! ```
 //!
-//! Reply (RX), 239 payload bytes:
+//! 应答（RX），239 字节载荷：
 //!
 //! ```text
 //! 00 00 [C2] [B3<<1 | LEAD_HI<<6] 00 [SLOT] [ADDR_lo] [ADDR_hi] 52 2f | data...
 //! ```
 //!
-//! `ADDR_lo`/`ADDR_hi` are a 7-bit pair (`addr = hi*128 + lo`) and the reply
-//! echoes the request's slot and address verbatim.
+//! `ADDR_lo`/`ADDR_hi` 是一个 7 比特对（`addr = hi*128 + lo`），
+//! 应答会原样回显请求中的槽位和地址。
 //!
-//! # Payload codec (7-bit safe, lossless)
+//! # 载荷编解码（7 比特安全，无损）
 //!
-//! SysEx forbids bytes ≥ 0x80, so the blob is packed as:
+//! SysEx 禁止出现 ≥ 0x80 的字节，因此 blob 按如下方式打包：
 //!
-//! * byte 0 of the data = decoded byte 0, with its bit 7 carried by bit 6 of the
-//!   reply's byte 3 (`B3<<1` on an echo, so effectively bit 5 of `B3`).
-//! * then groups of 8: `[mask][d0..d6]`; decoded byte `i` is `d_i | ((mask >> i) & 1) << 7`.
-//! * the final group may be short (`[mask][d0..dk]`).
+//! * 数据的字节 0 = 解码后的字节 0，
+//!   其 bit 7 由应答字节 3 的 bit 6 携带（回显时为 `B3<<1`，因此实际是 `B3` 的 bit 5）。
+//! * 之后按 8 字节分组：`[mask][d0..d6]`；解码字节 `i` 为 `d_i | ((mask >> i) & 1) << 7`。
+//! * 最后一组可以不满（`[mask][d0..dk]`）。
 //!
-//! Each full chunk yields exactly 200 bytes, so chunk `c` of a blob is
-//! `blob[200c .. 200c+200]`.
+//! 每个完整数据块恰好产出 200 字节，
+//! 因此 blob 的第 `c` 个数据块为 `blob[200c .. 200c+200]`。
 //!
-//! # Chunk ordering
+//! # 数据块顺序
 //!
-//! The app issues the requests **out of order**; the payload order is the
-//! **ascending ADDR order**. Always sort replies by `addr` before concatenating.
+//! 应用发出的请求是**乱序**的；载荷顺序是 **ADDR 升序**。
+//! 拼接前务必按 `addr` 对应答排序。
 //!
-//! # Provenance / confidence
+//! # 来源与可信度
 //!
-//! The address plans below are captured **verbatim** from
-//! `factory-preset-export.mmon` (a full factory
-//! export). They are identical for every slot of the same region that holds a
-//! blob of the same size (verified: 15 IR slots share one plan, 19 amp slots
-//! share another; the two smaller plans are prefixes of the larger one).
+//! 下面的地址计划原样取自 `factory-preset-export.mmon`（完整出厂导出）的抓包。
+//! 对同一区域中存放相同大小 blob 的每个槽位，这些计划完全一致
+//! （已验证：15 个 IR 槽位共用一份计划，19 个音箱槽位共用另一份；
+//! 较小的两份计划是较大那份的前缀）。
 //!
-//! The derivation of the addresses is not understood — they are not a linear
-//! byte offset (successive chunks step by 72 or 200, and the final chunk's
-//! address depends on the blob length). Replaying the captured plan is
-//! therefore how this module addresses a blob; that is exactly what the device
-//! was observed to accept.
+//! 这些地址的推导规律尚不清楚——它们不是线性字节偏移（相邻数据块的步进为 72 或 200，
+//! 且最后一个数据块的地址取决于 blob 长度）。
+//! 因此本模块通过重放抓包中的计划来寻址 blob；这正是实测中设备所接受的方式。
 //!
-//! End-to-end validation: decoding every captured reply reproduces the bundle's
-//! `ir/slot_NN.bin` byte-for-byte and matches the manifest's `crc32`
-//! (16/16 IR assets), and it matches the manifest `crc32` for 19/19 amp assets.
+//! 端到端验证：解码所有抓包应答可逐字节复现资源包中的 `ir/slot_NN.bin`，
+//! 并与清单中的 `crc32` 一致（16/16 个 IR 资源），
+//! 同时对 19/19 个音箱资源与清单 `crc32` 一致。
 
-/// Message type used for amp-model region transfers.
+/// 音箱模型区域传输所用的消息类型。
 pub const REGION_AMP: u8 = 0x39;
-/// Message type used for IR/cab region transfers.
+/// IR/箱体区域传输所用的消息类型。
 pub const REGION_IR: u8 = 0x59;
 
-/// Bytes of framing in front of the packed data in a reply payload.
+/// 应答载荷中打包数据前面的帧头字节数。
 pub const PAYLOAD_HEADER: usize = 10;
-/// Bit in reply byte 3 that carries the decoded byte 0's bit 7.
+/// 应答字节 3 中携带解码字节 0 bit 7 的位。
 pub const LEAD_HI_BIT: u8 = 0x40;
-/// Decoded bytes carried by one full chunk.
+/// 一个完整数据块携带的解码字节数。
 pub const CHUNK_BYTES: usize = 200;
-/// `LEN` byte the app sends for every chunk except the last one.
+/// 应用对除最后一个数据块外的每个数据块发送的 `LEN` 字节。
 pub const FULL_CHUNK_LEN: u8 = 72;
 
-/// Blob size of a factory IR (4,096 bytes = 1,024 `f32le` taps).
+/// 出厂 IR 的 blob 大小（4,096 字节 = 1,024 个 `f32le` 抽头）。
 pub const IR_TOTAL: u32 = 4096;
-/// Blob size of a factory amp model (`ampAssets` `length` in the bundle manifest).
+/// 出厂音箱模型的 blob 大小（资源包清单中的 `ampAssets` `length`）。
 pub const AMP_TOTAL: u32 = 12242;
 
-/// `(LEN-byte, address)` per chunk index for a 4,096-byte IR.
+/// 4,096 字节 IR 每个数据块索引对应的 `(LEN 字节, 地址)`。
 ///
-/// Captured verbatim; shared by all 15 IR slots of that size in the export.
+/// 原样取自抓包；导出中所有 15 个该大小的 IR 槽位共用。
 pub const IR_PLAN: &[(u8, u16)] = &[
     (0x08, 0),
     (0x0a, 72),
@@ -103,10 +99,10 @@ pub const IR_PLAN: &[(u8, u16)] = &[
     (0x02, 1952),
 ];
 
-/// `(B3, address)` per chunk index for a 12,242-byte amp model.
+/// 12,242 字节音箱模型每个数据块索引对应的 `(B3, 地址)`。
 ///
-/// Captured verbatim; shared by all 19 amp slots of that size in the export.
-/// Its first 19 entries are identical to [`IR_PLAN`]'s.
+/// 原样取自抓包；导出中所有 19 个该大小的音箱槽位共用。
+/// 其前 19 项与 [`IR_PLAN`] 完全相同。
 pub const AMP_PLAN: &[(u8, u16)] = &[
     (0x08, 0),
     (0x0a, 72),
@@ -172,7 +168,7 @@ pub const AMP_PLAN: &[(u8, u16)] = &[
     (0x02, 6056),
 ];
 
-/// `"amp"` / `"ir"` (also `"cab"`) → region message type.
+/// `"amp"` / `"ir"`（也包括 `"cab"`）→ 区域消息类型。
 pub fn region_from_name(name: &str) -> Option<u8> {
     match name.to_ascii_lowercase().as_str() {
         "amp" | "a" => Some(REGION_AMP),
@@ -181,7 +177,7 @@ pub fn region_from_name(name: &str) -> Option<u8> {
     }
 }
 
-/// Region message type → short label.
+/// 区域消息类型 → 短标签。
 pub fn region_name(region: u8) -> &'static str {
     match region {
         REGION_AMP => "amp",
@@ -190,24 +186,24 @@ pub fn region_name(region: u8) -> &'static str {
     }
 }
 
-/// One chunk request in a read plan.
+/// 读取计划中的一个数据块请求。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChunkRequest {
-    /// Region message type ([`REGION_AMP`] / [`REGION_IR`]).
+    /// 区域消息类型（[`REGION_AMP`] / [`REGION_IR`]）。
     pub region: u8,
-    /// 0-based firmware slot.
+    /// 从 0 开始的固件槽位。
     pub slot: u8,
-    /// `B3` field. Meaning not established; replayed from the capture.
+    /// `B3` 字段。含义未确定；按抓包原样重放。
     pub b3: u8,
-    /// 7-bit-pair address. Meaning not established; replayed from the capture.
+    /// 7 比特对地址。含义未确定；按抓包原样重放。
     pub addr: u16,
-    /// `LEN` field: [`FULL_CHUNK_LEN`] except on the final chunk, where it is the
-    /// number of bytes remaining in the blob.
+    /// `LEN` 字段：除最后一个数据块外均为 [`FULL_CHUNK_LEN`]；
+    /// 最后一个数据块为 blob 中剩余的字节数。
     pub len: u8,
 }
 
 impl ChunkRequest {
-    /// The 8-byte payload to send (frame type is [`REGION_AMP`] / [`REGION_IR`]).
+    /// 要发送的 8 字节载荷（帧类型为 [`REGION_AMP`] / [`REGION_IR`]）。
     pub fn payload(&self) -> Vec<u8> {
         vec![
             0x00,
@@ -222,7 +218,7 @@ impl ChunkRequest {
     }
 }
 
-/// Total blob size in bytes for a region at its standard (factory) size.
+/// 某区域在标准（出厂）大小下的 blob 总字节数。
 pub fn total_for(region: u8) -> Option<u32> {
     match region {
         REGION_AMP => Some(AMP_TOTAL),
@@ -231,10 +227,9 @@ pub fn total_for(region: u8) -> Option<u32> {
     }
 }
 
-/// Build the full read plan for one slot.
+/// 为一个槽位构建完整读取计划。
 ///
-/// Returns `(blob_len, requests)`. The requests must be answered in order; see
-/// [`assemble`].
+/// 返回 `(blob_len, requests)`。这些请求必须按序应答；参见 [`assemble`]。
 pub fn read_plan(region: u8, slot: u8) -> Option<(u32, Vec<ChunkRequest>)> {
     let (plan, total) = match region {
         REGION_AMP => (AMP_PLAN, AMP_TOTAL),
@@ -246,7 +241,7 @@ pub fn read_plan(region: u8, slot: u8) -> Option<(u32, Vec<ChunkRequest>)> {
     for (i, &(b3, addr)) in plan.iter().enumerate() {
         let len = if i + 1 == n {
             let rem = total - CHUNK_BYTES as u32 * (n as u32 - 1);
-            // LEN is a 7-bit field; the captured plans never need to clamp.
+            // LEN 是一个 7 比特字段；抓包得到的计划从不需要截断。
             rem.min(0x7f) as u8
         } else {
             FULL_CHUNK_LEN
@@ -256,7 +251,7 @@ pub fn read_plan(region: u8, slot: u8) -> Option<(u32, Vec<ChunkRequest>)> {
     Some((total, out))
 }
 
-/// Decode the packed data of one reply payload into blob bytes.
+/// 将一个应答载荷中的打包数据解码为 blob 字节。
 pub fn decode_chunk(payload: &[u8]) -> Vec<u8> {
     if payload.len() <= PAYLOAD_HEADER {
         return Vec::new();
@@ -279,18 +274,18 @@ pub fn decode_chunk(payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// One decoded reply chunk.
+/// 一个解码后的应答数据块。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk {
-    /// Slot the device reported in the reply.
+    /// 设备在应答中报告的槽位。
     pub slot: u8,
-    /// Address the device echoed for this chunk.
+    /// 设备为该数据块回显的地址。
     pub addr: u16,
-    /// Decoded bytes (200 for a full chunk).
+    /// 解码后的字节（完整数据块为 200 字节）。
     pub data: Vec<u8>,
 }
 
-/// Parse a reply payload into `(slot, addr, decoded bytes)`.
+/// 将应答载荷解析为 `(slot, addr, 解码字节)`。
 pub fn parse_chunk(payload: &[u8]) -> Option<Chunk> {
     if payload.len() <= PAYLOAD_HEADER {
         return None;
@@ -302,10 +297,10 @@ pub fn parse_chunk(payload: &[u8]) -> Option<Chunk> {
     })
 }
 
-/// Concatenate decoded chunks into the blob.
+/// 将解码后的数据块拼接成 blob。
 ///
-/// The chunks are sorted by `addr` first: the app issues the requests out of
-/// order, so arrival order is not payload order.
+/// 数据块先按 `addr` 排序：应用发出的请求是乱序的，
+/// 因此到达顺序不等于载荷顺序。
 pub fn assemble(chunks: &[Chunk]) -> Vec<u8> {
     let mut sorted: Vec<&Chunk> = chunks.iter().collect();
     sorted.sort_by_key(|c| c.addr);
@@ -316,10 +311,10 @@ pub fn assemble(chunks: &[Chunk]) -> Vec<u8> {
     out
 }
 
-/// CRC-32 (IEEE 802.3 — the same polynomial zlib and the bundle manifest use).
+/// CRC-32（IEEE 802.3——与 zlib 及资源包清单使用的多项式相同）。
 ///
-/// Used to check a read-back blob against the `crc32` recorded in a `.npreset`
-/// manifest without pulling in a dependency.
+/// 用于在不引入依赖的情况下，
+/// 将读回的 blob 与 `.npreset` 清单中记录的 `crc32` 比对。
 pub fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
     for &byte in data {
@@ -332,39 +327,37 @@ pub fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
-// ---------------------------------------------------------------------------
-// Write side (IR slots only; the amp path uses `0x32` and is not yet modelled)
-// ---------------------------------------------------------------------------
+// ─── 写入侧（仅 IR 槽位；音箱路径使用 `0x32`，尚未建模） ───
 
-/// Message type used for IR data-frame writes.
+/// IR 数据帧写入所用的消息类型。
 pub const WRITE_IR: u8 = 0x52;
-/// Message type: begin a slot write.
+/// 消息类型：开始一次槽位写入。
 pub const WRITE_BEGIN: u8 = 0x51;
-/// Message type: write the slot's identity hash.
+/// 消息类型：写入槽位的身份哈希。
 pub const WRITE_HASH: u8 = 0x53;
-/// Message type: write the slot's name.
+/// 消息类型：写入槽位名称。
 pub const WRITE_NAME: u8 = 0x55;
-/// Message type: commit the slot write.
+/// 消息类型：提交槽位写入。
 pub const WRITE_COMMIT: u8 = 0x57;
-/// Message type: query a slot's name + hash (also used to *verify* a write).
+/// 消息类型：查询槽位名称 + 哈希（也用于*校验*一次写入）。
 pub const SLOT_QUERY: u8 = 0x56;
 
-/// Raw bytes carried by one full write frame (64, like the read direction).
+/// 一个完整写入帧携带的原始字节数（64，与读取方向相同）。
 pub const WRITE_CHUNK_BYTES: usize = 64;
 
-/// Encode one slice of a blob into a `0x52` data-frame payload.
+/// 将 blob 的一段切片编码为 `0x52` 数据帧载荷。
 ///
-/// Layout (cracked from `preset-import.mmon`, validated 1019/1019 frames
-/// byte-exact and 15/16 slots crc32-identical to the bundle manifest):
+/// 布局（从 `preset-import.mmon` 破解得出；1019/1019 帧逐字节验证通过，
+/// 15/16 个槽位与资源包清单的 crc32 一致）：
 ///
 /// ```text
 /// [00 44 00 H3 H4 CNT 00 SLOT] [3 lead bytes] [M][7 data] × 9 (last partial)
 /// ```
 ///
-/// * the high bits of the 3 lead bytes live in `H3` bits 4/5/6 (`d0←bit4` …);
-/// * each `M` byte is the LSB-first high-bit mask of the **7 data bytes after it**;
-/// * `H3` bit 0, `H4` bit 6 and `CNT` together carry the chunk index
-///   (`ci = CNT*4 + (H3&1)*2 + (H4>>6)`).
+/// * 3 个前导字节的最高位存放在 `H3` 的 bit 4/5/6（`d0←bit4` 等）；
+/// * 每个 `M` 字节是其后 **7 个数据字节** 的最低位在前的最高位掩码；
+/// * `H3` bit 0、`H4` bit 6 与 `CNT` 共同携带数据块索引
+///   （`ci = CNT*4 + (H3&1)*2 + (H4>>6)`）。
 pub fn encode_data_frame(chunk: &[u8], chunk_index: usize, slot: u8) -> Vec<u8> {
     let n = chunk.len();
     assert!(n >= 1 && n <= WRITE_CHUNK_BYTES, "chunk size out of range");
@@ -403,8 +396,8 @@ pub fn encode_data_frame(chunk: &[u8], chunk_index: usize, slot: u8) -> Vec<u8> 
     out
 }
 
-/// Decode a `0x52` data-frame payload back into blob bytes (inverse of
-/// [`encode_data_frame`]). Useful for tests and for verifying a capture.
+/// 将 `0x52` 数据帧载荷解码回 blob 字节（[`encode_data_frame`] 的逆操作）。
+/// 可用于测试和验证抓包。
 pub fn decode_data_frame(payload: &[u8]) -> Vec<u8> {
     let d = &payload[8..];
     let mut out = Vec::with_capacity(WRITE_CHUNK_BYTES);
@@ -424,45 +417,45 @@ pub fn decode_data_frame(payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `0x51` begin-write: announce `(slot, total)` before the data frames.
+/// `0x51` 开始写入：在数据帧之前宣告 `(slot, total)`。
 pub fn write_begin(slot: u8, total: u32) -> Vec<u8> {
     vec![
         0x00, 0x04, 0x00, 0x00, 0x00, (total >> 8) as u8, total as u8, slot,
     ]
 }
 
-/// The slot identity hash: `[SLOT, c0 & 0x7F, c1 & 0x7F, c2 & 0x7F]` where
-/// `c0..c3` are the bytes of `crc32(blob)` little-endian.
+/// 槽位身份哈希：`[SLOT, c0 & 0x7F, c1 & 0x7F, c2 & 0x7F]`，
+/// 其中 `c0..c3` 是 `crc32(blob)` 的小端字节。
 ///
-/// Verified 16/16 against the `0x53` frames in `preset-import.mmon` (each frame's
-/// hash equals this value for the blob written in that slot's `0x52` sequence).
-/// The device recomputes it on commit and silently rejects the write on
-/// mismatch, so it must be derived from the blob being written — reusing the
-/// previously queried hash of a *different* content makes the commit a no-op.
+/// 已针对 `preset-import.mmon` 中的 `0x53` 帧验证 16/16 通过
+/// （每一帧的哈希都等于该槽位 `0x52` 序列所写 blob 的此值）。
+/// 设备会在提交时重新计算该哈希，不匹配时静默拒绝写入，
+/// 因此它必须由正在写入的 blob 推导——
+/// 复用之前查询到的*不同*内容的哈希会使提交成为空操作。
 pub fn identity_hash(slot: u8, blob: &[u8]) -> [u8; 4] {
     let le = crc32(blob).to_le_bytes();
     [slot, le[0] & 0x7F, le[1] & 0x7F, le[2] & 0x7F]
 }
 
-/// `0x53` identity hash frame — fully derivable from `(slot, blob)`.
+/// `0x53` 身份哈希帧——完全可由 `(slot, blob)` 推导。
 ///
-/// The payload carries the whole `crc32(blob)` in 7-bit-safe form:
+/// 载荷以 7 比特安全形式携带完整的 `crc32(blob)`：
 ///
 /// ```text
 /// 00 08 00 B3 00 len_hi len_lo SLOT | c0&7F c1&7F c2&7F | c3>>7 | c3&7F
 /// ```
 ///
-/// `B3` is **not** an independent field — it completes the CRC:
+/// `B3` **不是**独立字段——它补全 CRC：
 ///
 /// ```text
 /// B3 = ((c2 >> 7) << 6 | (c1 >> 7) << 5 | (c0 >> 7) << 4) | (len != 4096)
 /// ```
 ///
-/// * bits 4-6 = the high bits lost to the 7-bit mask on `c0..c2` (verified
-///   against all 30 slots of `factory-reset.mmon`; a wrong value makes the
-///   device ACK everything and then **silently drop the commit**),
-/// * bit 0 = "asset is shorter than the standard 4096-byte IR" (observed for
-///   the 2780- and 3764-byte factory IRs).
+/// * bit 4-6 = `c0..c2` 被 7 比特掩码丢弃的最高位
+///   （已对照 `factory-reset.mmon` 的全部 30 个槽位验证；
+///   取值错误时设备会应答一切，然后**静默丢弃提交**），
+/// * bit 0 = "资源短于标准 4096 字节 IR"
+///   （在 2780 和 3764 字节的出厂 IR 上观察到）。
 pub fn write_hash(slot: u8, total: u32, blob: &[u8]) -> Vec<u8> {
     let le = crc32(blob).to_le_bytes();
     let b3 = hash_b3(total, &le);
@@ -476,53 +469,53 @@ pub fn write_hash(slot: u8, total: u32, blob: &[u8]) -> Vec<u8> {
     ]
 }
 
-/// The `B3` byte of the `0x53` frame: the three high bits stripped from the
-/// masked CRC bytes `c0..c2`, plus the short-asset flag (see [`write_hash`]).
+/// `0x53` 帧的 `B3` 字节：从掩码后的 CRC 字节 `c0..c2` 剥离出的三个最高位，
+/// 加上短资源标志（参见 [`write_hash`]）。
 fn hash_b3(total: u32, le: &[u8; 4]) -> u8 {
     let v = ((le[2] >> 7) << 2) | ((le[1] >> 7) << 1) | (le[0] >> 7);
     (v << 4) | u8::from(total != IR_TOTAL)
 }
 
-/// `0x55` slot name: `00 [strlen+1] 00 00 [SLOT] [name fragments]`.
+/// `0x55` 槽位名称：`00 [strlen+1] 00 00 [SLOT] [name fragments]`。
 ///
-/// The length prefix counts `strlen + 1` (an implicit NUL terminator) in every
-/// captured frame: `Og412` (5 chars, no NUL sent) → `06`, `Bog412A` (7 chars +
-/// explicit NUL fragment = 8 bytes) → `08`.
+/// 在所有抓包帧中，长度前缀计的是 `strlen + 1`（一个隐式 NUL 终止符）：
+/// `Og412`（5 个字符，未发送 NUL）→ `06`；
+/// `Bog412A`（7 个字符 + 显式 NUL 片段 = 8 字节）→ `08`。
 ///
-/// `name` is the device's NUL-fragment form (e.g. `Bog412` `00` `A` for
-/// `Bog412A`): the first 6 characters, a NUL, then the remainder.
+/// `name` 为设备的 NUL 片段形式（例如 `Bog412A` 对应 `Bog412` `00` `A`）：
+/// 前 6 个字符、一个 NUL，然后是剩余部分。
 pub fn write_name(slot: u8, name: &[u8]) -> Vec<u8> {
-    // Fragment length minus the inserted NUL (if any) = the plain name length.
+    // 片段长度减去插入的 NUL（若有）= 纯名称长度。
     let strlen = name.iter().filter(|&&b| b != 0x00).count();
     let mut v = vec![0x00, (strlen + 1) as u8, 0x00, 0x00, slot];
     v.extend_from_slice(name);
     v
 }
 
-/// `0x57` commit: `00 01 00 00 [SLOT]`.
+/// `0x57` 提交：`00 01 00 00 [SLOT]`。
 pub fn write_commit(slot: u8) -> Vec<u8> {
     vec![0x00, 0x01, 0x00, 0x00, slot]
 }
 
-/// `0x49` open the write session: `00 02 00 00 00 40`.
+/// `0x49` 打开写入会话：`00 02 00 00 00 40`。
 ///
-/// Present at the start of every import / factory-reset capture and in **no**
-/// read-only capture, so it gates the device's write acceptance.
+/// 出现在每个导入/恢复出厂抓包的开头，而**任何**只读抓包中都没有，
+/// 因此它是设备接受写入的门控。
 pub const SESSION_OPEN: u8 = 0x49;
 
 pub fn session_open() -> Vec<u8> {
     vec![0x00, 0x02, 0x00, 0x00, 0x00, 0x40]
 }
 
-/// `0x56` slot query: `00 01 00 00 [SLOT]`. The reply carries the slot's
-/// 4-byte identity hash and its NUL-fragment name.
+/// `0x56` 槽位查询：`00 01 00 00 [SLOT]`。
+/// 应答携带该槽位的 4 字节身份哈希及其 NUL 片段形式的名称。
 pub fn slot_query(slot: u8) -> Vec<u8> {
     vec![0x00, 0x01, 0x00, 0x00, slot]
 }
 
-/// Split a plain ASCII name into the device's NUL-fragment form:
-/// first 6 characters, a NUL, then the remainder (observed rule; names longer
-/// than 6 chars are always split exactly there in every captured write).
+/// 将纯 ASCII 名称切分为设备的 NUL 片段形式：
+/// 前 6 个字符、一个 NUL，然后是剩余部分（实测规则；在每条抓包写入中，
+/// 超过 6 个字符的名称总是在该处切分）。
 pub fn encode_name(name: &[u8]) -> Vec<u8> {
     let b = name;
     if b.len() <= 6 {
@@ -534,8 +527,8 @@ pub fn encode_name(name: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Extract `(hash, name)` from a `0x56` reply
-/// (`00 00 1e … [hash x4] 1a 1a 00 00 [name fragments] …`).
+/// 从 `0x56` 应答中提取 `(hash, name)`
+/// （`00 00 1e … [hash x4] 1a 1a 00 00 [name fragments] …`）。
 pub fn parse_slot_query(payload: &[u8]) -> Option<([u8; 4], Vec<u8>)> {
     if payload.len() < 24 || payload[17] != 0x1a || payload[18] != 0x1a {
         return None;
@@ -560,7 +553,7 @@ mod tests {
         assert_eq!(crc32(b""), 0);
     }
 
-    /// First 64 bytes of `ir/slot_00.bin` from the bundle (the known plaintext).
+    /// 资源包中 `ir/slot_00.bin` 的前 64 字节（已知明文）。
     const IR0_HEAD: &[u8] = &[
         0x2d, 0x88, 0x8c, 0x3c, 0x6f, 0x4a, 0x25, 0x3e, 0x1b, 0x4f, 0xea, 0x3e, 0xa0, 0xfd, 0x30,
         0x3f, 0x14, 0x8c, 0x39, 0x3f, 0xb6, 0x4b, 0x1d, 0x3f, 0x03, 0x23, 0xba, 0x3e, 0x7c, 0x7d,
@@ -569,8 +562,8 @@ mod tests {
         0x95, 0x46, 0x04, 0x3c,
     ];
 
-    /// Captured `0x52` write frame #0 for IR slot 0, verbatim from
-    /// `preset-import.mmon`.
+    /// IR 槽位 0 的抓包 `0x52` 写入帧 #0，
+    /// 原样取自 `preset-import.mmon`。
     const IR0_WRITE_FRAME0: &[u8] = &[
         0x00, 0x44, 0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x08, 0x0c, 0x00, 0x3c, 0x6f, 0x4a,
         0x25, 0x3e, 0x1b, 0x4f, 0x0d, 0x6a, 0x3e, 0x20, 0x7d, 0x30, 0x3f, 0x14, 0x09, 0x0c, 0x39,
@@ -589,9 +582,9 @@ mod tests {
 
     #[test]
     fn decode_data_frame_inverts_encode() {
-        // Full chunk.
+        // 完整数据块。
         assert_eq!(decode_data_frame(&encode_data_frame(IR0_HEAD, 0, 0)), IR0_HEAD);
-        // A short final chunk (52 bytes, like the 3,764-byte asset's last one).
+        // 一个较短的最后一个数据块（52 字节，如 3,764 字节资源的末块）。
         let tail: Vec<u8> = (0..52).map(|i| (i * 37 + 129) as u8).collect();
         let enc = encode_data_frame(&tail, 58, 15);
         assert_eq!(decode_data_frame(&enc), tail);
@@ -611,30 +604,31 @@ mod tests {
         assert_eq!(write_commit(2), vec![0x00, 0x01, 0x00, 0x00, 0x02]);
         assert_eq!(slot_query(3), vec![0x00, 0x01, 0x00, 0x00, 0x03]);
 
-        // Anchored to the standard CRC-32 check vector (crc32("123456789") =
-        // 0xCBF43926, asserted in `crc32_matches_the_standard_vector`) instead
-        // of a blob on disk, so the expectations cannot drift with the formula
-        // under test. LE bytes `26 39 f4 cb` -> masked `26 39 74`; c3 = 0xCB
-        // splits into carry `01` | low `4b`. A 9-byte blob is "short" (!= 4096)
-        // so B3 bit 0 = 1, and c2's high bit (0xf4) lands in B3 bit 6 -> 0x41.
-        // The import capture agrees: crc32(ir/slot_00.bin) = 0xdab13b3e gives
-        // identity [00 3e 3b 31] and B3 0x40 by the same derivation.
+        // 以标准 CRC-32 校验向量（crc32("123456789") = 0xCBF43926，
+        // 在 `crc32_matches_the_standard_vector` 中断言）为基准，
+        // 而不是磁盘上的某个 blob，这样期望值不会随被测公式的漂移而改变。
+        // 小端字节 `26 39 f4 cb` -> 掩码后为 `26 39 74`；
+        // c3 = 0xCB 拆分为进位 `01` | 低位 `4b`。
+        // 9 字节的 blob 属于"短"资源（!= 4096），因此 B3 bit 0 = 1，
+        // 而 c2 的最高位（0xf4）落在 B3 的 bit 6 -> 0x41。
+        // 导入抓包也印证了同一推导：
+        // crc32(ir/slot_00.bin) = 0xdab13b3e 得到 identity [00 3e 3b 31] 和 B3 0x40。
         assert_eq!(identity_hash(7, b"123456789"), [0x07, 0x26, 0x39, 0x74]);
         assert_eq!(
             write_hash(7, 9, b"123456789"),
             vec![0x00, 0x08, 0x00, 0x41, 0x00, 0x00, 0x09, 0x07, 0x26, 0x39, 0x74, 0x01, 0x4b]
         );
 
-        // Name prefix counts strlen + 1 (implicit terminator): Og412 -> 06.
+        // 名称长度前缀计 strlen + 1（隐式终止符）：Og412 -> 06。
         assert_eq!(write_name(14, b"Og412")[1], 0x06);
         assert_eq!(write_name(0, b"Bog412\x00A")[1], 0x08);
         assert_eq!(write_name(0, b"Bog412\x00A").len(), 5 + 8);
     }
 
-    /// The `B3` byte over all 30 factory IRs, cross-checked against the
-    /// `0x53` frames of `factory-reset.mmon` (contents = the APK's bundled
-    /// `factory_presets/ir/NN.bin`). Requires the extracted APK tree.
-    #[ignore = "needs the extracted APK IR tree at /tmp/apkx/... (reverse-engineering workstation)"]
+    /// 全部 30 个出厂 IR 的 `B3` 字节，
+    /// 与 `factory-reset.mmon` 的 `0x53` 帧交叉核对
+    /// （其内容 = APK 内置的 `factory_presets/ir/NN.bin`）。需要已解包的 APK 目录树。
+    #[ignore = "needs the extracted factory IR files (not part of this repo)"]
     #[test]
     fn hash_b3_matches_all_30_factory_irs() {
         let dir = std::path::Path::new("/tmp/apkx/assets/flutter_assets/assets/nanocore/factory_presets/ir");
@@ -642,7 +636,7 @@ mod tests {
             eprintln!("skipping: APK IR tree not extracted");
             return;
         }
-        // (slot, expected B3) lifted from the capture.
+        // (slot, 期望的 B3)，取自抓包。
         let expect: [(u8, u8); 30] = [
             (0, 0x40), (1, 0x40), (2, 0x20), (3, 0x70), (4, 0x10), (5, 0x70),
             (6, 0x60), (7, 0x20), (8, 0x50), (9, 0x40), (10, 0x60), (11, 0x01),
@@ -658,8 +652,8 @@ mod tests {
             assert_eq!(frame[3], want, "B3 mismatch for slot {slot}");
             assert_eq!(frame[4], 0x00);
             assert_eq!(u16::from_be_bytes([frame[5], frame[6]]) as usize, blob.len());
-            // The frame's CRC bytes must decode back to the full crc32.
-            // B3 bit4 = c0's high bit, bit5 = c1's, bit6 = c2's.
+            // 帧中的 CRC 字节必须能解码回完整的 crc32。
+            // B3 bit4 = c0 的最高位，bit5 = c1 的，bit6 = c2 的。
             let c0 = frame[8] | (((frame[3] >> 4) & 1) << 7);
             let c1 = frame[9] | (((frame[3] >> 5) & 1) << 7);
             let c2 = frame[10] | (((frame[3] >> 6) & 1) << 7);
@@ -668,8 +662,8 @@ mod tests {
         }
     }
 
-    /// Synthetic check of the B3 bit layout: crc32("123456789") = 0xCBF43926,
-    /// LE `26 39 cb 4c` -> c0..c2 high bits = 0,0,1 -> v = 4.
+    /// B3 位布局的合成校验：crc32("123456789") = 0xCBF43926，
+    /// 小端 `26 39 cb 4c` -> c0..c2 的最高位 = 0,0,1 -> v = 4。
     #[test]
     fn hash_b3_bit_layout() {
         let le = crc32(b"123456789").to_le_bytes();
@@ -677,8 +671,8 @@ mod tests {
         assert_eq!(hash_b3(2780, &le), 0x41);
     }
 
-    /// First 64 payload bytes of the real reply for IR slot 0, address 0,
-    /// captured from `factory-preset-export.mmon`.
+    /// IR 槽位 0、地址 0 的真实应答的前 64 个载荷字节，
+    /// 取自 `factory-preset-export.mmon` 抓包。
     const IR0_CHUNK0: &[u8] = &[
         0x00, 0x00, 0x4d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x2d, 0x03, 0x08, 0x0c, 0x3c,
         0x6f, 0x4a, 0x25, 0x3e, 0x34, 0x1b, 0x4f, 0x6a, 0x3e, 0x20, 0x7d, 0x30, 0x24, 0x3f, 0x14,
@@ -702,8 +696,8 @@ mod tests {
 
     #[test]
     fn lead_high_bit_comes_from_payload_byte_3() {
-        // Same data, but byte 3 has the LEAD_HI bit set: decoded byte 0 flips
-        // its top bit only.
+        // 相同数据，但字节 3 置位了 LEAD_HI 位，
+        // 解码后的字节 0 仅翻转其最高位。
         let mut p = IR0_CHUNK0.to_vec();
         let plain = decode_chunk(&p);
         p[3] |= LEAD_HI_BIT;
@@ -718,7 +712,7 @@ mod tests {
         let c = parse_chunk(IR0_CHUNK0).expect("parse");
         assert_eq!(c.slot, 0);
         assert_eq!(c.addr, 0);
-        assert_eq!(c.data.len(), 47); // truncated payload -> fewer bytes
+        assert_eq!(c.data.len(), 47); // 载荷被截断 -> 字节更少
     }
 
     #[test]
@@ -727,7 +721,7 @@ mod tests {
         assert_eq!(total, 4096);
         assert_eq!(plan.len(), 21);
         assert_eq!(plan[0].payload(), vec![0x00, 0x04, 0x00, 0x08, 0x00, 0x00, 0x00, 0x48]);
-        // 20 full chunks + 96 remaining bytes.
+        // 20 个完整数据块 + 剩余 96 字节。
         assert_eq!(plan[20].len, 96);
         assert!(plan[..20].iter().all(|r| r.len == FULL_CHUNK_LEN));
 
@@ -736,7 +730,7 @@ mod tests {
         assert_eq!(amp.len(), 62);
         assert_eq!(61 * CHUNK_BYTES as u32 + 42, amp_total);
         assert_eq!(amp[61].len, 42);
-        // The two plans share a (b3, addr) prefix; only the region differs.
+        // 两个计划共享 (b3, addr) 前缀；仅区域不同。
         assert!(amp[..19]
             .iter()
             .zip(plan[..19].iter())
@@ -753,7 +747,7 @@ mod tests {
     #[test]
     fn assemble_orders_by_addr_not_arrival() {
         let mk = |addr: u16, b: u8| Chunk { slot: 0, addr, data: vec![b; 2] };
-        // Deliberately out of order, as the device answers.
+        // 特意按设备应答的乱序排列。
         let got = assemble(&[mk(144, 3), mk(0, 1), mk(72, 2)]);
         assert_eq!(got, vec![1, 1, 2, 2, 3, 3]);
     }

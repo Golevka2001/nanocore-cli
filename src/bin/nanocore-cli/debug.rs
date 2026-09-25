@@ -1,22 +1,17 @@
-//! `debug` commands: low-level MIDI / protocol tools (raw frames, SysEx,
-//! monitoring, replay).
+//! `debug` 命令：底层 MIDI/协议工具（原始帧、SysEx、监听、重放）。
 
 use std::io::Write;
 
 use nanocore::midicc;
 use nanocore::models_data;
 use nanocore::protocol;
-use nanocore::{msg_type, Frame, Transport};
+use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, Power};
-use crate::common::{describe, hex, parse_hex, send_standard, transact, Dev};
+use crate::common::{Dev, describe, hex, parse_hex, send_standard, transact};
 use crate::probe::probe;
 
-pub fn cmd_debug(
-    dev: &mut Dev,
-    conn: &Conn,
-    cmd: DebugCmd,
-) -> Result<(), String> {
+pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String> {
     match cmd {
         DebugCmd::Ping => {
             let (k, p) = protocol::ping();
@@ -41,14 +36,15 @@ pub fn cmd_debug(
             }
         }
         DebugCmd::Cc { cc, value } => {
-            // CC numbers default to **decimal** so they can be copied straight
-            // out of the OEM MIDI CC reference; `0x..` selects hex.
+            // CC 编号默认使用**十进制**，便于直接从 OEM MIDI CC 参考中照抄；
+            // `0x..` 前缀选择十六进制。
             let cc_num = match cc.strip_prefix("0x") {
-                Some(hex) => u8::from_str_radix(hex, 16)
-                    .map_err(|_| format!("bad hex CC number {cc:?}"))?,
-                None => cc
-                    .parse()
-                    .map_err(|_| format!("CC number must be decimal 0-127 ({cc:?}); use 0x.. for hex"))?,
+                Some(hex) => {
+                    u8::from_str_radix(hex, 16).map_err(|_| format!("bad hex CC number {cc:?}"))?
+                }
+                None => cc.parse().map_err(|_| {
+                    format!("CC number must be decimal 0-127 ({cc:?}); use 0x.. for hex")
+                })?,
             };
             if cc_num > 127 {
                 return Err(format!("CC number must be 0-127, got {cc_num}"));
@@ -63,8 +59,10 @@ pub fn cmd_debug(
             transact(dev, conn, k, p, &[])
         }
         DebugCmd::Setparam { b3, b5, b6, value } => {
-            let p = |s: &str| u8::from_str_radix(s.trim_start_matches("0x"), 16)
-                .map_err(|_| format!("{s:?} must be hex"));
+            let p = |s: &str| {
+                u8::from_str_radix(s.trim_start_matches("0x"), 16)
+                    .map_err(|_| format!("{s:?} must be hex"))
+            };
             let (b3, b5, b6) = (p(&b3)?, p(&b5)?, p(&b6)?);
             let (k, payload) = protocol::param_write(b3, b5, b6, value);
             transact(dev, conn, k, payload, &[])
@@ -88,7 +86,13 @@ pub fn cmd_debug(
                      bytes and the device will discard the message (7-bit-safe encoding?)"
                 );
             }
-            transact(dev, conn, bytes[0], bytes[1..].to_vec(), &conn.expect.clone())
+            transact(
+                dev,
+                conn,
+                bytes[0],
+                bytes[1..].to_vec(),
+                &conn.expect.clone(),
+            )
         }
         DebugCmd::Replay { bytes } => {
             let bytes = parse_hex(&bytes)?;

@@ -1,21 +1,20 @@
-//! Payload builders and parsers for the confirmed message types.
+//! 已确认消息类型的载荷构造器与解析器。
 //!
-//! All byte layouts here are derived from real MIDI captures.
+//! 此处所有字节布局均来自真实 MIDI 抓包。
 
 use crate::field;
 use crate::msg_type;
 use crate::sub;
 
-/// Encode a value as a little-endian float32 (raw, NOT wire-safe).
+/// 将值编码为小端 float32（原始值，非线上安全格式）。
 ///
-/// Use this only for decoding/inspection. To send a parameter value use
-/// [`encode_param_value`], which produces bytes the device can actually
-/// receive over MIDI.
+/// 仅用于解码/检查。发送参数值请使用 [`encode_param_value`]，
+/// 它生成的字节才是设备在 MIDI 上实际能接收的格式。
 pub fn encode_param_float(value: f32) -> [u8; 4] {
     value.to_le_bytes()
 }
 
-/// Decode a little-endian float32.
+/// 解码小端 float32。
 pub fn decode_param_float(bytes: &[u8]) -> Option<f32> {
     if bytes.len() < 4 {
         return None;
@@ -23,105 +22,94 @@ pub fn decode_param_float(bytes: &[u8]) -> Option<f32> {
     Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
-/// Encode a parameter value for transmission — **this is the wire format.**
+/// 编码用于传输的参数值 —— **这就是线上格式。**
 ///
-/// The value is a 32-bit IEEE754 float, but it travels inside a SysEx message
-/// where every data byte must be `< 0x80`, so only 28 bits of the float reach
-/// the device (the high bit of each of the 4 bytes is always forced to 0).
-/// The official app deals with this by sending `float32(value)` with the high
-/// bit of every byte cleared — and **so do we**. This is verified two ways:
+/// 该值是 32 位 IEEE754 浮点数，但它运行在 SysEx 消息内，
+/// 其中每个数据字节必须 `< 0x80`，因此浮点数只有 28 位能到达设备（4 个字节中每个的最高位恒被强制为 0）。
+/// 官方应用的处理方式是直接发送 `float32(value)` 并清除每个字节的最高位 —— **我们也这么做**。
+/// 这一点通过两种方式验证：
 ///
-/// * Every one of the 481 writes in `scream-knob-sweep.mmon` has all
-///   four value bytes `< 0x80` — i.e. the app clears the high bits.
-/// * A live round-trip (`setparam 0 0 0 0.2` -> snapshot) stored exactly
-///   `4e 4c 4c 3e` (= 0.19951), i.e. the device keeps the cleared float.
+/// * `scream-knob-sweep.mmon` 中全部 481 次写入的四个值字节都 `< 0x80` —— 即应用确实清除了最高位。
+/// * 一次实机往返（`setparam 0 0 0 0.2` -> 快照）精确存下 `4e 4c 4c 3e`（= 0.19951），
+///   即设备保留的是清除最高位后的浮点值。
 ///
-/// Precision is therefore 28 bits. The four lost bits are bits 7/15/23/31 of
-/// the float: bits 7 and 15 are low mantissa bits (negligible), bit 31 is the
-/// sign (always 0 for positive values), but **bit 23 is the exponent's LSB** —
-/// so a value whose float32 exponent is odd collapses to the next lower *even*
-/// exponent (worst case ≈ 2× error, e.g. `0.3 -> 0.1495`). That is inherent to
-/// the hardware, not a bug; the real app lives with the same quantization.
+/// 因此精度为 28 位。丢失的四个位是浮点数的第 7/15/23/31 位：
+/// 第 7 位和第 15 位是低尾数位（影响可忽略），第 31 位是符号位（正值时恒为 0），
+/// 但**第 23 位是指数的最低有效位** ——
+/// 所以 float32 指数为奇数的值会塌缩到下一个更低的*偶数*指数
+/// （最坏情况约 2 倍误差，例如 `0.3 -> 0.1495`）。
+/// 这是硬件固有限制，不是 bug；官方应用同样承受这一量化误差。
 pub fn encode_param_value(value: f32) -> [u8; 4] {
     let b = value.to_le_bytes();
     [b[0] & 0x7F, b[1] & 0x7F, b[2] & 0x7F, b[3] & 0x7F]
 }
 
-// ---------------------------------------------------------------------------
-// Builders
-// ---------------------------------------------------------------------------
+// ─── 构造器 ───────────────────────────
 
-/// `0x6D` sub `0x02`: set a scalar field (preset / cab / variant).
+/// `0x6D` sub `0x02`：设置标量字段（预设 / 箱体 / 变体）。
 pub fn set_field(field_id: u8, value: u8) -> (u8, Vec<u8>) {
     (msg_type::DATA, vec![0x00, sub::SET_FIELD, 0x00, 0x00, field_id, value])
 }
 
-/// Select a preset by 0-based index.
+/// 按 0 起始索引选择预设。
 pub fn select_preset(index: u8) -> (u8, Vec<u8>) {
     set_field(field::PRESET, index)
 }
 
-/// Select a cabinet / IR by index.
+/// 按索引选择箱体 / IR。
 pub fn select_cab(index: u8) -> (u8, Vec<u8>) {
     set_field(field::CAB, index)
 }
 
-/// Select an amp model / effect variant.
+/// 选择音箱模型 / 效果变体。
 pub fn select_variant(variant: u8) -> (u8, Vec<u8>) {
     set_field(field::VARIANT, variant)
 }
 
-/// `0x6D` sub `0x03`: enable / disable an effect slot.
+/// `0x6D` sub `0x03`：启用 / 禁用效果槽位。
 pub fn set_enabled(slot: u8, enabled: bool) -> (u8, Vec<u8>) {
     (msg_type::DATA, vec![0x00, sub::ENABLE, 0x00, 0x00, 0x03, slot, enabled as u8])
 }
 
-/// `0x6D` sub `0x07`: write a single parameter.
+/// `0x6D` sub `0x07`：写入单个参数。
 ///
-/// Wire layout, derived from every `0x07` message in the captures:
+/// 线上布局，来自抓包中每一条 `0x07` 消息：
 ///
 /// ```text
 /// 00 07 00 [b3] 01 [b5] [b6] <float32 x 4>
 /// ```
 ///
-/// * `b6` — **parameter index** within the effect. Verified from
-///   `noise-gate-tweak.mmon`: the noise gate exposes exactly two
-///   params and `b6` takes exactly the values `0x00` (threshold) and
-///   `0x01` (release).
-/// * `b5` — **slot / effect instance**. `0x00` for every write in the fx1
-///   capture, `0x01` for every write in the fx2 capture.
-/// * `b3` — cycles through `0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38`
-///   (all combinations of bits 0x08/0x10/0x20) *within a single knob drag*, so
-///   it is **not** part of the parameter address. It is an app-side fragment
-///   marker: the official app re-sends the full float up to 8 times, one per
-///   differing nibble. **Verified on live hardware that a single frame with
-///   any `b3` (we used [`DEFAULT_B3`]) is fully accepted and updates the whole
-///   parameter** — so for writing from this library `b3` can be left at 0.
+/// * `b6` —— 效果内的**参数索引**。由 `noise-gate-tweak.mmon` 验证：
+///   噪声门恰好暴露两个参数，`b6` 也恰好只取 `0x00`（阈值）和 `0x01`（释放）两个值。
+/// * `b5` —— **槽位 / 效果实例**。fx1 抓包中的每次写入均为 `0x00`，
+///   fx2 抓包中的每次写入均为 `0x01`。
+/// * `b3` —— 在*单次旋钮拖动内*循环取 `0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38`
+///   （即 0x08/0x10/0x20 位的全部组合），因此它**不是**参数地址的一部分。
+///   它是应用侧的分片标记：官方应用最多把完整浮点值重发 8 次，每种不同半字节对应一次。
+///   **已在实机上验证：任一 `b3` 值（我们用 [`DEFAULT_B3`]）的单帧都会被完整接受并更新整个参数**
+///   —— 所以从本库写入时 `b3` 可保持为 0。
 ///
-/// The value is encoded with [`encode_param_value`] (a 7-bit-safe float32).
+/// 值使用 [`encode_param_value`] 编码（7 比特安全的 float32）。
 pub fn param_write(b3: u8, b5: u8, b6: u8, value: f32) -> (u8, Vec<u8>) {
     let mut p = vec![0x00, sub::PARAM_WRITE, 0x00, b3, 0x01, b5, b6];
     p.extend_from_slice(&encode_param_value(value));
     (msg_type::DATA, p)
 }
 
-/// `b3` value the captures use most often.
+/// 抓包中最常用的 `b3` 值。
 pub const DEFAULT_B3: u8 = 0x00;
 
-// ---------------------------------------------------------------------------
-// Effect chain order (`chainOrder`)
-// ---------------------------------------------------------------------------
+// ─── 效果链序（`chainOrder`） ────────
 
-/// Number of effects in the chain.
+/// 效果链中的效果数量。
 pub const CHAIN_LEN: usize = 8;
 
-/// Chain role table: `index -> (cli name, display name)`.
+/// 链角色表：`index -> (cli 名称, 显示名称)`。
 ///
-/// **This order is NOT the CC-block order.** The standard MIDI CC map lists the
-/// blocks as `FX1 FX2 AMP CAB MOD DELAY REVERB EQ` (CC25 = Mod, CC26 = Delay),
-/// whereas the chain uses `DEL` *before* `MOD`. Verified from
-/// `enable-del-eq.mmon`: the user enabled DEL and EQ and the device received
-/// `ENABLE slot=4` and `ENABLE slot=7`, so `DEL == 4`, `MOD == 5`, `EQ == 7`.
+/// **此顺序不是 CC 块的顺序。** 标准 MIDI CC 映射把各块列为 `FX1 FX2 AMP CAB MOD DELAY REVERB EQ`
+/// （CC25 = Mod，CC26 = Delay），而链中 `DEL` 排在 `MOD` *之前*。
+/// 由 `enable-del-eq.mmon` 验证：用户启用了 DEL 和 EQ，设备收到 `ENABLE slot=4` 和 `ENABLE slot=7`，
+/// 故 `DEL == 4`、`MOD == 5`、`EQ == 7`。
 pub const CHAIN_ROLES: [(&str, &str); CHAIN_LEN] = [
     ("fx1", "FX1"),
     ("fx2", "FX2"),
@@ -133,10 +121,9 @@ pub const CHAIN_ROLES: [(&str, &str); CHAIN_LEN] = [
     ("eq", "EQ"),
 ];
 
-/// Resolve a chain role by CLI/display name (case-insensitive).
+/// 按 CLI/显示名称解析链角色（大小写不敏感）。
 ///
-/// Accepts both the short CLI names (`delay`, `reverb`) and the device display
-/// names (`del`, `rev`), plus the obvious aliases.
+/// 同时接受短 CLI 名称（`delay`、`reverb`）和设备显示名称（`del`、`rev`），以及常见的别名。
 pub fn chain_role_index(name: &str) -> Option<u8> {
     let n = name.trim().to_ascii_lowercase();
     let alias: &str = match n.as_str() {
@@ -152,12 +139,12 @@ pub fn chain_role_index(name: &str) -> Option<u8> {
         .map(|i| i as u8)
 }
 
-/// Device display name for a chain role index.
+/// 按链角色索引返回设备显示名称。
 pub fn chain_role_name(index: u8) -> Option<&'static str> {
     CHAIN_ROLES.get(index as usize).map(|(_, disp)| *disp)
 }
 
-/// Insert the fixed `0x00` filler this message layout requires.
+/// 插入该消息布局所需的固定 `0x00` 填充字节。
 fn chain_encode(order: &[u8], insert_at: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(CHAIN_LEN + 1);
     v.extend_from_slice(&order[..insert_at]);
@@ -166,12 +153,11 @@ fn chain_encode(order: &[u8], insert_at: usize) -> Vec<u8> {
     v
 }
 
-/// Remove the fixed `0x00` filler from a wire field.
+/// 从线上字段中移除固定 `0x00` 填充字节。
 ///
-/// Returns `None` unless the byte at `remove_at` really is `0x00` *and* what
-/// remains is a permutation of `0..CHAIN_LEN`. That strictness is deliberate:
-/// the encoded field contains two `0x00` bytes (the filler and a legitimate
-/// `FX1` element), so a lenient decoder could silently produce a wrong chain.
+/// 仅当 `remove_at` 处的字节确实是 `0x00` *且*剩余部分是 `0..CHAIN_LEN` 的一个排列时才返回 `Some`。
+/// 这种严格性是有意为之：编码后的字段包含两个 `0x00` 字节（填充字节和合法的 `FX1` 元素），
+/// 宽松的解码器可能悄悄产出错误的链。
 fn chain_decode(encoded: &[u8], remove_at: usize) -> Option<Vec<u8>> {
     if encoded.len() != CHAIN_LEN + 1 || encoded.get(remove_at) != Some(&0x00) {
         return None;
@@ -186,24 +172,22 @@ fn chain_decode(encoded: &[u8], remove_at: usize) -> Option<Vec<u8>> {
     Some(v)
 }
 
-/// Filler index used by the `0x6D` chain **write** layout (see [`chain_write`]).
+/// `0x6D` 链**写入**布局使用的填充索引（见 [`chain_write`]）。
 pub const CHAIN_WRITE_FILLER: usize = 5;
-/// Filler index used by the `0x09` device **notification** layout.
+/// `0x09` 设备**通知**布局使用的填充索引。
 pub const CHAIN_NOTIFY_FILLER: usize = 1;
-/// Filler index used by the `0x43` preset-write layout.
+/// `0x43` 预设写入布局使用的填充索引。
 pub const CHAIN_PRESET_FILLER: usize = 2;
 
-/// `0x6D` sub `0x0A`, field `0x05`: write the effect chain order.
+/// `0x6D` sub `0x0A`，字段 `0x05`：写入效果链序。
 ///
-/// `order` is a permutation of `0..8` giving the chain from left to right, using
-/// [`CHAIN_ROLES`] indices. Wire layout:
+/// `order` 是 `0..8` 的一个排列，按从左到右的链序使用 [`CHAIN_ROLES`] 索引。线上布局：
 ///
 /// ```text
 /// 00 0A 00 00 05 08 <9 bytes>
 /// ```
 ///
-/// The 9-byte field is the 8-element `chainOrder` with a `0x00` inserted at
-/// index [`CHAIN_WRITE_FILLER`]. Returns `None` if `order` is not a permutation.
+/// 9 字节字段是在索引 [`CHAIN_WRITE_FILLER`] 处插入 `0x00` 后的 8 元素 `chainOrder`。若 `order` 不是排列则返回 `None`。
 pub fn chain_write(order: &[u8]) -> Option<(u8, Vec<u8>)> {
     if order.len() != CHAIN_LEN {
         return None;
@@ -214,7 +198,7 @@ pub fn chain_write(order: &[u8]) -> Option<(u8, Vec<u8>)> {
     Some((msg_type::DATA, p))
 }
 
-/// Parse the `0x6D` chain-write payload.
+/// 解析 `0x6D` 链写入载荷。
 pub fn parse_chain_write(payload: &[u8]) -> Option<Vec<u8>> {
     if payload.len() != 15 || payload[1] != sub::NAME || payload[4] != 0x05 {
         return None;
@@ -222,8 +206,7 @@ pub fn parse_chain_write(payload: &[u8]) -> Option<Vec<u8>> {
     chain_decode(&payload[6..15], CHAIN_WRITE_FILLER)
 }
 
-/// Parse the 9-byte field out of a `0x09` device notification payload
-/// (`00 08` + 9 bytes).
+/// 从 `0x09` 设备通知载荷（`00 08` + 9 字节）中解析 9 字节字段。
 pub fn parse_chain_notify(payload: &[u8]) -> Option<Vec<u8>> {
     if payload.len() < 11 || payload[1] != CHAIN_LEN as u8 {
         return None;
@@ -231,22 +214,20 @@ pub fn parse_chain_notify(payload: &[u8]) -> Option<Vec<u8>> {
     chain_decode(&payload[2..11], CHAIN_NOTIFY_FILLER)
 }
 
-/// Filler index used by the `0x6D` **ACK** the device returns for a chain write.
+/// 设备为链写入返回的 `0x6D` **ACK** 所用的填充索引。
 ///
-/// The ACK mirrors the request (`00 00` then the request payload from byte 1)
-/// but re-encodes the 9-byte field with a **different** filler index than the
-/// write used. Verified on four samples — two capture ACKs and two live ACKs
-/// from real hardware — where removing index 4 yields exactly the order that
-/// was requested. Note the field is inherently ambiguous in isolation (it
-/// contains two `0x00` bytes), so this index matters.
+/// ACK 镜像请求（先是 `00 00`，然后从第 1 字节起的请求载荷），
+/// 但以与写入**不同**的填充索引重新编码 9 字节字段。
+/// 已在四个样本上验证 —— 两个抓包 ACK 和两个来自实机的实时 ACK ——
+/// 移除索引 4 后得到的恰好是所请求的链序。
+/// 注意该字段在孤立状态下天然有歧义（它包含两个 `0x00` 字节），所以这个索引很重要。
 pub const CHAIN_ACK_FILLER: usize = 4;
 
-/// Parse the chain order out of the `0x6D` ACK payload.
+/// 从 `0x6D` ACK 载荷中解析链序。
 ///
-/// The ACK is `00 00` followed by the request payload from its second byte, so
-/// the sub-command id sits at `[2]`, the field selector at `[5]`, and the
-/// 9-byte chain field at `[7..16)`. Live payload observed for a requested
-/// `[4,7,0,1,2,3,5,6]`:
+/// ACK 是 `00 00` 后接请求载荷自第二个字节起的内容，
+/// 因此子命令 id 位于 `[2]`，字段选择器位于 `[5]`，9 字节链字段位于 `[7..16)`。
+/// 对请求 `[4,7,0,1,2,3,5,6]` 观察到的实时载荷：
 ///
 /// ```text
 /// 00 00 0a 00 00 05 08 04 07 00 01 00 02 03 05 06
@@ -258,25 +239,24 @@ pub fn parse_chain_ack(payload: &[u8]) -> Option<Vec<u8>> {
     chain_decode(&payload[7..16], CHAIN_ACK_FILLER)
 }
 
-/// `0x6D` sub `0x0A`: rename the current preset.
+/// `0x6D` sub `0x0A`：重命名当前预设。
 ///
-/// Note: the official app inserts a NUL byte inside longer names
-/// (`"preset42"` -> `"prese\0t42"`); this writes the given bytes verbatim.
+/// 注意：官方应用会在较长名称的内部插入一个 NUL 字节（`"preset42"` -> `"prese\0t42"`）；
+/// 此处按原样写入给定字节。
 pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
     let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, name.len() as u8];
     p.extend_from_slice(name);
     (msg_type::DATA, p)
 }
 
-/// `0x6D` effect-type switch.
+/// `0x6D` 效果类型切换。
 ///
-/// Wire layout (verified for fx1):
+/// 线上布局（已针对 fx1 验证）：
 /// ```text
 /// 00 [4*(N+1)] 00 30 [slot] 00 [effect_index] [N] <float32 * N>
 /// ```
-/// * `effect_index` is the 0-based option index within the slot
-///   (fx1: 0 = noise gate, 1 = auto gate, 2 = NG+COM, 3 = compressor).
-/// * `N` is the parameter count.
+/// * `effect_index` 是槽位内 0 起始的选项索引（fx1：0 = 噪声门，1 = 自动门，2 = NG+COM，3 = 压缩器）。
+/// * `N` 是参数个数。
 pub fn load_effect(slot: u8, effect_index: u8, model_flag: u8, params: &[f32]) -> (u8, Vec<u8>) {
     let n = params.len() as u8;
     let sub_byte = 4 * (params.len() as u8 + 1);
@@ -287,61 +267,56 @@ pub fn load_effect(slot: u8, effect_index: u8, model_flag: u8, params: &[f32]) -
     (msg_type::DATA, p)
 }
 
-/// `0x66` sub `0x02`: set USB volume (0-100).
+/// `0x66` sub `0x02`：设置 USB 音量（0-100）。
 pub fn set_usb_volume(percent: u8) -> (u8, Vec<u8>) {
     (msg_type::USB_VOLUME, vec![0x00, 0x02, 0x00, 0x00, field::USB_VOLUME, percent])
 }
 
-/// `0x63`: request the current preset snapshot.
+/// `0x63`：请求当前预设快照。
 ///
-/// Payload is `00 00 00`. In captures the command is always followed by the
-/// metadata tail (`da 00 0e ...`); see [`crate::tail`].
+/// 载荷为 `00 00 00`。在抓包中该命令之后总是紧跟元数据尾（`da 00 0e ...`）；见 [`crate::tail`]。
 pub fn request_snapshot() -> (u8, Vec<u8>) {
     (msg_type::SNAPSHOT, vec![0x00, 0x00, 0x00])
 }
 
-/// `0x40`: query preset names for `count` slots starting at `start_slot`.
+/// `0x40`：查询从 `start_slot` 开始的 `count` 个槽位的预设名称。
 ///
-/// Wire layout: `00 02 00 00 [start_slot] [count]`. Captures use
-/// `start_slot` in `0x00, 0x08, 0x10, ..` and `count = 0x08`.
+/// 线上布局：`00 02 00 00 [start_slot] [count]`。抓包中 `start_slot` 取 `0x00, 0x08, 0x10, ..`，`count = 0x08`。
 pub fn query_preset_list(start_slot: u8, count: u8) -> (u8, Vec<u8>) {
     (msg_type::PRESET_LIST, vec![0x00, 0x02, 0x00, 0x00, start_slot, count])
 }
 
-/// `0x68`: connectivity ping.
+/// `0x68`：连通性 ping。
 pub fn ping() -> (u8, Vec<u8>) {
     (msg_type::PING, vec![0x00, 0x00, 0x00])
 }
 
-/// `0x36`: query the model name of a single amp / drive slot.
+/// `0x36`：查询单个音箱 / 驱动槽位的模型名称。
 ///
-/// Observed TX query payload (all 38 slots in `resona-import.mmon`):
+/// 观察到的 TX 查询载荷（`resona-import.mmon` 中全部 38 个槽位）：
 ///
 /// ```text
 /// 00 01 00 00 [index]
 /// ```
 ///
-/// The device replies with a `0x36` frame carrying the model name; see
-/// [`parse_model_name`]. `index` is the 0-based firmware slot (0-37 for amp +
-/// FX2 drive pedals). The cab / IR slots (0-29) use a different message and
-/// are NOT enumerated by this query — see the protocol notes.
+/// 设备以携带模型名称的 `0x36` 帧应答；见 [`parse_model_name`]。
+/// `index` 是 0 起始的固件槽位（音箱 + FX2 驱动踏板共 0-37）。
+/// 箱体 / IR 槽位（0-29）使用不同的消息，本查询不枚举它们 —— 见协议笔记。
 pub fn model_query(index: u8) -> (u8, Vec<u8>) {
     (msg_type::MODEL_LIST, vec![0x00, 0x01, 0x00, 0x00, index])
 }
 
-// ---------------------------------------------------------------------------
-// Parsers
-// ---------------------------------------------------------------------------
+// ─── 解析器 ───────────────────────────
 
-/// One effect-parameter group from a `0x06` message.
+/// 来自 `0x06` 消息的一组效果参数。
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectParams {
     pub slot: u8,
     pub params: Vec<f32>,
 }
 
-/// Parse an `0x06` effect-data payload:
-/// `00 01 [slot] [count] <float32 * count>`.
+/// 解析 `0x06` 效果数据载荷：
+/// `00 01 [slot] [count] <float32 * count>`。
 pub fn parse_effect_data(payload: &[u8]) -> Option<EffectParams> {
     if payload.len() < 4 || payload[0] != 0x00 || payload[1] != 0x01 {
         return None;
@@ -358,7 +333,7 @@ pub fn parse_effect_data(payload: &[u8]) -> Option<EffectParams> {
     Some(EffectParams { slot, params })
 }
 
-/// A named preset-list entry from a `0x40` response.
+/// 来自 `0x40` 应答的带名称预设列表条目。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PresetEntry {
     pub slot: u8,
@@ -366,13 +341,12 @@ pub struct PresetEntry {
     pub name: String,
 }
 
-/// Number of characters in a stored preset name. Names are space-padded to
-/// this width, and are stored with `0x00` bytes inserted between fragments.
+/// 存储的预设名称的字符数。名称以空格填充到此宽度，并且以在分片之间插入 `0x00` 字节的方式存储。
 pub const PRESET_NAME_CHARS: usize = 8;
 
-/// Parse a `0x40` preset-list response payload.
+/// 解析 `0x40` 预设列表应答载荷。
 ///
-/// Layout — **validated end-to-end**, not inferred:
+/// 布局 —— **端到端验证过**，不是推断：
 ///
 /// ```text
 /// [0..7]  header: 00 00 52 00 00 BASE COUNT      (BASE = first slot, COUNT = 8)
@@ -382,31 +356,25 @@ pub const PRESET_NAME_CHARS: usize = 8;
 ///   [name: exactly 8 printable characters]
 /// ```
 ///
-/// The name field is stored as **NUL-separated fragments**: the `0x00` bytes
-/// are skipped and do **not** count towards the 8 characters. That is why a
-/// record's byte length varies (11 or 12) even though every name is 8 chars
-/// wide. After the 8 characters at most one further byte `< 0x20` may precede
-/// the next record's slot index.
+/// 名称字段以 **NUL 分隔的分片**形式存储：`0x00` 字节被跳过，且**不**计入 8 个字符。
+/// 这就是为什么记录的字节长度会变化（11 或 12），尽管每个名称都是 8 字符宽。
+/// 8 个字符之后、下一条记录的槽位索引之前，至多还有一个 `< 0x20` 的字节。
 ///
-/// Validation evidence:
-/// * `preset-export.mmon` — all 8 chunks (64 slots) decode with every slot index
-///   matching `BASE + k`, and every name coming out exactly 8 chars wide.
-/// * The 40 factory names decoded this way are **byte-identical** to
-///   the factory preset table → `products.nanocore.presets`
-///   (independent source). Slots 41..63 carry the device placeholder `preset`.
+/// 验证证据：
+/// * `preset-export.mmon` —— 全部 8 个数据块（64 个槽位）解码后每个槽位索引都匹配 `BASE + k`，
+///   且每个名称都恰好 8 字符宽。
+/// * 以此方式解码出的 40 个出厂名称与出厂预设表 -> `products.nanocore.presets`（独立来源）**逐字节一致**。
+///   槽位 41..63 携带设备占位名称 `preset`。
 ///
-/// Every record is cross-checked, so any misalignment returns `None` instead of
-/// silently producing wrong names.
+/// 每条记录都做交叉校验，任何错位都会返回 `None`，而不是悄悄产出错误名称。
 ///
-/// `named` is `true` when the lead padding bytes after the slot index are **not
-/// all zero**. Validated on the capture: all 40 factory slots plus the user
-/// preset in slot 40 are flagged, while the 24 placeholder slots (41..63, whose
-/// stored name is literally `preset`) have all-zero lead bytes. The exact
-/// byte-level meaning of those 1-2 bytes is not fully explained, so `named`
-/// should be treated as "the device flags this slot as holding a name", not as
-/// a documented flag value.
+/// 当槽位索引之后的前导填充字节**不全为零**时 `named` 为 `true`。
+/// 在抓包上验证：全部 40 个出厂槽位加上槽位 40 的用户预设都被标记，
+/// 而 24 个占位槽位（41..63，其存储的名称字面上就是 `preset`）的前导字节全为零。
+/// 这 1-2 个字节的确切字节级含义尚未完全解释清楚，
+/// 因此 `named` 应当被理解为"设备将此槽位标记为持有名称"，而不是一个有文档定义的标志值。
 pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
-    // Header is exactly 7 bytes and starts with the `0x52` body marker.
+    // 头部恰好 7 字节，且以 `0x52` 体标记开头。
     if payload.len() < 8 || payload[2] != 0x52 {
         return None;
     }
@@ -420,13 +388,13 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
     let mut i = 7usize;
     for k in 0..count {
         let slot = base.wrapping_add(k as u8);
-        // 1. slot index, cross-checked against the expected position.
+        // 1. 槽位索引，与预期位置交叉校验。
         if i >= payload.len() || payload[i] != slot {
             return None;
         }
         i += 1;
 
-        // 2. one or more lead bytes < 0x20; `named` = not all zero.
+        // 2. 一个或多个前导字节 < 0x20；`named` = 不全为零。
         if i >= payload.len() || payload[i] >= 0x20 {
             return None;
         }
@@ -436,7 +404,7 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
             i += 1;
         }
 
-        // 3. exactly PRESET_NAME_CHARS printable chars, NULs skipped.
+        // 3. 恰好 PRESET_NAME_CHARS 个可打印字符，跳过 NUL。
         let mut name = String::with_capacity(PRESET_NAME_CHARS);
         while i < payload.len() && name.len() < PRESET_NAME_CHARS {
             let b = payload[i];
@@ -454,9 +422,9 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
         }
         out.push(PresetEntry { slot, named, name: name.trim_end().to_string() });
 
-        // 4. at most one trailing byte < 0x20, but never the next slot index.
-        //    (Named slots can hold a value < 0x20, so compare against the
-        //    expected next index rather than against a threshold.)
+        // 4. 至多一个尾随字节 < 0x20，但绝不可能是下一个槽位索引。
+        //    （被标记的槽位可能持有 < 0x20 的值，所以应与预期的下一个
+        //    索引比较，而不是与阈值比较。）
         let next_slot = base.wrapping_add(k as u8).wrapping_add(1);
         if i < payload.len() && payload[i] < 0x20 && payload[i] != next_slot {
             i += 1;
@@ -465,9 +433,9 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
     Some(out)
 }
 
-/// Decode all plausible 7-bit-safe float32 values in a raw snapshot payload.
+/// 解码原始快照载荷中所有合理的 7 比特安全 float32 值。
 ///
-/// Returns `(offset, value)` pairs for values in `[0.0, 1.0]`.
+/// 返回 `[0.0, 1.0]` 范围内值的 `(offset, value)` 对。
 pub fn scan_snapshot_floats(payload: &[u8]) -> Vec<(usize, f32)> {
     let mut out = Vec::new();
     if payload.len() < 4 {
@@ -483,25 +451,22 @@ pub fn scan_snapshot_floats(payload: &[u8]) -> Vec<(usize, f32)> {
     out
 }
 
-/// Parse `chainOrder` out of a `0x43` preset-write payload.
+/// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
 ///
-/// Two layouts have been observed:
+/// 已观察到两种布局：
 ///
-/// * **234-byte preset frame** (40 of them in `factory-reset.mmon`, one per
-///   factory preset): the chain field sits at `[33..42)`, preceded by the
-///   field id `0x03` at `[31]` and the count `0x08` at `[32]`. The 9-byte field
-///   is the 8-element order with a `0x00` inserted at index
-///   [`CHAIN_PRESET_FILLER`]. Verified against `.npreset`'s
-///   `manifest.json` -> `presets[].preset.chainOrder` for **40/40** presets,
-///   including a non-identity order (`[0,1,2,3,5,4,6,7]`).
-/// * **Legacy 356-byte "first message"**: field id at `[30]`, count at `[31]`,
-///   order from `[32]` (no filler). Kept for the older analysis path.
+/// * **234 字节预设帧**（`factory-reset.mmon` 中有 40 个，每个出厂预设一个）：
+///   链字段位于 `[33..42)`，其前是 `[31]` 处的字段 id `0x03` 和 `[32]` 处的计数 `0x08`。
+///   9 字节字段是在索引 [`CHAIN_PRESET_FILLER`] 处插入 `0x00` 后的 8 元素链序。
+///   已对照 `.npreset` 的 `manifest.json` -> `presets[].preset.chainOrder` 验证，
+///   **40/40** 个预设全部吻合，其中包括一个非恒等链序（`[0,1,2,3,5,4,6,7]`）。
+/// * **旧的 356 字节"首消息"**：字段 id 在 `[30]`，计数在 `[31]`，链序从 `[32]` 开始（无填充字节）。为旧分析路径保留。
 pub fn parse_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
-    // 234-byte preset frame.
+    // 234 字节预设帧。
     if payload.len() >= 42 && payload[31] == 0x03 && payload[32] == CHAIN_LEN as u8 {
         return chain_decode(&payload[33..42], CHAIN_PRESET_FILLER);
     }
-    // Legacy 356-byte layout (no filler byte).
+    // 旧的 356 字节布局（无填充字节）。
     if payload.len() < 40 || payload[30] != 0x03 {
         return None;
     }
@@ -512,56 +477,48 @@ pub fn parse_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
     Some(payload[32..32 + count].to_vec())
 }
 
-/// A model-list entry parsed from a `0x36` response payload.
+/// 从 `0x36` 应答载荷解析出的模型列表条目。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelName {
-    /// 0-based firmware slot (device UI shows `index + 1`).
+    /// 0 起始的固件槽位（设备 UI 显示 `index + 1`）。
     pub index: u8,
-    /// The device's model string, reconstructed from NUL-separated fragments.
+    /// 设备的模型字符串，由 NUL 分隔的分片重组而成。
     pub name: String,
-    /// `true` when byte 7 of the response is non-zero.
+    /// 应答第 7 字节非零时为 `true`。
     ///
-    /// **This is not a "user model" marker.** An earlier revision of this
-    /// module assumed the opposite based on the `resona-import` capture,
-    /// where slot 29 (a user-imported NAM) was the only flagged slot. The
-    /// `preset-export` capture refutes that: it queries a single slot, 9, which
-    /// holds the *factory* model `Mar8001`, and byte 7 is still `0x01`.
+    /// **这不是"用户模型"标记。** 本模块的早期版本基于 `resona-import` 抓包做出了相反的假设，
+    /// 该抓包中槽位 29（用户导入的 NAM）是唯一被标记的槽位。
+    /// `preset-export` 抓包推翻了这一点：它只查询槽位 9，该槽位持有*出厂*模型 `Mar8001`，
+    /// 而第 7 字节仍是 `0x01`。
     ///
-    /// The surviving hypothesis — consistent with both captures — is that byte
-    /// 7 marks the slot whose model is **currently loaded / in use**, i.e. in
-    /// the import capture the active amp was the user NAM in slot 29, and in
-    /// the export capture the active amp was `Mar8001` in slot 9.
+    /// 与两个抓包都相符的留存假设是：第 7 字节标记模型**当前已加载 / 正在使用**的槽位，
+    /// 即在导入抓包中活动音箱是槽位 29 的用户 NAM，在导出抓包中活动音箱是槽位 9 的 `Mar8001`。
     ///
-    /// To identify user/custom models, compare [`ModelName::name`] against the
-    /// factory table in [`crate::models_data`] instead — that is
-    /// flag-independent.
+    /// 要识别用户/自定义模型，请改为将 [`ModelName::name`] 与 [`crate::models_data`] 中的出厂表比较 —— 这与标志无关。
     pub active: bool,
 }
 
-/// Parse a `0x36` model-list response payload.
+/// 解析 `0x36` 模型列表应答载荷。
 ///
-/// Layout (verified against all 38 entries in `resona-import.mmon` and
-/// the single-slot query in `preset-export.mmon`):
+/// 布局（已对照 `resona-import.mmon` 的全部 38 条记录和 `preset-export.mmon` 的单槽位查询验证）：
 ///
 /// ```text
 /// 00 00 1e 10 00 [index] 01 [flag] 52 2f 00 [len] 00 [hash x4] 1a 1a 00 00 [name...]
 /// ```
 ///
-/// * `index` is at byte 5.
-/// * `flag` is at byte 7 — see [`ModelName::active`]; it is *not* a user-model
-///   flag.
-/// * The model name sits immediately after the `1a 1a 00 00` marker and is
-///   stored as a run of **NUL-separated printable fragments**. Concatenating
-///   the fragments reconstructs the device's model string:
+/// * `index` 位于第 5 字节。
+/// * `flag` 位于第 7 字节 —— 见 [`ModelName::active`]；它*不是*用户模型标志。
+/// * 模型名称紧随 `1a 1a 00 00` 标记之后，以一段 **NUL 分隔的可打印分片**存储。
+///   拼接各分片即可重组设备的模型字符串：
 ///   * `BogXTC` + `1`        -> `BogXTC1`
 ///   * `NDSP A` + `rchetyp` + `e:` -> `NDSP Archetype:`
 ///
-/// Non-printable bytes and the separating NULs are dropped.
+/// 不可打印字节和分隔用的 NUL 会被丢弃。
 pub fn parse_model_name(payload: &[u8]) -> Option<ModelName> {
     if payload.len() < 6 {
         return None;
     }
-    // Locate the `1a 1a 00 00` name marker.
+    // 定位 `1a 1a 00 00` 名称标记。
     let mut marker = None;
     for i in 0..payload.len().saturating_sub(3) {
         if payload[i] == 0x1a && payload[i + 1] == 0x1a && payload[i + 2] == 0x00 && payload[i + 3] == 0x00 {
@@ -591,9 +548,8 @@ pub fn parse_model_name(payload: &[u8]) -> Option<ModelName> {
 mod tests {
     use super::*;
 
-    // Raw `0x36` RX payload for amp slot 0 (BogXTC1) and slot 29 (NDSP
-    // Archetype: after a RESONA NAM import), lifted verbatim from
-    // `resona-import.mmon`.
+    // 槽位 0（BogXTC1）和槽位 29（RESONA NAM 导入后的 NDSP Archetype:）
+    // 的原始 `0x36` RX 载荷，逐字节取自 `resona-import.mmon`。
     const SLOT0: &[u8] = &[
         0x00, 0x00, 0x1e, 0x10, 0x00, 0x00, 0x01, 0x00, 0x52, 0x2f, 0x00, 0x18, 0x00, 0x6a,
         0x33, 0x02, 0x57, 0x1a, 0x1a, 0x00, 0x00, 0x42, 0x6f, 0x67, 0x58, 0x54, 0x43, 0x00,
@@ -604,9 +560,8 @@ mod tests {
         0x7c, 0x21, 0x54, 0x1a, 0x1a, 0x00, 0x00, 0x4e, 0x44, 0x53, 0x50, 0x20, 0x41, 0x00,
         0x72, 0x63, 0x68, 0x65, 0x74, 0x79, 0x70, 0x00, 0x65, 0x3a, 0x00,
     ];
-    // The single-slot query from `preset-export.mmon`: slot 9, which holds the
-    // *factory* model `Mar8001`, yet byte 7 is 0x01. This is the counter-example
-    // that proves byte 7 is not a user-model flag.
+    // 来自 `preset-export.mmon` 的单槽位查询：槽位 9 持有*出厂*模型 `Mar8001`，
+    // 但第 7 字节却是 0x01。这是证明第 7 字节并非用户模型标志的反例。
     const SLOT9_FACTORY_ACTIVE: &[u8] = &[
         0x00, 0x00, 0x1e, 0x10, 0x00, 0x09, 0x01, 0x01, 0x52, 0x2f, 0x00, 0x06, 0x00, 0x46,
         0x36, 0x31, 0x44, 0x1a, 0x1a, 0x00, 0x00, 0x4d, 0x61, 0x72, 0x38, 0x30, 0x30, 0x31,
@@ -633,8 +588,8 @@ mod tests {
         assert!(b.active);
     }
 
-    /// Regression guard for the corrected byte-7 semantics: a *factory* model
-    /// reports the flag too, so callers must not treat it as "user model".
+    /// 针对修正后的第 7 字节语义的回归守卫：*出厂*模型也会置位该标志，
+    /// 调用方绝不能把它当作"用户模型"。
     #[test]
     fn byte7_is_not_a_user_model_flag() {
         let m = parse_model_name(SLOT9_FACTORY_ACTIVE).expect("slot9 parse");
@@ -645,15 +600,15 @@ mod tests {
 
     #[test]
     fn parse_model_name_needs_marker() {
-        // No `1a 1a 00 00` anchor -> None.
+        // 无 `1a 1a 00 00` 锚点 -> None。
         assert!(parse_model_name(&[0x00, 0x00, 0x1e, 0x10, 0x00, 0x05]).is_none());
-        // Truncated before the marker.
+        // 在标记之前被截断。
         assert!(parse_model_name(&[]).is_none());
     }
 
-    // Real `0x40` PRESET_LIST replies from `preset-export.mmon`. All bytes below
-    // are lifted verbatim; the decoded names were cross-checked against
-    // the factory preset table -> products.nanocore.presets.
+    // 来自 `preset-export.mmon` 的真实 `0x40` PRESET_LIST 应答。
+    // 下方全部字节逐字节取自抓包；
+    // 解码出的名称已与出厂预设表 -> products.nanocore.presets 交叉核对。
     const PRESET_LIST_BASE32: &[u8] = &[
         0x00, 0x00, 0x52, 0x00, 0x00, 0x20, 0x08, 0x20, 0x01, 0x50, 0x77, 0x00, 0x43, 0x68,
         0x6f, 0x72, 0x64, 0x20, 0x21, 0x00, 0x01, 0x52, 0x61, 0x77, 0x4c, 0x65, 0x61, 0x00,
@@ -675,8 +630,8 @@ mod tests {
 
     #[test]
     fn preset_list_decodes_factory_names() {
-        // Slots 32..39 — includes slot bytes 0x20..0x27, which are printable,
-        // so a naive "scan for the slot byte" would break here.
+        // 槽位 32..39 —— 包含作为可打印字符的槽位字节 0x20..0x27，
+        // 所以朴素的"扫描槽位字节"方法在此会失效。
         let got = parse_preset_list(PRESET_LIST_BASE32).expect("base32 parse");
         let names: Vec<&str> = got.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(
@@ -689,8 +644,8 @@ mod tests {
 
     #[test]
     fn preset_list_marks_placeholders_unnamed() {
-        // Slot 40 is a user preset ("pitb"); 41..47 are device placeholders
-        // whose stored name is literally `preset`.
+        // 槽位 40 是用户预设（"pitb"）；41..47 是设备占位槽位，
+        // 其存储的名称字面上就是 `preset`。
         let got = parse_preset_list(PRESET_LIST_BASE40).expect("base40 parse");
         assert_eq!(got.len(), 8);
         assert_eq!(got[0].slot, 40);
@@ -702,34 +657,32 @@ mod tests {
         }
     }
 
-    /// The decoder validates every record, so a corrupted slot index must be
-    /// rejected rather than silently yielding shifted names.
+    /// 解码器会校验每条记录，因此损坏的槽位索引必须被拒绝，
+    /// 而不是悄悄产出移位的名称。
     #[test]
     fn preset_list_rejects_misaligned_input() {
         let mut bad = PRESET_LIST_BASE32.to_vec();
-        bad[7] = 0x21; // first slot byte no longer equals BASE
+        bad[7] = 0x21; // 首个槽位字节不再等于 BASE
         assert!(parse_preset_list(&bad).is_none());
         assert!(parse_preset_list(&[]).is_none());
-        // Not an 0x40 body marker.
+        // 不是 `0x40` 体标记。
         assert!(parse_preset_list(&[0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x08]).is_none());
     }
 
-    // -- chain order ------------------------------------------------------
-    //
-    // The three frames below are verbatim from
-    // `block-reorder.mmon`, where the user moved
-    // DEL to chain position 1 and EQ to position 2. With the role table
-    // (DEL == 4, EQ == 7) the chain must come out as [4,0,1,2,3,5,6,7] and
-    // then [4,7,0,1,2,3,5,6].
+    // ─── 链序 ────────────────────────
+    // 下方三帧逐字节取自 `block-reorder.mmon`，
+    // 其中用户把 DEL 移到链位 1，把 EQ 移到链位 2。
+    // 按角色表（DEL == 4，EQ == 7），链必须解出为 [4,0,1,2,3,5,6,7]，
+    // 再解出 [4,7,0,1,2,3,5,6]。
 
-    /// `0x6D` write payload, read from the capture.
+    /// `0x6D` 写入载荷，取自抓包。
     const CHAIN_WRITE_1: &[u8] = &[
         0x00, 0x0A, 0x00, 0x00, 0x05, 0x08, 0x04, 0x00, 0x01, 0x02, 0x03, 0x00, 0x05, 0x06, 0x07,
     ];
     const CHAIN_WRITE_2: &[u8] = &[
         0x00, 0x0A, 0x00, 0x00, 0x05, 0x08, 0x04, 0x07, 0x00, 0x01, 0x02, 0x00, 0x03, 0x05, 0x06,
     ];
-    /// Matching `0x09` device notification payloads (`00 08` + 9 bytes).
+    /// 匹配的 `0x09` 设备通知载荷（`00 08` + 9 字节）。
     const CHAIN_NOTIFY_1: &[u8] = &[
         0x00, 0x08, 0x04, 0x00, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x07,
     ];
@@ -739,7 +692,7 @@ mod tests {
 
     #[test]
     fn chain_roles_match_the_enable_evidence() {
-        // The user enabled DEL and EQ; the device got ENABLE slot=4 / slot=7.
+        // 用户启用了 DEL 和 EQ；设备收到 ENABLE slot=4 / slot=7。
         assert_eq!(chain_role_index("delay"), Some(4));
         assert_eq!(chain_role_index("del"), Some(4));
         assert_eq!(chain_role_index("mod"), Some(5));
@@ -766,7 +719,7 @@ mod tests {
 
     #[test]
     fn chain_notify_decodes_to_the_same_chain_as_the_write() {
-        // Two *independent* encodings of the same chain must agree.
+        // 同一链的两个*独立*编码必须一致。
         for (write, notify) in [(CHAIN_WRITE_1, CHAIN_NOTIFY_1), (CHAIN_WRITE_2, CHAIN_NOTIFY_2)] {
             let a = parse_chain_write(write).expect("write parse");
             let b = parse_chain_notify(notify).expect("notify parse");
@@ -777,16 +730,16 @@ mod tests {
 
     #[test]
     fn chain_order_from_a_234_byte_preset_frame() {
-        // `factory-reset.mmon`: the `ClnArp` preset frame's chain field is the
-        // identity order [0,1,2,3,4,5,6,7] with the 0x00 filler at index 2.
+        // `factory-reset.mmon`：`ClnArp` 预设帧的链字段是恒等链序 [0,1,2,3,4,5,6,7]，
+        // 0x00 填充位于索引 2。
         let mut frame = vec![0u8; 234];
         frame[31] = 0x03;
         frame[32] = 0x08;
         frame[33..42].copy_from_slice(&[0x00, 0x01, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
         assert_eq!(parse_chain_order(&frame).unwrap(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
 
-        // The discriminating (non-identity) sample from the same capture:
-        // `ColdCln` -> [0,1,2,3,5,4,6,7].
+        // 同一抓包中的判别性（非恒等）样本：
+        // `ColdCln` -> [0,1,2,3,5,4,6,7]。
         let mut f2 = vec![0u8; 234];
         f2[31] = 0x03;
         f2[32] = 0x08;
@@ -800,24 +753,23 @@ mod tests {
         assert!(chain_write(&[0, 1, 2, 3, 4, 5, 6, 7, 0]).is_none(), "too long");
         assert!(chain_write(&[0, 0, 2, 3, 4, 5, 6, 7]).is_none(), "duplicate");
         assert!(chain_write(&[0, 1, 2, 3, 4, 5, 6, 9]).is_none(), "out of range");
-        // Filler must really be at index 5 for the write layout.
+        // 写入布局中填充字节必须确实位于索引 5。
         let mut bad = CHAIN_WRITE_1.to_vec();
         bad[6] = 0x00;
         bad[11] = 0x04;
         assert!(parse_chain_write(&bad).is_none());
     }
 
-    // -- chain ACK --------------------------------------------------------
-    //
-    // Verbatim from live hardware (`nanocore-cli chain …` on fw 1.04). The ACK
-    // re-encodes the same order with the filler at index 4 instead of 5.
+    // ─── 链 ACK ──────────────────────
+    // 逐字节取自实机（fw 1.04 上的 `nanocore-cli chain …`）。
+    // ACK 以索引 4 而非 5 的填充位置重新编码同一链序。
 
-    /// ACK for a requested identity order `[0,1,2,3,4,5,6,7]`.
+    /// 对请求恒等链序 `[0,1,2,3,4,5,6,7]` 的 ACK。
     const CHAIN_ACK_IDENTITY: &[u8] = &[
         0x00, 0x00, 0x0A, 0x00, 0x00, 0x05, 0x08, 0x00, 0x01, 0x02, 0x03, 0x00, 0x04, 0x05, 0x06,
         0x07,
     ];
-    /// ACK for a requested `[4,7,0,1,2,3,5,6]`.
+    /// 对请求 `[4,7,0,1,2,3,5,6]` 的 ACK。
     const CHAIN_ACK_DEL_EQ: &[u8] = &[
         0x00, 0x00, 0x0A, 0x00, 0x00, 0x05, 0x08, 0x04, 0x07, 0x00, 0x01, 0x00, 0x02, 0x03, 0x05,
         0x06,
@@ -833,14 +785,14 @@ mod tests {
             parse_chain_ack(CHAIN_ACK_DEL_EQ).unwrap(),
             vec![4, 7, 0, 1, 2, 3, 5, 6]
         );
-        // And it agrees with what `chain_write` produces for the same order —
-        // the write and the ACK use different filler indices but the same chain.
+        // 并且它与 `chain_write` 对同一链序的产物一致 ——
+        // 写入和 ACK 使用不同的填充索引，但链相同。
         let (_, req) = chain_write(&[4, 7, 0, 1, 2, 3, 5, 6]).unwrap();
         assert_ne!(&req[6..15], &CHAIN_ACK_DEL_EQ[7..16], "encodings differ");
         assert_eq!(parse_chain_write(&req).unwrap(), parse_chain_ack(CHAIN_ACK_DEL_EQ).unwrap());
     }
 
-    // ── wire-safe parameter encoding ────────────────────────────────────────
+    // ── 线上安全参数编码 ────────────────────────────────────────────────────
 
     #[test]
     fn param_write_matches_the_captured_layout() {
@@ -848,8 +800,8 @@ mod tests {
         assert_eq!(kind, msg_type::DATA);
         assert_eq!(&p[..7], &[0x00, 0x07, 0x00, 0x08, 0x01, 0x00, 0x01]);
         assert_eq!(p.len(), 11);
-        // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`; masking the high bits
-        // clears the exponent LSB (bit 23) -> `00 00 00 3E`.
+        // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`；
+        // 掩掉最高位会清除指数最低有效位（第 23 位）-> `00 00 00 3E`。
         assert_eq!(&p[7..], &[0x00, 0x00, 0x00, 0x3E]);
     }
 }
