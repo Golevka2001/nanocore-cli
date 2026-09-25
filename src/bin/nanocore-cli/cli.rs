@@ -446,18 +446,28 @@ pub struct Conn {
     pub no_sysex: bool,
 }
 
+/// 解析隐藏协议旋钮中的单字节十六进制值（`--flags`，及 `--expect` 的每一段）。
+fn parse_hex_byte(arg: &str, value: &str) -> Result<u8, String> {
+    u8::from_str_radix(value.trim().trim_start_matches("0x"), 16)
+        .map_err(|_| format!("--{arg}: invalid hex byte {value:?}"))
+}
+
 impl Conn {
-    pub fn from_cli(cli: &Cli) -> Self {
-        let expect = cli
-            .expect
-            .as_deref()
-            .map(|v| {
-                v.split(',')
-                    .filter_map(|p| u8::from_str_radix(p.trim().trim_start_matches("0x"), 16).ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self {
+    pub fn from_cli(cli: &Cli) -> Result<Self, String> {
+        // 隐藏旋钮不静默回落：传了但解析失败就报错退出。否则错误的过滤条件
+        // 会悄悄退化为"接受任何应答"，对协议调试是最危险的失败模式。
+        let expect = match cli.expect.as_deref() {
+            None => Vec::new(),
+            Some(v) => v
+                .split(',')
+                .map(|p| parse_hex_byte("expect", p))
+                .collect::<Result<Vec<u8>, _>>()?,
+        };
+        let flags = match cli.flags.as_deref() {
+            None => 0x00,
+            Some(v) => parse_hex_byte("flags", v)?,
+        };
+        Ok(Self {
             in_port: cli.in_port,
             out_port: cli.out_port,
             hint: cli
@@ -468,13 +478,9 @@ impl Conn {
             timeout_ms: cli.timeout,
             retries: cli.retries,
             expect,
-            flags: cli
-                .flags
-                .as_deref()
-                .and_then(|v| u8::from_str_radix(v.trim().trim_start_matches("0x"), 16).ok())
-                .unwrap_or(0x00),
+            flags,
             wait: !cli.no_wait,
             no_sysex: cli.no_sysex,
-        }
+        })
     }
 }

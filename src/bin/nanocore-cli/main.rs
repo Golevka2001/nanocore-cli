@@ -54,7 +54,13 @@ fn main() {
     clap_complete::CompleteEnv::with_factory(|| Cli::command()).complete();
 
     let cli = Cli::parse();
-    let conn = Conn::from_cli(&cli);
+    let conn = match Conn::from_cli(&cli) {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
 
     let result = match cli.command {
         // 完全不需要设备。
