@@ -49,9 +49,6 @@ pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String
             if cc_num > 127 {
                 return Err(format!("CC number must be 0-127, got {cc_num}"));
             }
-            if value > 127 {
-                return Err(format!("CC value must be 0-127, got {value}"));
-            }
             send_standard(dev, &midicc::control_change(conn.channel, cc_num, value))
         }
         DebugCmd::Enable { slot, state } => {

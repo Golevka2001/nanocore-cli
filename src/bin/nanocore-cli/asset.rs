@@ -46,6 +46,9 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             if region != RegionArg::Ir {
                 return Err("asset write currently supports ir slots only".into());
             }
+            if slot >= asset::IR_TOTAL as u8 {
+                return Err(format!("ir slot must be 0-{}, got {slot}", asset::IR_TOTAL - 1));
+            }
             let blob = std::fs::read(&file).map_err(|e| format!("cannot read {file}: {e}"))?;
             if blob.len() as u32 != asset::IR_TOTAL {
                 return Err(format!(

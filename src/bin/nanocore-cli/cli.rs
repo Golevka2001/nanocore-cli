@@ -60,10 +60,13 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "NAME")]
     pub hint: Option<String>,
     /// CC/PC 命令使用的 MIDI 通道（0–15；设备将 0 视为 omni）
-    #[arg(long, global = true, value_name = "0-15", default_value_t = 0)]
+    #[arg(long, global = true, value_name = "0-15", default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=15))]
     pub ch: u8,
     /// 应答超时初值，单位毫秒（每次重试翻倍，硬上限为 8 倍）
-    #[arg(long, global = true, value_name = "MS")]
+    ///
+    /// 上限 60000：更大的初值对 MIDI 事务没有意义，且会在重试倍增
+    /// （`retry_config` 的 ×4/×8）中溢出 `Duration`。
+    #[arg(long, global = true, value_name = "MS", value_parser = clap::value_parser!(u64).range(1..=60000))]
     pub timeout: Option<u64>,
     /// 单次事务的最大重试次数 [default: 3]
     #[arg(long, global = true, value_name = "N")]
@@ -113,7 +116,10 @@ pub enum Command {
     /// 当前能解码的部分会打印输出，其余标注 (TBD)。
     Show,
     /// 设置 USB 输出音量（0–100）
-    Volume { percent: u8 },
+    Volume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
+    },
     /// 控制调音表
     Tuner { state: Option<Power> },
 
@@ -147,7 +153,10 @@ pub enum Command {
 #[derive(Subcommand, Debug)]
 pub enum PresetCmd {
     /// 按索引选择预设（0–63，设备显示索引+1）
-    Set { index: u8 },
+    Set {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        index: u8,
+    },
     /// 切换到下一个预设
     Next,
     /// 切换到上一个预设
@@ -306,10 +315,16 @@ pub enum DebugCmd {
         /// CC 编号 0–127
         cc: String,
         /// CC 值 0–127
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=127))]
         value: u8,
     },
     /// 原始槽位开关（SysEx；模块开关建议使用 `module <m> on/off`）
-    Enable { slot: u8, state: Option<Power> },
+    Enable {
+        /// b5 槽位 0–7（fx1 fx2 amp cab mod delay reverb eq）
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=7))]
+        slot: u8,
+        state: Option<Power>,
+    },
     /// 原始 SysEx 参数写入（b3/b5/b6 为十六进制——见协议笔记）
     Setparam {
         b3: String,
@@ -321,7 +336,11 @@ pub enum DebugCmd {
     /// 通过 SysEx 选择音箱型号（与 `module amp model` 同一张表）
     ///
     /// 与 CC 路径不同，此命令可访问槽位 30–37（FX2 踏板效果）。
-    Variant { index: u8 },
+    Variant {
+        /// 音箱/踏板槽位 0–37（30 amp sims + 8 FX2 drive pedals）
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=37))]
+        index: u8,
+    },
     /// 发送原始帧：第一个十六进制字节为消息类型，其余为载荷
     Raw {
         /// 十六进制字节，如 `raw 6d 00 02 00 00 09 01`
@@ -330,7 +349,10 @@ pub enum DebugCmd {
     /// 按字节原样重放帧（含头部）并在 2 秒内打印应答
     Replay { bytes: Vec<String> },
     /// 预设切换探测流程：选择 → 快照 → 查询 → 3 秒尾随监听
-    Probe { index: Option<u8> },
+    Probe {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        index: Option<u8>,
+    },
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
