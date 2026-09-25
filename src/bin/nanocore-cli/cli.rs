@@ -1,10 +1,44 @@
 //! CLI definition: the clap command tree and the `Conn` options bundle.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::{ArgValueCandidates, CompletionCandidate};
 
 use nanocore::asset;
 use nanocore::midi;
 use nanocore::midicc::Block;
+use nanocore::models_data;
+use nanocore::protocol;
+
+/// Completion candidates for `chain set` positions: role names, device display
+/// names (lowercased, as `chain_role_index` accepts them) and 0-7 indices.
+fn chain_position_candidates() -> Vec<CompletionCandidate> {
+    let mut out: Vec<CompletionCandidate> = protocol::CHAIN_ROLES
+        .iter()
+        .enumerate()
+        .flat_map(|(i, (cli, disp))| {
+            [
+                CompletionCandidate::new(*cli).help(Some((*disp).to_string().into())),
+                CompletionCandidate::new(disp.to_ascii_lowercase()),
+                CompletionCandidate::new(i.to_string()).help(Some((*disp).to_string().into())),
+            ]
+        })
+        .collect();
+    out.sort_by(|a, b| a.get_value().cmp(b.get_value()));
+    out.dedup_by(|a, b| a.get_value() == b.get_value());
+    out
+}
+
+/// Completion candidates for `module <m> model <N>`: the amp / drive table
+/// with the model name as help text (the cab table shares the 0-29 range).
+fn model_id_candidates() -> Vec<CompletionCandidate> {
+    (0u8..=37)
+        .map(|i| match models_data::lookup_amp(i) {
+            Some(m) => CompletionCandidate::new(i.to_string())
+                .help(Some(format!("{} ({})", m.name, m.code).into())),
+            None => CompletionCandidate::new(i.to_string()),
+        })
+        .collect()
+}
 
 // ─── CLI definition ─────────────────────────────────────────────────────────
 
@@ -112,6 +146,28 @@ pub enum Command {
         #[command(subcommand)]
         cmd: DebugCmd,
     },
+
+    // ── shell completions ─────────────────────────────────────────────────
+    /// Print a static shell completion script for nanocore-cli
+    ///
+    /// This is the *static* variant: subcommands, flags and enum values, frozen
+    /// at generation time. Typical install locations:
+    ///   fish:       … > ~/.config/fish/completions/nanocore-cli.fish
+    ///   bash:       … > ~/.local/share/bash-completion/completions/nanocore-cli
+    ///   zsh:        … > ~/.zfunc/_nanocore-cli  (ensure compinit picks up ~/.zfunc)
+    ///   powershell: … | Out-String | Invoke-Expression   (in your $PROFILE)
+    ///
+    /// For *dynamic* completion (data-driven candidates: model names for
+    /// `module … model`, chain roles for `chain set`, …) source the binary
+    /// itself instead — it regenerates the hook on every shell start:
+    ///   fish: COMPLETE=fish nanocore-cli | source  (in fish/completions/)
+    ///   bash: source <(COMPLETE=bash nanocore-cli)   (in ~/.bashrc)
+    ///   zsh:  source <(COMPLETE=zsh nanocore-cli)    (in ~/.zshrc)
+    Completions {
+        /// Target shell
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -163,7 +219,10 @@ pub enum ModuleAction {
     /// `amp` and `cab` take a model index 0–29 (CC43 / CC44); the other modules
     /// take their effect-type id (CC40-CC48). Indices 30–37 of the amp table are
     /// the FX2 drive pedals and are NOT reachable here — use `debug variant`.
-    Model { id: u8 },
+    Model {
+        #[arg(add = ArgValueCandidates::new(model_id_candidates))]
+        id: u8,
+    },
     /// List the module's parameters (no device needed)
     Params {
         /// Effect-type id for blocks whose parameters depend on it
@@ -191,6 +250,7 @@ pub enum ChainCmd {
     /// Write the chain order (exactly 8 roles/indices, each module once)
     Set {
         /// 8 positions, each module exactly once (`fx1 fx2 amp cab delay mod reverb eq`)
+        #[arg(add = ArgValueCandidates::new(chain_position_candidates))]
         positions: Vec<String>,
     },
     /// Read the current chain order from the device

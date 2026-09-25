@@ -10,11 +10,12 @@ repository = "https://github.com/Golevka2001/nanocore-cli"
 default = []
 ## Real MIDI I/O via `midir` (CoreMIDI on macOS, ALSA on Linux, WinMM on Windows).
 ## Also enables the `nanocore-cli` binary (which needs `clap`).
-midi = ["dep:midir", "dep:clap"]
+midi = ["dep:midir", "dep:clap", "dep:clap_complete"]
 
 [dependencies]
 midir = { version = "0.11", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
+clap_complete = { version = "4", optional = true, features = ["unstable-dynamic"] }
 
 [dev-dependencies]
 serde_json = "1"

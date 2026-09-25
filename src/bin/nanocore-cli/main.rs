@@ -35,7 +35,7 @@ mod module;
 mod probe;
 mod preset;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use nanocore::midicc;
 use nanocore::protocol;
@@ -52,12 +52,23 @@ use crate::preset::cmd_preset;
 // ─── entry point ────────────────────────────────────────────────────────────
 
 fn main() {
+    // Dynamic shell completion: when invoked by a completion hook
+    // (COMPLETE=<shell> set), compute candidates and exit before anything
+    // else touches stdout. Inert otherwise.
+    clap_complete::CompleteEnv::with_factory(|| Cli::command()).complete();
+
     let cli = Cli::parse();
     let conn = Conn::from_cli(&cli);
 
     let result = match cli.command {
         // No device needed at all.
         Command::Ports => return cmd_list(),
+        Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            return;
+        }
         Command::Chain { cmd: None } => return chain::print_chain_help(),
         Command::Models { region, live } => cmd_models(region, live, &conn),
         Command::Module { cmd } => cmd_module(cmd, &conn),
