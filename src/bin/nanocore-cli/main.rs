@@ -76,7 +76,7 @@ fn main() {
         Command::Show => cmd_show(&conn),
         Command::Volume { percent } => cmd_volume(percent, &conn),
         Command::Tuner { state } => cmd_tuner(state, &conn),
-        Command::Models { region, live } => cmd_models(region, live, &conn),
+        Command::Models { table, live } => cmd_models(table, live, &conn),
         Command::Asset { cmd } => cmd_asset(cmd, &conn),
         Command::Debug { cmd } => cmd_debug(cmd, &conn),
     };

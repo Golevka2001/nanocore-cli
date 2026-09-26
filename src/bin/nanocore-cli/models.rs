@@ -4,28 +4,41 @@ use nanocore::client::Error;
 use nanocore::models_data;
 use nanocore::protocol;
 
-use crate::cli::{Conn, RegionArg};
+use crate::cli::{Conn, ModelTableArg};
 use crate::common::{Dev, open_device};
 
-pub fn cmd_models(region: Option<RegionArg>, live: bool, conn: &Conn) -> Result<(), String> {
+/// 表标题：设备槽位 = 表索引 + 1。
+const AMP_HEADER: &str = "AMP models (0-37, device slot = index+1):";
+const CAB_HEADER: &str = "CAB / IR models (0-29, device slot = index+1):";
+
+pub fn cmd_models(table: Option<ModelTableArg>, live: bool, conn: &Conn) -> Result<(), String> {
     if live {
+        // 实时查询覆盖设备的 amp/drive 槽位（0-37）；表过滤在此不适用，明确拒绝
+        // 而不是静默忽略。
+        if table.is_some() {
+            return Err(
+                "`models --live` queries the device's amp/drive slots (0-37) and takes \
+                 no table argument; drop it (or drop --live to read the embedded tables)"
+                    .into(),
+            );
+        }
         let mut dev = open_device(conn)?;
         return query_models_live(&mut dev);
     }
-    match region {
-        Some(RegionArg::Amp) => print_models(models_data::AMP),
-        Some(RegionArg::Ir) => print_models(models_data::CAB),
+    match table {
+        Some(ModelTableArg::Amp) => print_table(AMP_HEADER, models_data::AMP),
+        Some(ModelTableArg::Cab) => print_table(CAB_HEADER, models_data::CAB),
         None => {
-            println!("AMP models (0-37, device slot = index+1):");
-            print_models(models_data::AMP);
-            println!("\nCAB / IR models (0-29, device slot = index+1):");
-            print_models(models_data::CAB);
+            print_table(AMP_HEADER, models_data::AMP);
+            println!();
+            print_table(CAB_HEADER, models_data::CAB);
         }
     }
     Ok(())
 }
 
-fn print_models(rows: &[models_data::ModelInfo]) {
+fn print_table(header: &str, rows: &[models_data::ModelInfo]) {
+    println!("{header}");
     for m in rows {
         println!(
             "  {:>2}  {:<10} {:<34} [{}]",
@@ -52,8 +65,8 @@ fn query_models_live(dev: &mut Dev) -> Result<(), String> {
         })?;
         match protocol::parse_model_name(&reply.payload) {
             Some(mn) => {
-                /// 仅比较名称：应答中的 `active` 字节标记的是设备当前正在使用的槽位。
-                /// 它横跨出厂/自定义两类，不能单独决定"matches" 与否。
+                // 仅比较名称：应答中的 `active` 字节标记的是设备当前正在使用的槽位。
+                // 它横跨出厂/自定义两类，不能单独决定 "matches" 与否。
                 let matches_factory = models_data::lookup_amp(i)
                     .map(|em| em.name == mn.name || em.code.eq_ignore_ascii_case(&mn.name))
                     .unwrap_or(false);

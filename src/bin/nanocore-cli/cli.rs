@@ -146,8 +146,8 @@ pub enum Command {
     /// 列出内置型号表，或从设备查询
     Models {
         /// 省略时列出两张表
-        region: Option<RegionArg>,
-        /// 查询真实设备而非内置表（只读）
+        table: Option<ModelTableArg>,
+        /// 查询真实设备而非内置表（只读；覆盖 amp/drive 槽位 0-37）
         #[arg(long)]
         live: bool,
     },
@@ -414,6 +414,16 @@ impl BlockArg {
             BlockArg::Eq => "eq",
         }
     }
+}
+
+/// `models` 的表选择。
+///
+/// 与 [`RegionArg`]（`asset` 用的设备存储区域）刻意分开：这里选的是型号表，
+/// 表名是 `cab`——`ir` 是存储区域的名字，不是表名。
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum ModelTableArg {
+    Amp,
+    Cab,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
