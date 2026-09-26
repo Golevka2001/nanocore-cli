@@ -27,8 +27,25 @@ fn chain_position_candidates() -> Vec<CompletionCandidate> {
     out
 }
 
-/// `module <m> model <N>` 的补全候选：音箱 / 踏板效果表，以型号名作为帮助文本（箱体表共用 0-29 范围）。
+/// `module <m> model <N>` 的补全候选。
+///
+/// 索引的含义随模块而变（amp/cab 是 0–29 的型号表，其余模块是各自的效果类型
+/// id），而 clap 的候选项是静态的——拿不到同一命令行的模块名。因此这里只给
+/// 中性提示：候选必须对任何模块都成立，标注音箱名会对非 amp/cab 模块产生误导。
+/// 30–37 不在候选内：amp/cab 的 CC 路径会拒绝它们，那几个槽位只对
+/// `debug variant` 有意义。
 fn model_id_candidates() -> Vec<CompletionCandidate> {
+    (0u8..=29)
+        .map(|i| {
+            CompletionCandidate::new(i.to_string())
+                .help(Some("model / effect type index — see `models` or `module <m> params`".into()))
+        })
+        .collect()
+}
+
+/// `debug variant <INDEX>` 的补全候选：完整的音箱 / 踏板槽位表（0–37），
+/// 该命令正是唯一能寻址 30–37 的路径，因此这里标注型号名是准确的。
+fn variant_candidates() -> Vec<CompletionCandidate> {
     (0u8..=37)
         .map(|i| match models_data::lookup_amp(i) {
             Some(m) => CompletionCandidate::new(i.to_string())
@@ -338,7 +355,7 @@ pub enum DebugCmd {
     /// 与 CC 路径不同，此命令可访问槽位 30–37（FX2 踏板效果）。
     Variant {
         /// 音箱/踏板槽位 0–37（30 amp sims + 8 FX2 drive pedals）
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=37))]
+        #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(0..=37))]
         index: u8,
     },
     /// 发送原始帧：第一个十六进制字节为消息类型，其余为载荷
