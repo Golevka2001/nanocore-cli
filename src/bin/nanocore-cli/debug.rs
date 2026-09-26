@@ -7,7 +7,7 @@ use nanocore::models_data;
 use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
-use crate::cli::{Conn, DebugCmd, Power};
+use crate::cli::{Conn, DebugCmd};
 use crate::common::{describe, hex, open_device, parse_hex, send_standard, transact};
 use crate::probe::probe;
 
@@ -58,7 +58,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), String> {
         }
         DebugCmd::Enable { slot, state } => {
             let mut dev = open_device(conn)?;
-            let (k, p) = protocol::set_enabled(slot, state.map(Power::on).unwrap_or(true));
+            let (k, p) = protocol::set_enabled(slot, state.on());
             transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Setparam { b3, b5, b6, value } => {

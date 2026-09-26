@@ -340,7 +340,8 @@ pub enum DebugCmd {
         /// b5 槽位 0–7（fx1 fx2 amp cab mod delay reverb eq）
         #[arg(value_parser = clap::value_parser!(u8).range(0..=7))]
         slot: u8,
-        state: Option<Power>,
+        /// 必须显式给出：有副作用的命令不设默认状态
+        state: Power,
     },
     /// 原始 SysEx 参数写入（b3/b5/b6 为十六进制——见协议笔记）
     Setparam {
