@@ -3,9 +3,9 @@
 use nanocore::asset::{self, ChunkRequest};
 
 use crate::cli::{AssetCmd, Conn, RegionArg};
-use crate::common::{Dev, open_device};
+use crate::common::{Dev, Failure, open_device};
 
-pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
+pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         AssetCmd::List => {
             println!("asset regions (device blob storage):");
@@ -48,21 +48,23 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             name,
         } => {
             if region != RegionArg::Ir {
-                return Err("asset write currently supports ir slots only".into());
+                return Err(Failure::error(
+                    "asset write currently supports ir slots only",
+                ));
             }
             if slot >= asset::IR_SLOTS {
-                return Err(format!(
+                return Err(Failure::error(format!(
                     "ir slot must be 0-{}, got {slot}",
                     asset::IR_SLOTS - 1
-                ));
+                )));
             }
             let blob = std::fs::read(&file).map_err(|e| format!("cannot read {file}: {e}"))?;
             if blob.len() as u32 != asset::IR_TOTAL {
-                return Err(format!(
+                return Err(Failure::error(format!(
                     "IR blob must be exactly {} bytes (got {})",
                     asset::IR_TOTAL,
                     blob.len()
-                ));
+                )));
             }
             println!("asset write ir slot {slot} — {} bytes", blob.len());
             eprintln!(
@@ -90,12 +92,11 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
                         .zip(blob.iter())
                         .position(|(a, b)| a != b)
                         .unwrap_or(0);
-                    println!(
+                    Err(Failure::mismatch(format!(
                         "MISMATCH after write: first difference at byte {at} \
                          (device 0x{:02x}, file 0x{:02x})",
                         back[at], blob[at]
-                    );
-                    std::process::exit(3);
+                    )))
                 }
             }
         }
@@ -141,7 +142,7 @@ fn asset_read(
     target: ReadTarget,
     out: Option<String>,
     reference: Option<&[u8]>,
-) -> Result<(), String> {
+) -> Result<(), Failure> {
     let ReadTarget {
         region,
         slot,
@@ -174,12 +175,11 @@ fn asset_read(
     }
     if let Some(want) = reference {
         if blob.len() != want.len() {
-            println!(
+            return Err(Failure::mismatch(format!(
                 "MISMATCH: device returned {} bytes, reference has {}",
                 blob.len(),
                 want.len()
-            );
-            std::process::exit(3);
+            )));
         }
         match blob.iter().zip(want.iter()).position(|(a, b)| a != b) {
             None => println!(
@@ -187,11 +187,10 @@ fn asset_read(
                 blob.len()
             ),
             Some(at) => {
-                println!(
+                return Err(Failure::mismatch(format!(
                     "MISMATCH: first difference at byte {at}: device 0x{:02x}, reference 0x{:02x}",
                     blob[at], want[at]
-                );
-                std::process::exit(3);
+                )));
             }
         }
     }

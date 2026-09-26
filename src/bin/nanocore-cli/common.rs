@@ -10,6 +10,45 @@ use crate::cli::Conn;
 /// 通过真实 MIDI 传输层建立的已打开设备连接。
 pub type Dev = Nanocore<MidiTransport>;
 
+/// 命令失败：面向用户的消息，加上它应当产生的进程退出码。
+///
+/// 处理器只挑选语义，退出码由 `main` 统一定夺——「校验不一致」与「普通失败」
+/// 对脚本是不同的结果（见 README 的退出码约定），不该靠字符串或深处的
+/// `process::exit` 来表达。
+#[derive(Debug)]
+pub struct Failure {
+    /// 写给用户的消息（`main` 只负责加上 `error: ` 前缀）。
+    pub message: String,
+    /// 进程退出码。
+    pub exit_code: i32,
+}
+
+impl Failure {
+    /// 普通失败：参数、通信或设备错误 → 退出码 2。
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            exit_code: 2,
+        }
+    }
+
+    /// 校验不一致：设备数据与参考文件不同 → 退出码 3。
+    pub fn mismatch(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            exit_code: 3,
+        }
+    }
+}
+
+/// 来自设备/传输层（以及任何以 `String` 报错）的失败都是普通失败，
+/// 因此 `?` 无需在每个调用点包装。
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self::error(message)
+    }
+}
+
 #[allow(clippy::needless_pass_by_value)]
 pub fn cmd_list() {
     match midi::input_ports() {
@@ -93,7 +132,7 @@ fn resolve_port(
     hint: &str,
     dir: &str,
     flag: &str,
-) -> Result<usize, String> {
+) -> Result<usize, Failure> {
     if let Some(i) = explicit {
         return Ok(i);
     }
@@ -102,21 +141,23 @@ fn resolve_port(
     }
     match ports {
         [(i, _)] => Ok(*i),
-        [] => Err(format!("no {dir} ports available (hint {hint:?} unmatched)")),
+        [] => Err(Failure::error(format!(
+            "no {dir} ports available (hint {hint:?} unmatched)"
+        ))),
         _ => {
             let list = ports
                 .iter()
                 .map(|(i, n)| format!("  #{i} {n}"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            Err(format!(
+            Err(Failure::error(format!(
                 "no {dir} port matches hint {hint:?}; pass {flag} N explicitly. available:\n{list}"
-            ))
+            )))
         }
     }
 }
 
-pub fn open_device(conn: &Conn) -> Result<Dev, String> {
+pub fn open_device(conn: &Conn) -> Result<Dev, Failure> {
     let transport = match (conn.in_port, conn.out_port) {
         (Some(i), Some(o)) => MidiTransport::open(i, o).map_err(|e| e.to_string()),
         _ => {
@@ -156,17 +197,20 @@ fn retry_config(conn: &Conn) -> RetryConfig {
 
 /// 以裸 3 字节包发送标准 MIDI 消息（CC / PC）——不带 SysEx 包装。
 /// 发送期间将传输层切出 SysEx 模式。
-pub fn send_standard(dev: &mut Dev, bytes: &[u8]) -> Result<(), String> {
+pub fn send_standard(dev: &mut Dev, bytes: &[u8]) -> Result<(), Failure> {
     dev.transport().set_sysex(false);
-    dev.transport().send(bytes).map_err(|e| e.to_string())
+    dev.transport()
+        .send(bytes)
+        .map_err(|e| Failure::error(e.to_string()))
 }
 
-pub fn parse_hex(parts: &[String]) -> Result<Vec<u8>, String> {
+/// 解析十六进制字节序列（`debug raw` / `debug replay` 的位置参数）。
+pub fn parse_hex(parts: &[String]) -> Result<Vec<u8>, Failure> {
     parts
         .iter()
         .map(|h| {
             u8::from_str_radix(h.trim().trim_start_matches("0x"), 16)
-                .map_err(|_| format!("bad hex byte {h:?}"))
+                .map_err(|_| Failure::error(format!("bad hex byte {h:?}")))
         })
         .collect()
 }
@@ -178,7 +222,7 @@ pub fn transact(
     kind: u8,
     payload: Vec<u8>,
     expect: &[u8],
-) -> Result<(), String> {
+) -> Result<(), Failure> {
     println!(
         "tx: type=0x{kind:02x} payload[{}] {}",
         payload.len(),
@@ -191,7 +235,8 @@ pub fn transact(
         );
     }
     if !conn.wait {
-        dev.send(kind, payload).map_err(|e| e.to_string())?;
+        dev.send(kind, payload)
+            .map_err(|e| Failure::error(e.to_string()))?;
         println!("sent (no wait)");
         return Ok(());
     }
@@ -201,10 +246,10 @@ pub fn transact(
             describe(&reply);
             Ok(())
         }
-        Err(Error::Timeout { attempts, elapsed }) => Err(format!(
+        Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(
             "timeout after {attempts} attempt(s) in {elapsed:?}"
-        )),
-        Err(Error::Transport(e)) => Err(e.to_string()),
+        ))),
+        Err(Error::Transport(e)) => Err(Failure::error(e.to_string())),
     }
 }
 

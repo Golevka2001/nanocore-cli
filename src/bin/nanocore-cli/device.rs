@@ -4,13 +4,13 @@ use nanocore::midicc;
 use nanocore::protocol;
 
 use crate::cli::{Conn, Power};
-use crate::common::{open_device, render_chain, send_standard, transact};
+use crate::common::{Failure, open_device, render_chain, send_standard, transact};
 
 /// 以可读形式显示当前设备状态快照。
 ///
 /// 尽力而为：仅打印已解码的部分（chainOrder、载荷形状）；
 /// 其余标注 (TBD)，直至 `0x63` 快照解码完成。
-pub fn cmd_show(conn: &Conn) -> Result<(), String> {
+pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     println!("Current device state (partial — full snapshot decode pending):");
@@ -31,20 +31,19 @@ pub fn cmd_show(conn: &Conn) -> Result<(), String> {
 }
 
 /// 设置 USB 输出音量（0–100，范围由 clap 保证）。
-pub fn cmd_volume(percent: u8, conn: &Conn) -> Result<(), String> {
+pub fn cmd_volume(percent: u8, conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let (k, p) = protocol::set_usb_volume(percent);
     transact(&mut dev, conn, k, p, &[])
 }
 
 /// 开关调音表。读取当前状态需要快照解码，尚未实现。
-pub fn cmd_tuner(state: Option<Power>, conn: &Conn) -> Result<(), String> {
+pub fn cmd_tuner(state: Option<Power>, conn: &Conn) -> Result<(), Failure> {
     let Some(state) = state else {
-        return Err(
+        return Err(Failure::error(
             "tuner state read is not implemented yet (needs snapshot decode); \
-             pass `tuner on` or `tuner off`"
-                .into(),
-        );
+             pass `tuner on` or `tuner off`",
+        ));
     };
     let mut dev = open_device(conn)?;
     send_standard(

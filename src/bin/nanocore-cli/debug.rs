@@ -8,11 +8,11 @@ use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd};
-use crate::common::{describe, hex, open_device, parse_hex, send_standard, transact};
+use crate::common::{Failure, describe, hex, open_device, parse_hex, send_standard, transact};
 use crate::probe::probe;
 
 /// 各分支都先完成自己的输入解析，再打开端口——手误不该触碰 MIDI。
-pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), String> {
+pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         DebugCmd::Ping => {
             let mut dev = open_device(conn)?;
@@ -51,7 +51,9 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), String> {
                 })?,
             };
             if cc_num > 127 {
-                return Err(format!("CC number must be 0-127, got {cc_num}"));
+                return Err(Failure::error(format!(
+                    "CC number must be 0-127, got {cc_num}"
+                )));
             }
             let mut dev = open_device(conn)?;
             send_standard(&mut dev, &midicc::control_change(conn.channel, cc_num, value))
@@ -83,7 +85,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), String> {
         DebugCmd::Raw { bytes } => {
             let bytes = parse_hex(&bytes)?;
             if bytes.len() < 2 {
-                return Err("raw needs at least a message type".into());
+                return Err(Failure::error("raw needs at least a message type"));
             }
             let mut dev = open_device(conn)?;
             transact(

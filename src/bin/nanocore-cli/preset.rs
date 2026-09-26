@@ -3,16 +3,15 @@
 use nanocore::midicc;
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{open_device, send_standard};
+use crate::common::{Failure, open_device, send_standard};
 
-pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), String> {
+pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         // 读取活动预设需要快照解码——在打开端口之前就拒绝。
-        PresetCmd::Show => Err(
+        PresetCmd::Show => Err(Failure::error(
             "the active preset is not decoded yet (full snapshot decode pending). \
-             Try `preset list` for the slot names."
-                .into(),
-        ),
+             Try `preset list` for the slot names.",
+        )),
         PresetCmd::List => {
             let mut dev = open_device(conn)?;
             let entries = dev.read_preset_names()?;

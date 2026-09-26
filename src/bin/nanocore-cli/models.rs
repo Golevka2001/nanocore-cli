@@ -5,22 +5,21 @@ use nanocore::models_data;
 use nanocore::protocol;
 
 use crate::cli::{Conn, ModelTableArg};
-use crate::common::{Dev, open_device};
+use crate::common::{Dev, Failure, open_device};
 
 /// 表标题：设备槽位 = 表索引 + 1。
 const AMP_HEADER: &str = "AMP models (0-37, device slot = index+1):";
 const CAB_HEADER: &str = "CAB / IR models (0-29, device slot = index+1):";
 
-pub fn cmd_models(table: Option<ModelTableArg>, live: bool, conn: &Conn) -> Result<(), String> {
+pub fn cmd_models(table: Option<ModelTableArg>, live: bool, conn: &Conn) -> Result<(), Failure> {
     if live {
         // 实时查询覆盖设备的 amp/drive 槽位（0-37）；表过滤在此不适用，明确拒绝
         // 而不是静默忽略。
         if table.is_some() {
-            return Err(
+            return Err(Failure::error(
                 "`models --live` queries the device's amp/drive slots (0-37) and takes \
-                 no table argument; drop it (or drop --live to read the embedded tables)"
-                    .into(),
-            );
+                 no table argument; drop it (or drop --live to read the embedded tables)",
+            ));
         }
         let mut dev = open_device(conn)?;
         return query_models_live(&mut dev);
@@ -52,7 +51,7 @@ fn print_table(header: &str, rows: &[models_data::ModelInfo]) {
 ///
 /// 实时名称与出厂表不一致的槽位标记为 `[CUSTOM]`（例如导入的 NAM 文件覆盖了它们）；
 /// 设备当前正在使用的槽位额外标记 `[active]`。两者与真正的表项不一致分开计数。
-fn query_models_live(dev: &mut Dev) -> Result<(), String> {
+fn query_models_live(dev: &mut Dev) -> Result<(), Failure> {
     println!("Querying device model list (amp/drive slots 0-37, read-only)...");
     let mut mismatches = 0usize;
     let mut custom = 0usize;

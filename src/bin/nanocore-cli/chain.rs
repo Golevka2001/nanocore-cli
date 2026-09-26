@@ -4,7 +4,7 @@ use nanocore::client::Error;
 use nanocore::protocol;
 
 use crate::cli::{ChainCmd, Conn};
-use crate::common::{Dev, describe, hex, open_device, render_chain};
+use crate::common::{Dev, Failure, describe, hex, open_device, render_chain};
 
 pub fn print_chain_help() {
     println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
@@ -27,7 +27,7 @@ pub fn print_chain_help() {
 }
 
 /// `chain` 入口：写入或读取效果链序。
-pub fn cmd_chain(cmd: ChainCmd, conn: &Conn) -> Result<(), String> {
+pub fn cmd_chain(cmd: ChainCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         ChainCmd::Set { positions } => cmd_chain_set(&positions, conn),
         ChainCmd::Show => cmd_chain_show(conn),
@@ -35,12 +35,12 @@ pub fn cmd_chain(cmd: ChainCmd, conn: &Conn) -> Result<(), String> {
 }
 
 /// 写入链序：先校验，后打开端口——坏链序永远不会到达设备。
-fn cmd_chain_set(tokens: &[String], conn: &Conn) -> Result<(), String> {
+fn cmd_chain_set(tokens: &[String], conn: &Conn) -> Result<(), Failure> {
     let order = parse_chain_positions(tokens)?;
     let mut dev = open_device(conn)?;
 
-    let (kind, payload) =
-        protocol::chain_write(&order).ok_or("internal: chain_write rejected a valid order")?;
+    let (kind, payload) = protocol::chain_write(&order)
+        .ok_or_else(|| Failure::error("internal: chain_write rejected a valid order"))?;
     println!("chain (left -> right): {}", render_chain(&order));
     println!(
         "                    as: [{}]",
@@ -117,9 +117,9 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
 }
 
 /// 写入一个已预校验的链序，并通过设备自身的回显进行确认。
-fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), String> {
+fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure> {
     let order = protocol::parse_chain_write(&payload)
-        .ok_or("internal: device frame does not decode back to the chain")?;
+        .ok_or_else(|| Failure::error("internal: device frame does not decode back to the chain"))?;
 
     let ack = dev
         .transact_with_flags(0x00, kind, payload, &[])
@@ -161,7 +161,7 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), String> 
 /// 从设备快照中读取当前链序。
 ///
 /// `chainOrder` 尾部是少数已解码的快照区域之一，因此当前可用。
-fn cmd_chain_show(conn: &Conn) -> Result<(), String> {
+fn cmd_chain_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     match protocol::parse_chain_order(&s.payload) {
@@ -169,6 +169,8 @@ fn cmd_chain_show(conn: &Conn) -> Result<(), String> {
             println!("chain (left -> right): {}", render_chain(&order));
             Ok(())
         }
-        None => Err("snapshot did not contain a decodable chainOrder".into()),
+        None => Err(Failure::error(
+            "snapshot did not contain a decodable chainOrder",
+        )),
     }
 }

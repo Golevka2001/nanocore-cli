@@ -6,9 +6,9 @@ use nanocore::params_data;
 use nanocore::protocol;
 
 use crate::cli::{BlockArg, Conn, ModuleAction, ModuleCmd};
-use crate::common::{Dev, open_device, send_standard, transact};
+use crate::common::{Dev, Failure, open_device, send_standard, transact};
 
-pub fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), String> {
+pub fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         ModuleCmd::List => cmd_module_list(),
         ModuleCmd::Fx1 { action } => module_action(BlockArg::Fx1, action, conn),
@@ -22,24 +22,28 @@ pub fn cmd_module(cmd: ModuleCmd, conn: &Conn) -> Result<(), String> {
     }
 }
 
-fn module_action(block: BlockArg, action: Option<ModuleAction>, conn: &Conn) -> Result<(), String> {
+fn module_action(
+    block: BlockArg,
+    action: Option<ModuleAction>,
+    conn: &Conn,
+) -> Result<(), Failure> {
     match action {
         None => print_module_help(block),
         Some(ModuleAction::Params { r#type }) => cmd_params(block, r#type),
         Some(ModuleAction::Param { key, value, r#type }) => {
             // 读取路径需要效果数据 / 快照解码，尚未实现。
             let Some(value) = value else {
-                return Err(format!(
+                return Err(Failure::error(format!(
                     "reading a parameter value is not implemented yet (needs \
                      effect-data / snapshot read); pass a value to write:\n  \
                      nanocore-cli module {} param {key} <0..1>",
                     block.key()
-                ));
+                )));
             };
             if !(0.0..=1.0).contains(&value) {
-                return Err(format!(
+                return Err(Failure::error(format!(
                     "value must be 0.0-1.0 (device-normalised), got {value}"
-                ));
+                )));
             }
             // 参数名解析同样是纯校验：先解析，再打开端口。
             let info = resolve_param(block, &key, r#type)?;
@@ -71,7 +75,7 @@ fn module_action(block: BlockArg, action: Option<ModuleAction>, conn: &Conn) -> 
     }
 }
 
-fn cmd_module_list() -> Result<(), String> {
+fn cmd_module_list() -> Result<(), Failure> {
     println!("modules (b5 slot — the device string-table order):");
     for &(key, slot) in params_data::BLOCKS {
         let summary = match params_data::params(key, None) {
@@ -89,7 +93,7 @@ fn cmd_module_list() -> Result<(), String> {
     Ok(())
 }
 
-fn print_module_help(block: BlockArg) -> Result<(), String> {
+fn print_module_help(block: BlockArg) -> Result<(), Failure> {
     let key = block.key();
     let slot = params_data::block_slot(key)
         .map(|s| s.to_string())
@@ -105,14 +109,15 @@ fn print_module_help(block: BlockArg) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_params(block: BlockArg, r#type: Option<u8>) -> Result<(), String> {
+fn cmd_params(block: BlockArg, r#type: Option<u8>) -> Result<(), Failure> {
     let key = block.key();
-    let slot = params_data::block_slot(key).ok_or_else(|| format!("unknown module {key:?}"))?;
+    let slot = params_data::block_slot(key)
+        .ok_or_else(|| Failure::error(format!("unknown module {key:?}")))?;
     let ps = params_data::params(key, r#type).ok_or_else(|| {
-        format!(
+        Failure::error(format!(
             "module {key:?} is type-dependent: pass `--type N`, and note that some \
              types have no published parameter list (fx1 types 1-2, fx2 types 5-7)"
-        )
+        ))
     })?;
     println!(
         "{key} (b5={slot}){}:",
@@ -159,9 +164,13 @@ fn cmd_param(
     block: BlockArg,
     info: &'static params_data::ParamInfo,
     value: f32,
-) -> Result<(), String> {
-    let slot = params_data::block_slot(block.key())
-        .ok_or_else(|| format!("unknown module {:?} (fx1 fx2 amp cab delay mod reverb eq)", block.key()))?;
+) -> Result<(), Failure> {
+    let slot = params_data::block_slot(block.key()).ok_or_else(|| {
+        Failure::error(format!(
+            "unknown module {:?} (fx1 fx2 amp cab delay mod reverb eq)",
+            block.key()
+        ))
+    })?;
     println!(
         "param {} [b5={slot}] b6={} {} (CC{}) = {value}",
         block.key(),
@@ -180,7 +189,7 @@ fn cmd_param(
 /// 因此在此处拒绝，而不是让写入无声失效。
 ///
 /// 对其余模块这是空操作：它们的 "type" 是真实的效果类型 ID，在 OEM MIDI CC 参考中拥有自己的表。
-fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
+fn report_model_selection(block: Block, id: u8) -> Result<(), Failure> {
     let (label, count, name) = match block {
         Block::Amp => (
             "amp",
@@ -195,12 +204,12 @@ fn report_model_selection(block: Block, id: u8) -> Result<(), String> {
         _ => return Ok(()),
     };
     if id >= count {
-        return Err(format!(
+        return Err(Failure::error(format!(
             "{label} model index must be 0-{} (device has {count} models); \
              {id} would be silently ignored — drive pedals 30-37 belong to FX2 and \
              need `debug variant`, not the {label} module",
             count - 1
-        ));
+        )));
     }
     match name {
         Some(n) => println!(

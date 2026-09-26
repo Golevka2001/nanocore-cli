@@ -4,11 +4,11 @@ use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::Conn;
-use crate::common::{Dev, describe, hex};
+use crate::common::{Dev, Failure, describe, hex};
 
 /// 按协议笔记中的记载执行预设切换流程：
 /// 选择预设 -> 读取快照（0x63）-> 查询（0x41），然后转储设备在数秒内发出的每一帧。
-pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), String> {
+pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), Failure> {
     let idx = index.unwrap_or(0);
 
     /// 一个探测步骤：标签、（消息类型, 载荷）、期望的应答类型。

@@ -24,7 +24,8 @@
 //! 命令族（preset / module / chain / asset / models / debug / probe）。
 //!
 //! 本模块只做分发：设备由各命令族自行打开，并且都在打开之前完成参数校验
-//! ——手误不该触碰 MIDI，也不该为一个必然失败的调用占用端口。
+//! ——手误不该触碰 MIDI，也不该为一个必然失败的调用占用端口。失败以
+//! [`Failure`]（消息 + 退出码）返回，`main` 是进程唯一的退出点。
 
 mod asset;
 mod chain;
@@ -42,7 +43,7 @@ use clap::{CommandFactory, Parser};
 use crate::asset::cmd_asset;
 use crate::chain::cmd_chain;
 use crate::cli::{Cli, Command, Conn};
-use crate::common::cmd_list;
+use crate::common::{Failure, cmd_list};
 use crate::debug::cmd_debug;
 use crate::device::{cmd_show, cmd_tuner, cmd_volume};
 use crate::models::cmd_models;
@@ -56,20 +57,30 @@ fn main() {
     // 先计算候选项并在其他任何代码触碰 stdout 之前退出。否则不做任何事。
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
 
-    let cli = Cli::parse();
-    let conn = match Conn::from_cli(&cli) {
-        Ok(conn) => conn,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(2);
-        }
-    };
+    // 唯一的退出点：失败自带退出码（见 [`Failure`]）。
+    if let Err(f) = run(Cli::parse()) {
+        eprintln!("error: {}", f.message);
+        std::process::exit(f.exit_code);
+    }
+}
 
-    let result = match cli.command {
+/// 解析连接选项并分发命令。
+///
+/// 设备由各命令族自行打开，并且都在打开之前完成参数校验——手误不该触碰
+/// MIDI，也不该为一个必然失败的调用占用端口。
+fn run(cli: Cli) -> Result<(), Failure> {
+    let conn = Conn::from_cli(&cli)?;
+    match cli.command {
         // 完全不需要设备。
-        Command::Ports => return cmd_list(),
-        Command::Chain { cmd: None } => return chain::print_chain_help(),
-        // 需要设备：由各命令族自行打开。
+        Command::Ports => {
+            cmd_list();
+            Ok(())
+        }
+        Command::Chain { cmd: None } => {
+            chain::print_chain_help();
+            Ok(())
+        }
+        // 需要设备。
         Command::Preset { cmd } => cmd_preset(cmd, &conn),
         Command::Module { cmd } => cmd_module(cmd, &conn),
         Command::Chain { cmd: Some(cmd) } => cmd_chain(cmd, &conn),
@@ -79,9 +90,5 @@ fn main() {
         Command::Models { table, live } => cmd_models(table, live, &conn),
         Command::Asset { cmd } => cmd_asset(cmd, &conn),
         Command::Debug { cmd } => cmd_debug(cmd, &conn),
-    };
-    if let Err(e) = result {
-        eprintln!("error: {e}");
-        std::process::exit(2);
     }
 }
