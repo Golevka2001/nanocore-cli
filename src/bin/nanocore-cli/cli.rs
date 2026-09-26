@@ -96,7 +96,7 @@ pub struct Cli {
     /// 帧标志字节（十六进制）[default: 00]
     #[arg(long, global = true, hide = true, value_name = "HH")]
     pub flags: Option<String>,
-    /// 即发即忘：不等待应答
+    /// 即发即忘：不等待应答（仅影响 SysEx 事务；CC/PC 命令本就不等待）
     #[arg(long, global = true, hide = true)]
     pub no_wait: bool,
     /// 发送时不带 F0…F7 SysEx 包装
@@ -321,7 +321,18 @@ pub enum AssetCmd {
 }
 
 #[derive(Subcommand, Debug)]
-#[command(arg_required_else_help = true)]
+#[command(
+    arg_required_else_help = true,
+    after_help = "Hidden global knobs — accepted by every command, meaningful mainly here
+(the main help omits them on purpose):
+
+  --expect HH,HH  accept only these reply types
+  --flags HH      frame flag byte [default: 00]
+  --no-wait       send without waiting for a reply; SysEx transactions only —
+                  CC/PC commands (preset, module on/off/model, tuner, debug cc)
+                  never wait in the first place
+  --no-sysex      send without the F0...F7 SysEx wrapper"
+)]
 pub enum DebugCmd {
     /// 对设备执行 ping
     Ping,

@@ -62,6 +62,8 @@ chain   →  chain set/show
 
 全局参数：`--in-port N` `--out-port N` `--hint NAME` `--ch 0-15` `--timeout MS` `--retries N`（另有协议调试用的隐藏参数，见 `debug` 命令文档）。
 
+退出码：`0` 成功；`2` 参数或通信错误；`3` 校验不一致（`asset verify` / `asset write` 的回读比对失败）。
+
 ## Shell 补全
 
 fish:

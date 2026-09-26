@@ -62,6 +62,8 @@ Two caveats inherited from the hardware:
 
 Global flags: `--in-port N` `--out-port N` `--hint NAME` `--ch 0-15` `--timeout MS` `--retries N` (plus hidden protocol-debugging flags, see the `debug` command docs).
 
+Exit codes: `0` success; `2` bad arguments or a communication error; `3` a verification mismatch (`asset verify` / the read-back check in `asset write`).
+
 ## Shell completions
 
 fish:
