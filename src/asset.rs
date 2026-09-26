@@ -382,16 +382,19 @@ pub const WRITE_CHUNK_BYTES: usize = 64;
 ///   （`ci = CNT*4 + (H3&1)*2 + (H4>>6)`）。
 pub fn encode_data_frame(chunk: &[u8], chunk_index: usize, slot: u8) -> Vec<u8> {
     let n = chunk.len();
-    assert!(n >= 1 && n <= WRITE_CHUNK_BYTES, "chunk size out of range");
+    assert!(
+        (1..=WRITE_CHUNK_BYTES).contains(&n),
+        "chunk size out of range"
+    );
     let lead = n.min(3);
-    let groups = (n - lead + 6) / 7;
+    let groups = (n - lead).div_ceil(7);
     let mut out = vec![0u8; 8 + n + groups];
     out[0] = 0x00;
     out[1] = 0x44;
     out[2] = 0x00;
     let mut h3 = ((chunk_index >> 1) & 1) as u8;
-    for j in 0..lead {
-        h3 |= ((chunk[j] >> 7) & 1) << (4 + j);
+    for (j, &byte) in chunk.iter().take(lead).enumerate() {
+        h3 |= ((byte >> 7) & 1) << (4 + j);
     }
     out[3] = h3;
     out[4] = ((chunk_index & 1) as u8) << 6;
@@ -423,8 +426,8 @@ pub fn encode_data_frame(chunk: &[u8], chunk_index: usize, slot: u8) -> Vec<u8> 
 pub fn decode_data_frame(payload: &[u8]) -> Vec<u8> {
     let d = &payload[8..];
     let mut out = Vec::with_capacity(WRITE_CHUNK_BYTES);
-    for j in 0..3.min(d.len()) {
-        out.push(d[j] | (((payload[3] >> (4 + j)) & 1) << 7));
+    for (j, &byte) in d.iter().take(3).enumerate() {
+        out.push(byte | (((payload[3] >> (4 + j)) & 1) << 7));
     }
     let mut i = 3;
     while i < d.len() {

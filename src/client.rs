@@ -621,10 +621,11 @@ impl<T: Transport> Nanocore<T> {
                 frames.extend(more);
             }
             for f in frames {
-                if f.seq != ack.seq && f.kind == crate::msg_type::NOTIFY {
-                    if protocol::parse_chain_notify(&f.payload).is_some() {
-                        return Ok(echoed);
-                    }
+                if f.seq != ack.seq
+                    && f.kind == crate::msg_type::NOTIFY
+                    && protocol::parse_chain_notify(&f.payload).is_some()
+                {
+                    return Ok(echoed);
                 }
             }
             if Instant::now() >= deadline {
