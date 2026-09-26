@@ -27,6 +27,7 @@ fn module_action(block: BlockArg, action: Option<ModuleAction>, conn: &Conn) -> 
         None => print_module_help(block),
         Some(ModuleAction::Params { r#type }) => cmd_params(block, r#type),
         Some(ModuleAction::Param { key, value, r#type }) => {
+            // 读取路径需要效果数据 / 快照解码，尚未实现。
             let Some(value) = value else {
                 return Err(format!(
                     "reading a parameter value is not implemented yet (needs \
@@ -35,8 +36,15 @@ fn module_action(block: BlockArg, action: Option<ModuleAction>, conn: &Conn) -> 
                     block.key()
                 ));
             };
+            if !(0.0..=1.0).contains(&value) {
+                return Err(format!(
+                    "value must be 0.0-1.0 (device-normalised), got {value}"
+                ));
+            }
+            // 参数名解析同样是纯校验：先解析，再打开端口。
+            let info = resolve_param(block, &key, r#type)?;
             let mut dev = open_device(conn)?;
-            cmd_param(&mut dev, conn, block.key(), &key, value, r#type)
+            cmd_param(&mut dev, conn, block, info, value)
         }
         Some(ModuleAction::Model { id }) => {
             report_model_selection(block.midicc(), id)?;
@@ -119,40 +127,47 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_param(
-    dev: &mut Dev,
-    conn: &Conn,
-    block: &str,
+/// 解析参数名或 b6 索引（纯查询，不触碰设备）。
+fn resolve_param(
+    block: BlockArg,
     key: &str,
-    value: f32,
-    r#type: Option<u8>,
-) -> Result<(), String> {
-    let slot = params_data::block_slot(block)
-        .ok_or_else(|| format!("unknown module {block:?} (fx1 fx2 amp cab delay mod reverb eq)"))?;
+    type_id: Option<u8>,
+) -> Result<&'static params_data::ParamInfo, String> {
     let info = match key.parse::<u8>() {
-        Ok(i) => params_data::param_by_index(block, r#type, i),
-        Err(_) => params_data::param_by_name(block, r#type, key),
+        Ok(i) => params_data::param_by_index(block.key(), type_id, i),
+        Err(_) => params_data::param_by_name(block.key(), type_id, key),
     };
-    let info = info.ok_or_else(|| {
+    info.ok_or_else(|| {
         format!(
-            "no parameter {key:?} for module {block:?}{}. \
-             Run `nanocore-cli module {block} params` to list them; type-dependent \
+            "no parameter {key:?} for module {module:?}{ty}. \
+             Run `nanocore-cli module {module} params` to list them; type-dependent \
              modules additionally need `--type N`. Some types have no published \
              parameter list (fx1 types 1-2, fx2 types 5-7).",
-            match r#type {
+            module = block.key(),
+            ty = match type_id {
                 Some(t) => format!(" type {t}"),
                 None => String::new(),
             }
         )
-    })?;
-    if !(0.0..=1.0).contains(&value) {
-        return Err(format!(
-            "value must be 0.0-1.0 (device-normalised), got {value}"
-        ));
-    }
+    })
+}
+
+/// 写入一个已解析并已校验的参数。
+fn cmd_param(
+    dev: &mut Dev,
+    conn: &Conn,
+    block: BlockArg,
+    info: &'static params_data::ParamInfo,
+    value: f32,
+) -> Result<(), String> {
+    let slot = params_data::block_slot(block.key())
+        .ok_or_else(|| format!("unknown module {:?} (fx1 fx2 amp cab delay mod reverb eq)", block.key()))?;
     println!(
-        "param {block} [b5={slot}] b6={} {} (CC{}) = {value}",
-        info.index, info.name, info.cc
+        "param {} [b5={slot}] b6={} {} (CC{}) = {value}",
+        block.key(),
+        info.index,
+        info.name,
+        info.cc
     );
     let (k, p) = protocol::param_write(protocol::DEFAULT_B3, slot, info.index, value);
     transact(dev, conn, k, p, &[])

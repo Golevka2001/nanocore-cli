@@ -8,20 +8,24 @@ use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, Power};
-use crate::common::{Dev, describe, hex, parse_hex, send_standard, transact};
+use crate::common::{describe, hex, open_device, parse_hex, send_standard, transact};
 use crate::probe::probe;
 
-pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String> {
+/// 各分支都先完成自己的输入解析，再打开端口——手误不该触碰 MIDI。
+pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), String> {
     match cmd {
         DebugCmd::Ping => {
+            let mut dev = open_device(conn)?;
             let (k, p) = protocol::ping();
-            transact(dev, conn, k, p, &[msg_type::PING])
+            transact(&mut dev, conn, k, p, &[msg_type::PING])
         }
         DebugCmd::Snapshot => {
+            let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
-            transact(dev, conn, k, p, &[msg_type::SNAPSHOT])
+            transact(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])
         }
         DebugCmd::Monitor => {
+            let mut dev = open_device(conn)?;
             println!("monitoring... (ctrl-c to stop)");
             loop {
                 let raw = dev.transport().receive().map_err(|e| e.to_string())?;
@@ -49,11 +53,13 @@ pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String
             if cc_num > 127 {
                 return Err(format!("CC number must be 0-127, got {cc_num}"));
             }
-            send_standard(dev, &midicc::control_change(conn.channel, cc_num, value))
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &midicc::control_change(conn.channel, cc_num, value))
         }
         DebugCmd::Enable { slot, state } => {
+            let mut dev = open_device(conn)?;
             let (k, p) = protocol::set_enabled(slot, state.map(Power::on).unwrap_or(true));
-            transact(dev, conn, k, p, &[])
+            transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Setparam { b3, b5, b6, value } => {
             let p = |s: &str| {
@@ -61,30 +67,27 @@ pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String
                     .map_err(|_| format!("{s:?} must be hex"))
             };
             let (b3, b5, b6) = (p(&b3)?, p(&b5)?, p(&b6)?);
+            let mut dev = open_device(conn)?;
             let (k, payload) = protocol::param_write(b3, b5, b6, value);
-            transact(dev, conn, k, payload, &[])
+            transact(&mut dev, conn, k, payload, &[])
         }
         DebugCmd::Variant { index } => {
             match models_data::lookup_amp(index) {
                 Some(m) => println!("variant {index} -> {} ({})", m.name, m.code),
                 None => println!("variant {index} (unknown slot; device has 0-37)"),
             }
+            let mut dev = open_device(conn)?;
             let (k, p) = protocol::select_variant(index);
-            transact(dev, conn, k, p, &[])
+            transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Raw { bytes } => {
             let bytes = parse_hex(&bytes)?;
             if bytes.len() < 2 {
                 return Err("raw needs at least a message type".into());
             }
-            if bytes[1..].iter().any(|b| b & 0x80 != 0) {
-                eprintln!(
-                    "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
-                     bytes and the device will discard the message (7-bit-safe encoding?)"
-                );
-            }
+            let mut dev = open_device(conn)?;
             transact(
-                dev,
+                &mut dev,
                 conn,
                 bytes[0],
                 bytes[1..].to_vec(),
@@ -93,6 +96,7 @@ pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String
         }
         DebugCmd::Replay { bytes } => {
             let bytes = parse_hex(&bytes)?;
+            let mut dev = open_device(conn)?;
             println!("replay[{}]: {}", bytes.len(), hex(&bytes));
             dev.transport().send(&bytes).map_err(|e| e.to_string())?;
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
@@ -111,6 +115,9 @@ pub fn cmd_debug(dev: &mut Dev, conn: &Conn, cmd: DebugCmd) -> Result<(), String
             println!("{got} frame(s) in 2s");
             Ok(())
         }
-        DebugCmd::Probe { index } => probe(dev, conn, index),
+        DebugCmd::Probe { index } => {
+            let mut dev = open_device(conn)?;
+            probe(&mut dev, conn, index)
+        }
     }
 }

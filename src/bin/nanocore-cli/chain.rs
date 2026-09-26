@@ -1,10 +1,10 @@
-//! `chain` 命令：写入 / 显示效果链序，外加 `show` 设备状态快照
-//! （目前仅解码 chainOrder 区域）。
+//! `chain` 命令：写入 / 显示效果链序。
 
 use nanocore::client::Error;
 use nanocore::protocol;
 
-use crate::common::{Dev, describe, hex, render_chain};
+use crate::cli::{ChainCmd, Conn};
+use crate::common::{Dev, describe, hex, open_device, render_chain};
 
 pub fn print_chain_help() {
     println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
@@ -24,6 +24,38 @@ pub fn print_chain_help() {
     println!("  NOTE: this order is NOT the CC module order — in the chain, DEL comes");
     println!("  before MOD (CC25 is Mod, CC26 is Delay). This is a live edit to the");
     println!("  current preset; reload a factory preset afterwards to get back.");
+}
+
+/// `chain` 入口：写入或读取效果链序。
+pub fn cmd_chain(cmd: ChainCmd, conn: &Conn) -> Result<(), String> {
+    match cmd {
+        ChainCmd::Set { positions } => cmd_chain_set(&positions, conn),
+        ChainCmd::Show => cmd_chain_show(conn),
+    }
+}
+
+/// 写入链序：先校验，后打开端口——坏链序永远不会到达设备。
+fn cmd_chain_set(tokens: &[String], conn: &Conn) -> Result<(), String> {
+    let order = parse_chain_positions(tokens)?;
+    let mut dev = open_device(conn)?;
+
+    let (kind, payload) =
+        protocol::chain_write(&order).ok_or("internal: chain_write rejected a valid order")?;
+    println!("chain (left -> right): {}", render_chain(&order));
+    println!(
+        "                    as: [{}]",
+        order
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!(
+        "tx: type=0x{kind:02x} payload[{}] {}",
+        payload.len(),
+        hex(&payload)
+    );
+    chain_write(&mut dev, kind, payload)
 }
 
 /// 解析并校验 8 个链位置。
@@ -85,7 +117,7 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
 }
 
 /// 写入一个已预校验的链序，并通过设备自身的回显进行确认。
-pub fn chain_write_cmd(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), String> {
+fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), String> {
     let order = protocol::parse_chain_write(&payload)
         .ok_or("internal: device frame does not decode back to the chain")?;
 
@@ -128,9 +160,9 @@ pub fn chain_write_cmd(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), 
 
 /// 从设备快照中读取当前链序。
 ///
-/// `chainOrder` 尾部是少数已解码的快照区域之一，因此当前可用；
-/// `show` 的其余部分仍标注 (TBD)。
-pub fn cmd_chain_show(dev: &mut Dev) -> Result<(), String> {
+/// `chainOrder` 尾部是少数已解码的快照区域之一，因此当前可用。
+fn cmd_chain_show(conn: &Conn) -> Result<(), String> {
+    let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     match protocol::parse_chain_order(&s.payload) {
         Some(order) => {
@@ -139,27 +171,4 @@ pub fn cmd_chain_show(dev: &mut Dev) -> Result<(), String> {
         }
         None => Err("snapshot did not contain a decodable chainOrder".into()),
     }
-}
-
-/// 以可读形式显示当前设备状态快照。
-///
-/// 尽力而为：仅打印已解码的部分（chainOrder、载荷形状）；
-/// 其余标注 (TBD)，直至 `0x63` 快照解码完成。
-pub fn cmd_show(dev: &mut Dev) -> Result<(), String> {
-    let s = dev.read_snapshot().map_err(|e| e.to_string())?;
-    println!("Current device state (partial — full snapshot decode pending):");
-    match protocol::parse_chain_order(&s.payload) {
-        Some(order) => println!("  chain:    {}", render_chain(&order)),
-        None => println!("  chain:    (not decodable from this snapshot)"),
-    }
-    println!("  preset:   (TBD) active preset index/name not decoded yet");
-    println!("  modules:  (TBD) per-module on/off + model not decoded yet");
-    println!("  volume:   (TBD) USB output volume not decoded yet");
-    println!("  tuner:    (TBD) tuner state not decoded yet");
-    println!(
-        "  data:     snapshot {} bytes, {} float candidate(s)",
-        s.payload.len(),
-        protocol::scan_snapshot_floats(&s.payload).len()
-    );
-    Ok(())
 }

@@ -1,6 +1,6 @@
 //! `asset` 命令：读取 / 校验 / 写入存储在设备槽位中的原始音箱/IR 数据块。
 
-use nanocore::asset;
+use nanocore::asset::{self, ChunkRequest};
 
 use crate::cli::{AssetCmd, Conn, RegionArg};
 use crate::common::{Dev, open_device};
@@ -23,8 +23,9 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             Ok(())
         }
         AssetCmd::Read { region, slot, out } => {
+            let target = ReadTarget::new(region, slot)?;
             let mut dev = open_device(conn)?;
-            asset_read(&mut dev, region, slot, out, None)
+            asset_read(&mut dev, target, out, None)
         }
         AssetCmd::Verify {
             region,
@@ -34,8 +35,9 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
         } => {
             let want =
                 std::fs::read(&reference).map_err(|e| format!("cannot read {reference}: {e}"))?;
+            let target = ReadTarget::new(region, slot)?;
             let mut dev = open_device(conn)?;
-            asset_read(&mut dev, region, slot, out, Some(&want))
+            asset_read(&mut dev, target, out, Some(&want))
         }
         AssetCmd::Write {
             region,
@@ -95,18 +97,42 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
     }
 }
 
+/// 一次读取的已校验目标：区域、槽位、分块计划与预期长度。
+///
+/// 构造即校验——非法区域或槽位在打开端口之前就被拒绝。
+struct ReadTarget {
+    region: RegionArg,
+    slot: u8,
+    plan: Vec<ChunkRequest>,
+    total: u32,
+}
+
+impl ReadTarget {
+    fn new(region: RegionArg, slot: u8) -> Result<Self, String> {
+        let (total, plan) = asset::read_plan(region.asset_region(), slot)
+            .ok_or_else(|| format!("no read plan for region {}", region.name()))?;
+        Ok(Self {
+            region,
+            slot,
+            plan,
+            total,
+        })
+    }
+}
+
 /// `asset read` / `asset verify` 的共享实现体。
 fn asset_read(
     dev: &mut Dev,
-    region: RegionArg,
-    slot: u8,
+    target: ReadTarget,
     out: Option<String>,
     reference: Option<&[u8]>,
 ) -> Result<(), String> {
-    let region_byte = region.asset_region();
-    let Some((total, plan)) = asset::read_plan(region_byte, slot) else {
-        return Err(format!("no read plan for region {}", region.name()));
-    };
+    let ReadTarget {
+        region,
+        slot,
+        plan,
+        total,
+    } = target;
     println!(
         "asset {} slot {} (read-only, {} chunk request(s), expecting {} bytes)...",
         region.name(),
