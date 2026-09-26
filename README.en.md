@@ -36,7 +36,7 @@ nanocore-cli volume 90                    # USB output volume
 
 nanocore-cli tuner on / off               # tuner (state read pending)
 
-nanocore-cli asset read ir 0 out.bin      # pull the slot-0 IR blob
+nanocore-cli asset read ir 0 --out out.bin   # pull the slot-0 IR blob
 
 # protocol / debugging (undocumented framing):
 nanocore-cli debug monitor                # dump every inbound frame
@@ -60,7 +60,7 @@ Two caveats inherited from the hardware:
 - `module amp model` / `module cab model` accept **0–29**. The 8 FX2 drive pedals live in amp slots 30–37 and are only reachable via `debug variant`.
 - `show` is best-effort for now — active preset, per-module state, volume and tuner are marked `(TBD)` until the `0x63` snapshot decode is completed.
 
-Global flags: `--in N` `--out N` `--hint NAME` `--timeout MS` `--retries N` (plus hidden protocol-debugging flags, see the `debug` command docs).
+Global flags: `--in-port N` `--out-port N` `--hint NAME` `--ch 0-15` `--timeout MS` `--retries N` (plus hidden protocol-debugging flags, see the `debug` command docs).
 
 ## Shell completions
 

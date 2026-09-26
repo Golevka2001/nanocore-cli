@@ -68,10 +68,10 @@ fn variant_candidates() -> Vec<CompletionCandidate> {
 )]
 pub struct Cli {
     /// MIDI 输入端口索引（见 `ports`）
-    #[arg(long, alias = "in", global = true, value_name = "N")]
+    #[arg(long, global = true, value_name = "N")]
     pub in_port: Option<usize>,
     /// MIDI 输出端口索引（见 `ports`）
-    #[arg(long, alias = "out", global = true, value_name = "N")]
+    #[arg(long, global = true, value_name = "N")]
     pub out_port: Option<usize>,
     /// 用于自动探测的端口名子串 [default: nanocore]
     #[arg(long, global = true, value_name = "NAME")]
@@ -290,6 +290,7 @@ pub enum AssetCmd {
         region: RegionArg,
         slot: u8,
         /// 将数据块写入此文件
+        #[arg(long, value_name = "FILE")]
         out: Option<String>,
     },
     /// 取回数据块并与参考文件逐字节比较
@@ -301,6 +302,7 @@ pub enum AssetCmd {
         /// 用于比较的参考文件
         reference: String,
         /// 将数据块写入此文件
+        #[arg(long, value_name = "FILE")]
         out: Option<String>,
     },
     /// 将数据块写入槽位并通过回读校验（仅 IR）

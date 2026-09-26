@@ -12,7 +12,7 @@
 //! nanocore-cli module delay params           list that module's parameters
 //! nanocore-cli chain set delay eq fx1 ...    re-route the effect chain
 //! nanocore-cli show                          current device state (best-effort)
-//! nanocore-cli asset read ir 0 out.bin       pull the raw IR blob out of slot 0
+//! nanocore-cli asset read ir 0 --out out.bin pull the raw IR blob out of slot 0
 //! ```
 //!
 //! 所有涉及原始/未公开帧的操作都归入 `debug`；这些命令面向协议研究，

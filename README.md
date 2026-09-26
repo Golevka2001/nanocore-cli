@@ -36,7 +36,7 @@ nanocore-cli volume 90                    # USB 输出音量
 
 nanocore-cli tuner on / off               # 调音表（状态读取待做）
 
-nanocore-cli asset read ir 0 out.bin      # 把 0 号槽的 IR blob 拉出来
+nanocore-cli asset read ir 0 --out out.bin   # 把 0 号槽的 IR blob 拉出来
 
 # 协议 / 调试（未公开的帧格式）：
 nanocore-cli debug monitor                # 打印所有入站帧
@@ -60,7 +60,7 @@ chain   →  chain set/show
 - `module amp model` / `module cab model` 只接受 **0–29**。8 个 FX2 踏板效果占 amp 表的 30–37 号槽，只能通过 `debug variant` 访问。
 - `show` 目前是尽力而为——当前预设、各模块状态、音量、调音表都标着 `(TBD)`，等 `0x63` 快照解码完成。
 
-全局参数：`--in N` `--out N` `--hint NAME` `--timeout MS` `--retries N`（另有协议调试用的隐藏参数，见 `debug` 命令文档）。
+全局参数：`--in-port N` `--out-port N` `--hint NAME` `--ch 0-15` `--timeout MS` `--retries N`（另有协议调试用的隐藏参数，见 `debug` 命令文档）。
 
 ## Shell 补全
 
