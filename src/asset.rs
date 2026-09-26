@@ -72,6 +72,11 @@ pub const IR_TOTAL: u32 = 4096;
 /// 出厂音箱模型的 blob 大小（资源包清单中的 `ampAssets` `length`）。
 pub const AMP_TOTAL: u32 = 12242;
 
+/// AMP 区域可寻址的槽位数（30 个音箱仿真 + 8 个 FX2 踏板效果）。
+pub const AMP_SLOTS: u8 = 38;
+/// IR 区域可寻址的槽位数。
+pub const IR_SLOTS: u8 = 30;
+
 /// 4,096 字节 IR 每个数据块索引对应的 `(LEN 字节, 地址)`。
 ///
 /// 原样取自抓包；导出中所有 15 个该大小的 IR 槽位共用。
@@ -227,15 +232,32 @@ pub fn total_for(region: u8) -> Option<u32> {
     }
 }
 
+/// 某区域可寻址的槽位数；未知区域返回 `None`。
+///
+/// 与型号表一一对应：AMP 区域的 38 个槽即 [`models_data::AMP`]（30 个音箱
+/// 仿真 + 8 个 FX2 踏板效果），IR 区域的 30 个槽即 [`models_data::CAB`]。
+pub fn slots_for(region: u8) -> Option<u8> {
+    match region {
+        REGION_AMP => Some(AMP_SLOTS),
+        REGION_IR => Some(IR_SLOTS),
+        _ => None,
+    }
+}
+
 /// 为一个槽位构建完整读取计划。
 ///
 /// 返回 `(blob_len, requests)`。这些请求必须按序应答；参见 [`assemble`]。
+/// 区域未知或槽位超出 [`slots_for`] 时返回 `None`——计划永远不会指向
+/// 设备上不存在的槽位。
 pub fn read_plan(region: u8, slot: u8) -> Option<(u32, Vec<ChunkRequest>)> {
-    let (plan, total) = match region {
-        REGION_AMP => (AMP_PLAN, AMP_TOTAL),
-        REGION_IR => (IR_PLAN, IR_TOTAL),
+    let (plan, total, slots) = match region {
+        REGION_AMP => (AMP_PLAN, AMP_TOTAL, AMP_SLOTS),
+        REGION_IR => (IR_PLAN, IR_TOTAL, IR_SLOTS),
         _ => return None,
     };
+    if slot >= slots {
+        return None;
+    }
     let n = plan.len();
     let mut out = Vec::with_capacity(n);
     for (i, &(b3, addr)) in plan.iter().enumerate() {
@@ -742,6 +764,26 @@ mod tests {
         let (_, plan) = read_plan(REGION_AMP, 27).expect("plan");
         assert!(plan.iter().all(|r| r.slot == 27 && r.region == REGION_AMP));
         assert_eq!(plan[1].payload()[4], 27);
+    }
+
+    #[test]
+    fn plan_rejects_slots_past_the_region_capacity() {
+        assert!(read_plan(REGION_AMP, AMP_SLOTS - 1).is_some());
+        assert!(read_plan(REGION_AMP, AMP_SLOTS).is_none());
+        assert!(read_plan(REGION_IR, IR_SLOTS - 1).is_some());
+        assert!(read_plan(REGION_IR, IR_SLOTS).is_none());
+        assert!(read_plan(0x00, 0).is_none(), "unknown region");
+    }
+
+    /// 槽位容量必须与型号表逐一对应：AMP 区域 38 个槽 = `models_data::AMP`，
+    /// IR 区域 30 个槽 = `models_data::CAB`。两边单独改动时此测试会失败。
+    #[test]
+    fn region_capacity_matches_the_model_tables() {
+        assert_eq!(usize::from(AMP_SLOTS), crate::models_data::AMP.len());
+        assert_eq!(usize::from(IR_SLOTS), crate::models_data::CAB.len());
+        assert_eq!(slots_for(REGION_AMP), Some(AMP_SLOTS));
+        assert_eq!(slots_for(REGION_IR), Some(IR_SLOTS));
+        assert_eq!(slots_for(0x00), None);
     }
 
     #[test]

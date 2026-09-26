@@ -10,13 +10,15 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
         AssetCmd::List => {
             println!("asset regions (device blob storage):");
             println!(
-                "  amp   region 0x{:02x} — slots 0-37 (30 amp sims + 8 FX2 drive pedals), {} bytes each",
+                "  amp   region 0x{:02x} — slots 0-{} (30 amp sims + 8 FX2 drive pedals), {} bytes each",
                 asset::REGION_AMP,
+                asset::AMP_SLOTS - 1,
                 asset::AMP_TOTAL
             );
             println!(
-                "  ir    region 0x{:02x} — slots 0-29, {} bytes each (write supported)",
+                "  ir    region 0x{:02x} — slots 0-{}, {} bytes each (write supported)",
                 asset::REGION_IR,
+                asset::IR_SLOTS - 1,
                 asset::IR_TOTAL
             );
             println!("  operations: read | verify | write (ir only)");
@@ -48,8 +50,11 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), String> {
             if region != RegionArg::Ir {
                 return Err("asset write currently supports ir slots only".into());
             }
-            if slot >= asset::IR_TOTAL as u8 {
-                return Err(format!("ir slot must be 0-{}, got {slot}", asset::IR_TOTAL - 1));
+            if slot >= asset::IR_SLOTS {
+                return Err(format!(
+                    "ir slot must be 0-{}, got {slot}",
+                    asset::IR_SLOTS - 1
+                ));
             }
             let blob = std::fs::read(&file).map_err(|e| format!("cannot read {file}: {e}"))?;
             if blob.len() as u32 != asset::IR_TOTAL {
@@ -109,8 +114,18 @@ struct ReadTarget {
 
 impl ReadTarget {
     fn new(region: RegionArg, slot: u8) -> Result<Self, String> {
-        let (total, plan) = asset::read_plan(region.asset_region(), slot)
+        let region_byte = region.asset_region();
+        let slots = asset::slots_for(region_byte)
             .ok_or_else(|| format!("no read plan for region {}", region.name()))?;
+        if slot >= slots {
+            return Err(format!(
+                "{} slot must be 0-{} (device has {slots} slots), got {slot}",
+                region.name(),
+                slots - 1
+            ));
+        }
+        let (total, plan) = asset::read_plan(region_byte, slot)
+            .ok_or_else(|| format!("internal: no plan for {} slot {slot}", region.name()))?;
         Ok(Self {
             region,
             slot,
