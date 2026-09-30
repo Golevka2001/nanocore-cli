@@ -451,6 +451,38 @@ pub fn scan_snapshot_floats(payload: &[u8]) -> Vec<(usize, f32)> {
     out
 }
 
+/// `0x63` 快照载荷尾部链字段所用的填充索引。
+///
+/// 已在 fw 1.04 真机（USB）上用非恒等链序实验定案：
+/// 写入 `[4,0,1,2,3,5,6,7]` 后读快照，末 9 字节为
+/// `04 00 01 02 03 05 06 00 07`，只有去掉索引 7 的 `0x00` 才还原出写入的链序
+/// （索引 1 的歧义解 `[4,1,2,3,5,6,0,7]` 被真值排除）。
+/// 恒等链序快照（当日与 8 天前的 baseline）同形态吻合。
+/// 注意：官方 App 抓包（BLE）里的快照尾部形态与此不同且均为恒等链，填充下标
+/// 在那里不可观测——本常量仅对真机 USB 快照成立。
+pub const CHAIN_SNAPSHOT_FILLER: usize = 7;
+
+/// 从 `0x63` 快照载荷尾部解析 `chainOrder`。
+///
+/// 真机（USB）快照的链字段位于载荷最末：
+///
+/// ```text
+/// … 3f | 08 | 00 | <9 字节链字段>
+///   ^浮动数据  ^计数  ^分隔  ^载荷末 9 字节
+/// ```
+///
+/// `0x08` 是链元素计数，其后固定一个 `0x00` 分隔字节，
+/// 末 9 字节是在索引 [`CHAIN_SNAPSHOT_FILLER`] 处插入 `0x00` 后的 8 元素链序。
+/// 计数与分隔的锚定加上严格排列校验使误报概率可忽略；
+/// 恒等链序的歧义解（如填充索引 1）不满足 `field[7] == 0x00` 时自然被拒。
+pub fn parse_snapshot_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
+    let n = payload.len();
+    if n < CHAIN_LEN + 3 || payload[n - 11] != CHAIN_LEN as u8 || payload[n - 10] != 0x00 {
+        return None;
+    }
+    chain_decode(&payload[n - 9..], CHAIN_SNAPSHOT_FILLER)
+}
+
 /// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
 ///
 /// 已观察到两种布局：
@@ -758,6 +790,47 @@ mod tests {
         bad[6] = 0x00;
         bad[11] = 0x04;
         assert!(parse_chain_write(&bad).is_none());
+    }
+
+    // ─── 快照尾部链字段 ────────────────
+    // 逐字节取自真机（fw 1.04，USB）的 `0x63` 快照载荷尾部。
+
+    /// 恒等链序快照的末 12 字节（写入实验前的原始状态，
+    /// 与 8 天前 `data/baseline-20260922/snapshot.txt` 的尾部逐字节一致）。
+    const SNAPSHOT_TAIL_IDENTITY: [u8; 12] =
+        [0x3f, 0x08, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x07];
+
+    /// 写入 `[4,0,1,2,3,5,6,7]`（`chain set 4 0 1 2 3 5 6 7`）后快照的末 12 字节。
+    const SNAPSHOT_TAIL_DEL_FIRST: [u8; 12] =
+        [0x3f, 0x08, 0x00, 0x04, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x00, 0x07];
+
+    #[test]
+    fn chain_order_from_snapshot_tail() {
+        let mut p = vec![0x00u8; 197 - 12];
+        p.extend_from_slice(&SNAPSHOT_TAIL_IDENTITY);
+        assert_eq!(parse_snapshot_chain_order(&p).unwrap(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        // 非恒等判别样本：填充索引 7 是唯一还原出所写链序的位置
+        // （索引 1 的歧义解 [4,1,2,3,5,6,0,7] 被真值排除）。
+        let mut q = vec![0x00u8; 197 - 12];
+        q.extend_from_slice(&SNAPSHOT_TAIL_DEL_FIRST);
+        assert_eq!(parse_snapshot_chain_order(&q).unwrap(), vec![4, 0, 1, 2, 3, 5, 6, 7]);
+    }
+
+    #[test]
+    fn snapshot_chain_rejects_bad_anchors_and_filler() {
+        // 太短。
+        assert!(parse_snapshot_chain_order(&SNAPSHOT_TAIL_IDENTITY.to_vec()[..10]).is_none());
+        // 计数字节不是 0x08。
+        let mut bad = SNAPSHOT_TAIL_IDENTITY;
+        bad[1] = 0x07;
+        let mut p = vec![0x00u8; 185];
+        p.extend_from_slice(&bad);
+        assert!(parse_snapshot_chain_order(&p).is_none());
+        // 分隔字节缺失（官方 App BLE 抓包中的形态，末 9 字节的索引 7 不是 0x00）。
+        let mut q = vec![0x00u8; 185];
+        q.extend_from_slice(&[0x3f, 0x08, 0x00, 0x01, 0x02, 0x00, 0x03, 0x04, 0x05, 0x06, 0x07]);
+        assert!(parse_snapshot_chain_order(&q).is_none());
     }
 
     // ─── 链 ACK ──────────────────────

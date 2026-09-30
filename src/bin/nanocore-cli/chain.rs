@@ -164,7 +164,7 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
 fn cmd_chain_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
-    match protocol::parse_chain_order(&s.payload) {
+    match protocol::parse_snapshot_chain_order(&s.payload) {
         Some(order) => {
             println!("chain (left -> right): {}", render_chain(&order));
             Ok(())
