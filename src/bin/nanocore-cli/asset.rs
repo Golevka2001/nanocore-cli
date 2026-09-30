@@ -68,9 +68,12 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
             }
             println!("asset write ir slot {slot} — {} bytes", blob.len());
             eprintln!(
-                "warning: asset write is experimental — do not interrupt the session; \
-                 an interrupted write has been observed to wipe the preset-name table \n\
-                 (recoverable via a factory reset in the official app)"
+                "warning: asset write is dangerous — a write session (even a clean, \
+                 fully-committed one with passing read-back verification) has been \
+                 observed to wipe the device's preset table: all 64 slots lose their \
+                 names AND content, and only the official app's factory reset \
+                 recovers them (observed 2026-09-30, fw 1.04). Root cause unknown; \
+                 do not use until investigated."
             );
             let mut dev = open_device(conn)?;
             let back = dev.write_ir_slot(slot, &blob, name.as_deref(), |msg| {
