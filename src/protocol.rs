@@ -520,6 +520,126 @@ pub fn parse_snapshot_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
     chain_decode(&payload[n - 9..], CHAIN_SNAPSHOT_FILLER)
 }
 
+/// `0x63` 快照载荷经 `[mask][7 data]` 组连续解包后的字节流。
+///
+/// 2026-09-30 对 40 组出厂快照（`nanocore-reverse/data/snapshots-factory40/`）
+/// 字节级定案：载荷从 `[3]` 起（含）是**一条连续打包流**——
+/// 每 8 个线上字节为一组，组首字节是掩码（bit *j* 对应组内第 *j* 个数据字节的
+/// bit7），其余 7 字节是数据。记录头、活动预设索引、音量、链序计数全部
+/// 在流内，仅 `[0..3)`（`00 00 <X>`）留在流外。
+///
+/// 掩码落在 `[3 + 8k]`；位于掩码位置的载荷字节被"吞掉"（不进入数据流）——
+/// 快照尾部的链序分隔字节/填充 `0x00` 恰好落在某些掩码位上，
+/// 因此解包后的尾部比原始字节短，这是正常现象（那些字节值恒为 `0x00`）。
+pub fn unpack_snapshot_stream(payload: &[u8]) -> Option<Vec<u8>> {
+    if payload.len() < 12 || payload[0] != 0x00 || payload[1] != 0x00 || payload[3] != 0x00 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(payload.len() * 7 / 8);
+    let mut i = 3;
+    while i < payload.len() {
+        let mask = payload[i];
+        for j in 1..8 {
+            if i + j >= payload.len() {
+                break;
+            }
+            let mut b = payload[i + j];
+            if mask & (1 << (j - 1)) != 0 {
+                b |= 0x80;
+            }
+            out.push(b);
+        }
+        i += 8;
+    }
+    Some(out)
+}
+
+/// 解包后的一条链位记录：`[enabled][variant][paramCount] + float32 × count`。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapshotRecord {
+    /// 链位使能（`0x01` = 开）。
+    pub enabled: u8,
+    /// 效果类型（variant）索引。
+    pub variant: u8,
+    /// 全精度 float32 参数（bit7 已由掩码还原）。
+    pub params: Vec<f32>,
+}
+
+/// `0x63` 快照的完整结构化解码。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapshotState {
+    /// 活动预设索引（0 起始；与 `preset set` 往返一致）。
+    pub preset_index: u8,
+    /// 预设音量（0–100）。
+    pub preset_volume: u8,
+    /// 恰 8 条记录（每条对应 `chainOrder` 的一个链位）。
+    pub records: Vec<SnapshotRecord>,
+}
+
+/// 完整解码 `0x63` 快照载荷（真机 USB 形态，无 BLE 元数据尾）。
+///
+/// 数据流结构（掩码还原后）：
+///
+/// ```text
+/// [00][03][presetIndex][presetVolume]
+/// × 8: [enabled][variant][count] + float32 × count
+/// [08] + 链序（sep/填充 0x00 可能已被掩码位置吞掉）
+/// ```
+///
+/// 校验：前导标记 `[00][03]`、记录数恰为 8、每条 `count ≤ 16`、
+/// float 不得为 NaN/Inf（与固件解码器 `FUN_004777bc` 的
+/// `(bits & 0x7FFFFFFF) <= 0x7F7FFFFF` 一致）、记录后紧跟链计数 `0x08`。
+///
+/// 注意：**不要**用 [`parse_snapshot_chain_order`] 做前置校验 —— 它锚定
+/// 原始尾部的 `count@len-11` 布局，那只对特定快照长度（197B/165B，
+/// 掩码相位恰好把 sep/填充留在原位）成立；187B 等其它长度的原始尾部
+/// 字节因掩码吞位而整体移位。链序请继续用 [`parse_snapshot_chain_order`]
+/// 单独解（它对已验证的形态可靠），结构化解码以数据流内的 `0x08` 计数为准。
+///
+/// 已知语义差异（**不是**解码错误，40 组基线上与 manifest 对账得出）：
+/// * `fx1`（噪音门）/`fx2`（压缩器）的 `enabled` 在快照里是**实时 DSP 状态**
+///   （无输入信号时门/压控报告关闭），manifest 走 `0x41` 静态路径恒为 `1`；
+/// * `fx8` 的参数是运行时值，与静态出厂值系统性地不同。
+pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
+    let data = unpack_snapshot_stream(payload)?;
+    let mut p = 0usize;
+    let mut take = |k: usize| -> Option<&[u8]> {
+        let r = data.get(p..p + k)?;
+        p += k;
+        Some(r)
+    };
+    let hdr = take(4)?;
+    if hdr[0] != 0x00 || hdr[1] != 0x03 {
+        return None;
+    }
+    let preset_index = hdr[2];
+    let preset_volume = hdr[3];
+    let mut records = Vec::with_capacity(CHAIN_LEN);
+    for _ in 0..CHAIN_LEN {
+        let h = take(3)?;
+        let (enabled, variant, count) = (h[0], h[1], h[2]);
+        if count > 16 {
+            return None;
+        }
+        let raw = take(count as usize * 4)?;
+        let mut params = Vec::with_capacity(count as usize);
+        for c in raw.as_chunks::<4>().0 {
+            let bits = u32::from_le_bytes(*c);
+            // 与固件解码器一致：拒绝 NaN/Inf。
+            if bits & 0x7FFF_FFFF > 0x7F7F_FFFF {
+                return None;
+            }
+            params.push(f32::from_bits(bits));
+        }
+        records.push(SnapshotRecord { enabled, variant, params });
+    }
+    // 链计数标记（sep/填充可能被吞，但计数 0x08 始终在数据流内）。
+    if take(1)?[0] != CHAIN_LEN as u8 {
+        return None;
+    }
+    Some(SnapshotState { preset_index, preset_volume, records })
+}
+
 /// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
 ///
 /// 已观察到两种布局：
@@ -868,6 +988,85 @@ mod tests {
         let mut q = vec![0x00u8; 185];
         q.extend_from_slice(&[0x3f, 0x08, 0x00, 0x01, 0x02, 0x00, 0x03, 0x04, 0x05, 0x06, 0x07]);
         assert!(parse_snapshot_chain_order(&q).is_none());
+    }
+
+    // ─── 快照完整解码 ────────────────
+    // 两个向量逐字节取自 40 组出厂基线
+    // （nanocore-reverse/data/snapshots-factory40/slot_{0,1}.bin，
+    //   2026-09-30 采集于官方恢复出厂后的原厂状态）。
+
+    fn unhex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// `preset set 0`（ClnArp）后的快照载荷，187 字节。
+    const SNAP_CLNARP: &str = "00002000000300540103060336731d3f00000002006c51383e295c050f3d381e053e5201381e3f000003000000003f0000003f034d4c4c3f000005031a19193f000000443f1f052b3f0a570c633f4d4c4c3f000c00024d4c0c3f334033333f0000041a1919193e414a213f300000003f1a1919603f0100025c0f420e3e4d4c4c3e010120057b142e3e6c5140383e713d4a3f4d014c4c3e7b142e3e000000040000003f000000003f000000003f0000003f08000001020304050607";
+    /// `preset set 1`（Ambient）后的快照载荷，165 字节。
+    const SNAP_AMBIENT: &str = "00000c0000030153010102400000003f1d5a24003e000003000000603f0000003f4d4c004c3f00000566664c663f4d4c0c3f1a1919193f4375283f034d4c4c3f00000202142e073f713d0a303f0101031a19196c3e6065503e1a1901193e000002000000003f0000003f01500605295c0f3d4d194c4c3f1a19193f4000000000666666003e000004000000003f0000003f000000003f0000003f0800000102030405060007";
+
+    #[test]
+    fn unpack_stream_restores_masked_high_bits() {
+        let d = unpack_snapshot_stream(&unhex(SNAP_AMBIENT)).unwrap();
+        // fx7 记录的 p1 = 0.321 = 0x3EA45A1D —— 掩码 bit6 还原了 a4 的高位。
+        // （d[0..4) 前导 + d[4..7) 记录头 + p0@7..11 → p1@11..15。）
+        assert_eq!(&d[11..15], &0x3EA4_5A1Du32.to_le_bytes());
+        // 掩码位置的 0x00（尾部链序分隔/填充）被吞掉：165 - 3 = 162 个线上字节
+        // = 21 组（20 完整 + 1 尾组仅 1 数据字节）→ 20×7 + 1 = 141 个数据字节。
+        assert_eq!(d.len(), 141);
+    }
+
+    #[test]
+    fn snapshot_state_decodes_clnarp_exactly() {
+        let s = decode_snapshot_state(&unhex(SNAP_CLNARP)).expect("ClnArp decode");
+        assert_eq!(s.preset_index, 0);
+        assert_eq!(s.preset_volume, 84);
+        assert_eq!(s.records.len(), 8);
+        let r0 = &s.records[0];
+        assert_eq!((r0.enabled, r0.variant), (1, 3));
+        assert_eq!(r0.params.len(), 6);
+        // 与 manifest 逐位一致（0.617 的 float32 恰为 0x3F1DF3B6）。
+        assert_eq!(r0.params[0], f32::from_bits(0x3F1D_F3B6));
+        assert_eq!(r0.params[1], 0.0);
+        assert_eq!(r0.params[2], f32::from_bits(0x3E38_51EC)); // 0.18
+        assert_eq!(r0.params[3], f32::from_bits(0x3D8F_5C29)); // 0.07
+        assert_eq!(r0.params[4], f32::from_bits(0x3E05_1EB8)); // 0.13
+        assert_eq!(r0.params[5], f32::from_bits(0x3F1E_B852)); // 0.62
+        // fx8（rec1）与 fx4（rec5）/fx3（rec6，variant=1）。
+        assert_eq!((s.records[1].enabled, s.records[1].params.len()), (0, 3));
+        assert_eq!((s.records[5].enabled, s.records[5].variant), (1, 0));
+        assert_eq!((s.records[6].enabled, s.records[6].variant), (1, 1));
+        assert_eq!(s.records[6].params[2], f32::from_bits(0x3F4A_3D71)); // 0.79
+    }
+
+    #[test]
+    fn snapshot_state_decodes_ambient_exactly() {
+        let s = decode_snapshot_state(&unhex(SNAP_AMBIENT)).expect("Ambient decode");
+        assert_eq!(s.preset_index, 1);
+        assert_eq!(s.preset_volume, 83);
+        let r0 = &s.records[0];
+        assert_eq!((r0.enabled, r0.variant), (1, 1));
+        assert_eq!(r0.params[0], 0.5);
+        assert_eq!(r0.params[1], f32::from_bits(0x3EA4_5A1D)); // 0.321 —— 掩码还原后全精度
+        assert_eq!((s.records[4].enabled, s.records[4].variant), (1, 1));
+        assert_eq!(s.records[6].variant, 6);
+    }
+
+    #[test]
+    fn snapshot_state_rejects_corrupt_input() {
+        let good = unhex(SNAP_CLNARP);
+        // 截断到数据流不足以容纳 8 条记录（-12 字节 → 解包不足 153 字节）。
+        assert!(decode_snapshot_state(&good[..good.len() - 12]).is_none());
+        // 数据流标记字节 [1] 不是 0x03。
+        let mut bad = good.clone();
+        bad[5] = 0x04;
+        assert!(decode_snapshot_state(&bad).is_none());
+        // 记录的参数数超过 16（rec2 的 count 字节 0x05 → 0x11）。
+        let mut big = good.clone();
+        big[58] = 0x11;
+        assert!(decode_snapshot_state(&big).is_none());
     }
 
     // ─── 链 ACK ──────────────────────
