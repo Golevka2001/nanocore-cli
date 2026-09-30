@@ -3,7 +3,7 @@
 use nanocore::midicc;
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{Failure, open_device, send_standard};
+use crate::common::{Failure, open_device, send_standard, transact};
 
 pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
@@ -24,6 +24,44 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 );
             }
             Ok(())
+        }
+        PresetCmd::Rename { slot, name } => {
+            let field = nanocore::protocol::encode_preset_name_field(&name)
+                .map_err(Failure::error)?;
+            let mut dev = open_device(conn)?;
+            // 与官方抓包一致：field 0x09 选槽 → 等设备自发切槽事件 → 写名字区。
+            // （官方在选槽与改名之间有 ~6 个 PING 的等待；等事件比等时间更可靠。）
+            let (k, p) = nanocore::protocol::select_preset(slot);
+            transact(&mut dev, conn, k, p, &[])?;
+            match dev.wait_for_preset_switch_event(slot, 5_000) {
+                Ok(f) => println!("switch event: {}", crate::common::hex(&f.payload)),
+                Err(e) => {
+                    let traffic = dev.drain_frames(3_000);
+                    return Err(Failure::error(format!(
+                        "{e}; device traffic during 3s drain: {traffic}"
+                    )));
+                }
+            }
+            let (k, p) = nanocore::protocol::set_name_field(&field);
+            transact(&mut dev, conn, k, p, &[])?;
+
+            // flash 落盘异步生效，稍候验证。
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let entries = dev.read_preset_names()?;
+            let got = entries
+                .iter()
+                .find(|e| e.slot == slot)
+                .map(|e| e.name.clone())
+                .unwrap_or_default();
+            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            println!("slot #{slot}: {got:?} (expected {want:?})");
+            if got == want {
+                Ok(())
+            } else {
+                Err(Failure::mismatch(format!(
+                    "rename did not stick: got {got:?}, expected {want:?}"
+                )))
+            }
         }
         PresetCmd::Set { index } => {
             let mut dev = open_device(conn)?;

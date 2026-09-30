@@ -249,6 +249,43 @@ pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
     (msg_type::DATA, p)
 }
 
+/// 把预设名编码为设备名字区的 9 字节线上形态。
+///
+/// 规则（由恢复出厂抓包的 40/40 个出厂名逆向，全部吻合）：名字（≤ 8 个
+/// 可打印 ASCII 字符）先填充到 8 字节，再在下标 6 处插入一个 `0x00`——
+/// 与 [`chain_encode`] 的链序填充同族。设备显示时跳过 NUL 收集可打印字符。
+///
+/// 例：`"ClnArp"` -> `43 6c 6e 41 72 70 00 00 00`，`"BassFuzz"` ->
+/// `42 61 73 73 46 75 00 7a 7a`。
+///
+/// [`chain_encode`]: crate::protocol::chain_encode
+pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > 8 {
+        return Err(format!("preset name must be 1-8 characters, got {}", bytes.len()));
+    }
+    if !bytes.iter().all(|&b| (0x20..=0x7E).contains(&b)) {
+        return Err("preset name must be printable ASCII".to_string());
+    }
+    let mut padded = [0x00u8; 8];
+    padded[..bytes.len()].copy_from_slice(bytes);
+    let mut out = [0x00u8; 9];
+    out[..6].copy_from_slice(&padded[..6]);
+    // 下标 6 固定插入 0x00，剩余字符跟在其后。
+    out[7..9].copy_from_slice(&padded[6..8]);
+    Ok(out)
+}
+
+/// `0x6D` sub `0x0A`：以 9 字节名字区形态重命名当前预设。
+///
+/// 与官方抓包样本（"preset42" -> `count=08` + 9 字节载荷）同构；
+/// 名字区编码见 [`encode_preset_name_field`]。
+pub fn set_name_field(field: &[u8; 9]) -> (u8, Vec<u8>) {
+    let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, 0x08];
+    p.extend_from_slice(field);
+    (msg_type::DATA, p)
+}
+
 /// `0x6D` 效果类型切换。
 ///
 /// 线上布局（已针对 fx1 验证）：
@@ -876,5 +913,36 @@ mod tests {
         // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`；
         // 掩掉最高位会清除指数最低有效位（第 23 位）-> `00 00 00 3E`。
         assert_eq!(&p[7..], &[0x00, 0x00, 0x00, 0x3E]);
+    }
+}
+
+#[cfg(test)]
+mod name_field_tests {
+    use super::*;
+
+    #[test]
+    fn name_field_matches_all_factory_forms() {
+        // 逐字节对照恢复出厂抓包中的出厂名（40/40 的抽样验证）。
+        let cases: &[(&str, &str)] = &[
+            ("ClnArp", "436c6e417270000000"),
+            ("Ambient", "416d6269656e007400"),
+            ("RhyOD", "5268794f4400000000"),
+            ("EpicSolo", "45706963536f006c6f"),
+            ("BassFuzz", "426173734675007a7a"),
+            ("Sweep", "537765657000000000"),
+            ("ThickCln", "546869636b43006c6e"),
+        ];
+        for (name, want_hex) in cases {
+            let enc = encode_preset_name_field(name).unwrap();
+            let hex: String = enc.iter().map(|b| format!("{b:02x}")).collect();
+            assert_eq!(hex, *want_hex, "name {name:?}");
+        }
+    }
+
+    #[test]
+    fn name_field_rejects_bad_input() {
+        assert!(encode_preset_name_field("").is_err(), "empty");
+        assert!(encode_preset_name_field("123456789").is_err(), "too long");
+        assert!(encode_preset_name_field("ab\0cd").is_err(), "embedded NUL");
     }
 }

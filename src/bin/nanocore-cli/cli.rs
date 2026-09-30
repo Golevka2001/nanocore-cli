@@ -180,6 +180,14 @@ pub enum PresetCmd {
     Prev,
     /// 列出全部 64 个预设槽位的名称（只读）
     List,
+    /// 重命名预设槽位（1-8 个可打印 ASCII 字符，写入设备的名字区）
+    Rename {
+        /// 预设槽位（0–63）
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        slot: u8,
+        /// 新名字（1-8 个可打印 ASCII 字符）
+        name: String,
+    },
     /// 显示当前活动预设（待快照解码）
     Show,
     /// 重放官方"仅 DSP 恢复出厂"流程（40 组预设的名字与内容）

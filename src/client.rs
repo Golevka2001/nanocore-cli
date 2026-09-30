@@ -714,10 +714,44 @@ impl<T: Transport> Nanocore<T> {
     }
 
 
+    /// 轮询等待设备的预设切换事件（`0x01`，载荷 `[00, slot]`）。
+    ///
+    /// field-0x09 选槽是异步的：设备完成切换后会自发一条 `0x01` 事件
+    /// （官方改名抓包：选槽 41 后事件载荷 `00 29`）。
+    /// 旧槽位的迟到事件会被丢弃。
+    pub fn wait_for_preset_switch_event(
+        &mut self,
+        slot: u8,
+        timeout_ms: u64,
+    ) -> Result<Frame, String> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        loop {
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "no preset-switch event for slot {slot} within {timeout_ms} ms"
+                ));
+            }
+            if let Ok(_arrived) = self.pump() {
+                // pump 已把新帧放入 pending，下面统一在 pending 里找。
+            }
+            if let Some(pos) = self
+                .pending
+                .iter()
+                .position(|f| f.kind == 0x01 && f.payload == [0x00, slot])
+            {
+                if let Some(f) = self.pending.remove(pos) {
+                    return Ok(f);
+                }
+                continue;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     /// 抽干 `ms` 毫秒内的所有到达帧（含先前积压的），返回可读摘要。
     /// 目前仅用于人工诊断（失败路径的手动排查），常态编译为死代码。
     #[allow(dead_code)]
-    fn drain_frames(&mut self, ms: u64) -> String {
+    pub fn drain_frames(&mut self, ms: u64) -> String {
         let deadline = Instant::now() + Duration::from_millis(ms);
         let mut all: Vec<Frame> = self.pending.drain(..).collect();
         while Instant::now() < deadline {
