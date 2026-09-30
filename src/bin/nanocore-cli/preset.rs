@@ -37,47 +37,25 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             send_standard(&mut dev, &midicc::global::prev_preset(conn.channel))
         }
-        PresetCmd::RestoreFactory { resume } => {
+        PresetCmd::RestoreFactory => {
+            // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。
+            // 会话开场（0x49）会清空预设表，随后流程将其完整重写。
             eprintln!(
-                "warning: EXPERIMENTAL / KNOWN BROKEN — do not use on a real device\n  \
-                 until root-caused. Observed on fw 1.04 (2026-09-30):\n  \
-                 - the write session (0x49) wipes the whole preset table on open;\n  \
-                 - a session accepts only ~22-24 preset commits, then refuses;\n  \
-                 - preset writes WITHOUT a session ack normally but corrupt the\n  \
-                   device (model table, IR slots) — recovery only via the official\n  \
-                   app's factory reset.\n  \
-                 The sequence itself is verified byte-exact against the official\n  \
-                 captures; the missing piece is whatever lets the official app do\n  \
-                 40 commits in one session (asset-phase priming is suspected)."
+                "warning: experimental — replays the official DSP-only factory restore\n  \
+                 (preamble enumeration + 40 preset groups). Slots 0-39 will be\n  \
+                 overwritten with factory names and contents. Do not disconnect the\n  \
+                 device until the command prints its final verdict."
             );
             let mut dev = open_device(conn)?;
-
-            // 断点续传：名表里已有非占位名的槽位视为已恢复，跳过。
-            let mut skip: Vec<usize> = Vec::new();
-            if resume {
-                let entries = dev.read_preset_names()?;
-                skip.extend(entries.iter().filter(|e| e.named).map(|e| e.slot as usize));
-                if skip.is_empty() {
-                    println!("resume: no named slots found — restoring everything.");
-                } else {
-                    println!(
-                        "resume: skipping {} already-restored slot(s): {:?}",
-                        skip.len(),
-                        skip
-                    );
-                }
-            }
-
-            dev.restore_factory_presets(&skip, |msg| {
+            dev.restore_factory_presets(|msg| {
                 eprint!("\r{msg}");
             })
             .map_err(Failure::error)?;
             eprintln!();
-            println!("OK: all requested factory preset groups replayed.");
+            println!("OK: official DSP restore sequence replayed.");
 
             // flash 落盘异步生效（观察到提交后 ~2.4 s 的过期读），稍候再验证名表。
             std::thread::sleep(std::time::Duration::from_secs(3));
-            // 收尾验证：名表里有多少个非占位名。
             let entries = dev.read_preset_names()?;
             let named = entries.iter().filter(|e| e.named).count();
             println!("preset table now has {named}/40 factory-named slots.");
@@ -85,8 +63,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 Ok(())
             } else {
                 Err(Failure::mismatch(format!(
-                    "expected 40 named slots, got {named} — reboot the device and \
-                     re-run with --resume to continue"
+                    "expected 40 named slots, got {named}"
                 )))
             }
         }

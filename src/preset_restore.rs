@@ -42,6 +42,11 @@ pub const WRITE_FRAME_COUNT: usize = GROUP_COUNT * FRAMES_PER_GROUP;
 /// 总帧数（含 18 条 PING）。
 pub const FRAME_COUNT: usize = WRITE_FRAME_COUNT + 18;
 
+/// 前置枚举阶段的帧数（来自官方"仅 DSP 恢复"抓包：0x46 定位、PING、
+/// XFER_BEGIN、38× `0x36` 型号枚举、SYNC、30× `0x56` IR 槽枚举、
+/// 3× 快照、8× `0x40` 名表读、2× QUERY、`0x49`、PING）。
+pub const PREAMBLE_FRAME_COUNT: usize = 87;
+
 /// 一条待重放的预设写帧。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresetRestoreFrame {
@@ -53,16 +58,41 @@ pub struct PresetRestoreFrame {
 /// 解析内嵌数据。结构不符时返回 `Err`（数据损坏的兜底，正常不会发生）。
 pub fn frames() -> Result<Vec<PresetRestoreFrame>, String> {
     let data = include_bytes!("../data/factory_preset_restore.bin");
-    parse(data)
+    let out = parse(data)?;
+    if out.len() != FRAME_COUNT {
+        return Err(format!("expected {FRAME_COUNT} frames, got {}", out.len()));
+    }
+    Ok(out)
+}
+
+/// 解析内嵌的官方前置枚举阶段（"仅 DSP 恢复"流程的 `0x49` 之前的全部 TX）。
+///
+/// 实测这些读取事务（型号/IR/名表枚举）是写入阶段能一次完成 40 组提交的
+/// 前置条件——跳过它们时重放会在 ~22-24 组处被设备拒绝。
+pub fn preamble_frames() -> Result<Vec<PresetRestoreFrame>, String> {
+    let data = include_bytes!("../data/factory_preset_preamble.bin");
+    let out = parse_with_expected(data, PREAMBLE_FRAME_COUNT)?;
+    if out.len() != PREAMBLE_FRAME_COUNT {
+        return Err(format!("expected {PREAMBLE_FRAME_COUNT} preamble frames, got {}", out.len()));
+    }
+    if out.first().map(|f| f.kind) != Some(KIND_SLOT_SEEK) {
+        return Err("preamble must start with a slot-seek frame".to_string());
+    }
+    Ok(out)
 }
 
 /// 解析原始数据（供测试与校验工具复用）。
 pub fn parse(data: &[u8]) -> Result<Vec<PresetRestoreFrame>, String> {
-    let mut out = Vec::with_capacity(FRAME_COUNT);
+    parse_with_expected(data, FRAME_COUNT)
+}
+
+/// 按 `expected` 数量解析原始数据。
+fn parse_with_expected(data: &[u8], expected: usize) -> Result<Vec<PresetRestoreFrame>, String> {
+    let mut out = Vec::with_capacity(expected);
     let mut rest = data;
     while !rest.is_empty() {
         if rest.len() < 4 {
-            return Err(format!("truncated header at frame {} of {}", out.len(), FRAME_COUNT));
+            return Err(format!("truncated header at frame {} of {}", out.len(), expected));
         }
         let kind = rest[0];
         let flags = rest[1];
@@ -74,8 +104,8 @@ pub fn parse(data: &[u8]) -> Result<Vec<PresetRestoreFrame>, String> {
         rest = &rest[4 + len..];
         out.push(PresetRestoreFrame { kind, flags, payload });
     }
-    if out.len() != FRAME_COUNT {
-        return Err(format!("expected {FRAME_COUNT} frames, got {}", out.len()));
+    if out.len() != expected {
+        return Err(format!("expected {expected} frames, got {}", out.len()));
     }
     Ok(out)
 }
@@ -230,5 +260,23 @@ mod tests {
     fn parse_rejects_truncated_data() {
         let full = include_bytes!("../data/factory_preset_restore.bin");
         assert!(parse(&full[..100]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod preamble_tests {
+    use super::*;
+
+    #[test]
+    fn preamble_parses_with_documented_frame_count() {
+        let frames = preamble_frames().expect("embedded preamble must parse");
+        assert_eq!(frames.len(), PREAMBLE_FRAME_COUNT);
+        assert_eq!(frames.first().unwrap().kind, KIND_SLOT_SEEK);
+        // 型号枚举 38 帧 + IR 枚举 30 帧
+        assert_eq!(frames.iter().filter(|f| f.kind == 0x36).count(), 38);
+        assert_eq!(frames.iter().filter(|f| f.kind == 0x56).count(), 30);
+        // 0x49 在最后一帧 PING 之前
+        let i49 = frames.iter().position(|f| f.kind == 0x49).unwrap();
+        assert!(i49 > 40, "0x49 must come after the enumerations");
     }
 }

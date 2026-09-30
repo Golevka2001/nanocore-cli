@@ -113,7 +113,7 @@ impl<T: Transport> Nanocore<T> {
 
     fn next_seq(&mut self) -> u16 {
         let s = self.seq;
-        self.seq = (self.seq + 1) & 0x7FFF;
+        self.seq = next_seq_after(s);
         s
     }
 
@@ -508,17 +508,15 @@ impl<T: Transport> Nanocore<T> {
         Ok(back)
     }
 
-    /// 重放出厂预设写序列，修复被清空的预设表（名字 + 内容，槽位 0–39）。
+    /// 重放官方"仅 DSP 恢复出厂"流程：前置枚举 + 40 组预设写（名字 + 内容，槽位 0–39）。
     ///
-    /// 帧序列来自官方 App"恢复出厂设置"抓包（[`crate::preset_restore`]），
-    /// 跨会话逐字节稳定。会话开场（`0x49`/`0x50`）按官方顺序尽力而为——
-    /// 开会话本身可能再次清空预设表，但这正是本流程要重写的对象，无实际风险。
-    /// 每帧都要求设备应答，任何一帧失败即中止（设备状态可能处于写了一半的组）。
+    /// 帧序列来自官方 App 抓包（[`crate::preset_restore`]），跨会话逐字节稳定。
+    /// 前置枚举（型号 / IR / 名表）实测是写入阶段能一次完成 40 组提交的前置条件。
+    /// 开会话（`0x49`）会清空预设表——这正是流程随后要整体重写的对象。
     ///
-    /// 注意：这只覆盖预设；资产槽（amp/IR）不在此流程内。
+    /// 注意：只覆盖预设；资产槽（amp/IR）不在此流程内。
     pub fn restore_factory_presets(
         &mut self,
-        skip: &[usize],
         mut on_progress: impl FnMut(&str),
     ) -> Result<(), String> {
         use crate::preset_restore as pr;
@@ -535,7 +533,7 @@ impl<T: Transport> Nanocore<T> {
             max_retries: 2,
             poll_interval: Duration::from_millis(10),
         });
-        let result = self.restore_factory_presets_inner(&frames, skip, &mut on_progress);
+        let result = self.restore_factory_presets_inner(&frames, &mut on_progress);
         self.set_config(saved);
         result
     }
@@ -543,50 +541,31 @@ impl<T: Transport> Nanocore<T> {
     fn restore_factory_presets_inner(
         &mut self,
         frames: &[crate::preset_restore::PresetRestoreFrame],
-        skip: &[usize],
         on_progress: &mut dyn FnMut(&str),
     ) -> Result<(), String> {
-        use crate::asset;
         use crate::preset_restore as pr;
-        use crate::{msg_type, protocol};
 
-        // 会话开场，镜像官方恢复流程：PING ×2 → 0x49 → PING → 0x3b("FACT") → PING → 0x50。
-        //
-        // `0x3b` 载荷含 ASCII "FACT"，仅出现在官方恢复出厂流程里——实测缺了它，
-        // 重放在 ~22 组后会被设备以 type=0x00 的记录拒绝（提交预算耗尽）。
-        // 全部尽力而为：会话跨连接保留时 0x49 会被设备忽略。
-        let recovery_preamble =
-            |self_: &mut Self, on_progress: &mut dyn FnMut(&str)| -> Result<(), String> {
-                let (pk, pp) = protocol::ping();
-                on_progress("ping");
-                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
-                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
-                on_progress("session open (0x49)");
-                let _ = self_.transact_expect(
-                    asset::SESSION_OPEN,
-                    asset::session_open(),
-                    &[asset::SESSION_OPEN],
-                );
-                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
-                on_progress("factory mode (0x3b \"FACT\")");
-                const FACT: u8 = 0x3b;
-                let fact_payload = vec![0x00, 0x04, 0x00, 0x00, b'F', b'A', b'C', b'T'];
-                let _ = self_.transact_expect(FACT, fact_payload, &[FACT]);
-                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
-                on_progress("sync (0x50)");
-                let _ = self_.transact_expect(0x50, vec![0x00, 0x00, 0x00], &[0x50]);
-                // 开会话会清空预设表并触发后台重建；重建完成前的提交会被吞掉。
-                // 官方流程的资产阶段恰好充当了这个等待期。
-                on_progress("waiting 60s for the device to settle after session open");
-                std::thread::sleep(Duration::from_millis(60_000));
-                Ok(())
+        // 前置枚举阶段：官方"仅 DSP 恢复"的 0x49 之前的全部 TX 逐帧重放
+        // （0x46 定位、PING、XFER_BEGIN、型号/IR/名表枚举、快照、查询、0x49、PING）。
+        // 读取事务尽力而为；`0x49` 之后设备即进入写会话（会清空预设表，随后整体重写）。
+        let preamble = pr::preamble_frames()?;
+        on_progress(&format!("replaying official preamble ({} frames)", preamble.len()));
+        for (i, f) in preamble.iter().enumerate() {
+            let label = match f.kind {
+                pr::KIND_SLOT_SEEK => "slot-seek (reset)",
+                pr::KIND_PING => "ping",
+                0x36 => "model enumeration",
+                0x56 => "ir-slot enumeration",
+                0x63 => "snapshot",
+                0x40 => "preset-list read",
+                0x41 => "query",
+                0x30 => "xfer-begin",
+                0x49 => "session open (0x49)",
+                0x50 => "sync",
+                _ => "frame",
             };
-        // resume 模式（跳过部分组）绝不发会话开场——0x49 会清空整张预设表，
-        // 把已恢复的槽位再次抹掉。预设写以 0x42 开门，无需资产会话。
-        if skip.is_empty() {
-            recovery_preamble(self, on_progress)?;
-        } else {
-            on_progress("resume mode: skipping the session preamble (0x49 would wipe the table)");
+            on_progress(&format!("preamble {}/{}: {}", i + 1, preamble.len(), label));
+            let _ = self.transact_with_flags(f.flags, f.kind, f.payload.clone(), &[f.kind]);
         }
 
         // 按组切分（PING 原位保留在所属片内），逐组重放。
@@ -596,25 +575,16 @@ impl<T: Transport> Nanocore<T> {
 
         for (gi, slice) in slices.iter().enumerate() {
             let slot = gi; // 0-based，与片内 0x46 的末字节一致
-            if skip.contains(&slot) {
-                on_progress(&format!("group {}: already named, skipping", slot + 1));
-                continue;
-            }
             let mut attempt = 0usize;
             loop {
                 attempt += 1;
                 let outcome = self.replay_group(slice, slot, &mut ack_log, on_progress);
                 match outcome {
                     Ok(()) => break,
-                    Err(e) if attempt < 3 => {
-                        // 会话可能在长序列中途失效：重新武装（0x49 + FACT）后重做本组。
-                        // 已提交的组重复写入是幂等的，向前推进不受影响。
-                        on_progress(&format!(
-                            "group {}: {} — re-arming session, redo group",
-                            slot + 1,
-                            e
-                        ));
-                        recovery_preamble(self, on_progress)?;
+                    Err(e) if attempt < 2 => {
+                        // 组内一次性失败：重做本组（组重放幂等）。不重发 0x49——
+                        // 它会清空整张表，把已提交的组毁掉。
+                        on_progress(&format!("group {}: {} — redo group", slot + 1, e));
                     }
                     Err(e) => {
                         return Err(format!(
@@ -906,6 +876,45 @@ impl<T: Transport> Nanocore<T> {
         match protocol::chain_write(order) {
             Some((k, p)) => self.send(k, p).map(|()| true),
             None => Ok(false),
+        }
+    }
+}
+
+/// `seq` 的下一个值：递增并保持低字节 7-bit 安全（≤ 0x7F，MIDI 数据字节约束）。
+///
+/// 低字节到达 0x80 时整段跳过到下一个 0x100 边界——官方抓包铁证：
+/// seq `0x237f` 之后是 `0x2400`（跳过 `0x2380-0x23ff`）。不跳的话
+/// （低字节 = 0x80+），设备将不再应答任何帧——这正是重放在 ~125 帧处
+/// 必死的根因。
+fn next_seq_after(s: u16) -> u16 {
+    let mut next = (s + 1) & 0x7FFF;
+    if next & 0xFF >= 0x80 {
+        next = (next | 0xFF).wrapping_add(1) & 0x7FFF;
+    }
+    next
+}
+
+#[cfg(test)]
+mod seq_tests {
+    use super::next_seq_after;
+
+    #[test]
+    fn seq_skips_the_non_7bit_safe_range() {
+        assert_eq!(next_seq_after(0x237e), 0x237f);
+        // 0x237f 的下一个不是 0x2380，而是跳到 0x2400
+        assert_eq!(next_seq_after(0x237f), 0x2400);
+        assert_eq!(next_seq_after(0x2400), 0x2401);
+        // 每个低字节 0x7F 之后都跳过一个 0x80-0xFF 段
+        assert_eq!(next_seq_after(0x007f), 0x0100);
+        assert_eq!(next_seq_after(0x0000), 0x0001);
+    }
+
+    #[test]
+    fn seq_stays_7bit_safe_forever() {
+        let mut s = 0x237fu16;
+        for _ in 0..70_000 {
+            s = next_seq_after(s);
+            assert!(s & 0xFF <= 0x7F, "seq {s:#06x} has a non-7-bit-safe low byte");
         }
     }
 }
