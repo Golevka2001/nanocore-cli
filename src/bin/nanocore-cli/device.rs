@@ -8,17 +8,24 @@ use crate::common::{Failure, open_device, render_chain, send_standard, transact}
 
 /// 以可读形式显示当前设备状态快照。
 ///
-/// 尽力而为：仅打印已解码的部分（chainOrder、载荷形状）；
+/// 尽力而为：仅打印已解码的部分（chainOrder、活动预设索引、载荷形状）；
 /// 其余标注 (TBD)，直至 `0x63` 快照解码完成。
 pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     println!("Current device state (partial — full snapshot decode pending):");
-    match protocol::parse_chain_order(&s.payload) {
+    match protocol::parse_snapshot_chain_order(&s.payload) {
         Some(order) => println!("  chain:    {}", render_chain(&order)),
         None => println!("  chain:    (not decodable from this snapshot)"),
     }
-    println!("  preset:   (TBD) active preset index/name not decoded yet");
+    // 快照 `[6]` 经真机往返验证与活动预设索引一致
+    // （preset set 5 → 0x05，preset set 39 → 0x27；见 docs/protocol/snapshot.md）。
+    if s.payload.len() > 6 {
+        println!(
+            "  preset:   #{} (empirical — payload[6], round-trip verified)",
+            s.payload[6]
+        );
+    }
     println!("  modules:  (TBD) per-module on/off + model not decoded yet");
     println!("  volume:   (TBD) USB output volume not decoded yet");
     println!("  tuner:    (TBD) tuner state not decoded yet");
