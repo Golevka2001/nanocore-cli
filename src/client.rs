@@ -508,6 +508,270 @@ impl<T: Transport> Nanocore<T> {
         Ok(back)
     }
 
+    /// 重放出厂预设写序列，修复被清空的预设表（名字 + 内容，槽位 0–39）。
+    ///
+    /// 帧序列来自官方 App"恢复出厂设置"抓包（[`crate::preset_restore`]），
+    /// 跨会话逐字节稳定。会话开场（`0x49`/`0x50`）按官方顺序尽力而为——
+    /// 开会话本身可能再次清空预设表，但这正是本流程要重写的对象，无实际风险。
+    /// 每帧都要求设备应答，任何一帧失败即中止（设备状态可能处于写了一半的组）。
+    ///
+    /// 注意：这只覆盖预设；资产槽（amp/IR）不在此流程内。
+    pub fn restore_factory_presets(
+        &mut self,
+        skip: &[usize],
+        mut on_progress: impl FnMut(&str),
+    ) -> Result<(), String> {
+        use crate::preset_restore as pr;
+
+        let frames = pr::frames()?;
+        pr::validate(&frames).map_err(|e| format!("internal: {e}"))?;
+
+        // 与 write_ir_slot 相同的宽松预算（会话/落槽应答可能迟到）。
+        let saved = self.config;
+        self.set_config(crate::client::RetryConfig {
+            initial_timeout: Duration::from_millis(500),
+            max_timeout: Duration::from_millis(2000),
+            hard_limit: Duration::from_secs(10),
+            max_retries: 2,
+            poll_interval: Duration::from_millis(10),
+        });
+        let result = self.restore_factory_presets_inner(&frames, skip, &mut on_progress);
+        self.set_config(saved);
+        result
+    }
+
+    fn restore_factory_presets_inner(
+        &mut self,
+        frames: &[crate::preset_restore::PresetRestoreFrame],
+        skip: &[usize],
+        on_progress: &mut dyn FnMut(&str),
+    ) -> Result<(), String> {
+        use crate::asset;
+        use crate::preset_restore as pr;
+        use crate::{msg_type, protocol};
+
+        // 会话开场，镜像官方恢复流程：PING ×2 → 0x49 → PING → 0x3b("FACT") → PING → 0x50。
+        //
+        // `0x3b` 载荷含 ASCII "FACT"，仅出现在官方恢复出厂流程里——实测缺了它，
+        // 重放在 ~22 组后会被设备以 type=0x00 的记录拒绝（提交预算耗尽）。
+        // 全部尽力而为：会话跨连接保留时 0x49 会被设备忽略。
+        let recovery_preamble =
+            |self_: &mut Self, on_progress: &mut dyn FnMut(&str)| -> Result<(), String> {
+                let (pk, pp) = protocol::ping();
+                on_progress("ping");
+                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
+                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
+                on_progress("session open (0x49)");
+                let _ = self_.transact_expect(
+                    asset::SESSION_OPEN,
+                    asset::session_open(),
+                    &[asset::SESSION_OPEN],
+                );
+                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
+                on_progress("factory mode (0x3b \"FACT\")");
+                const FACT: u8 = 0x3b;
+                let fact_payload = vec![0x00, 0x04, 0x00, 0x00, b'F', b'A', b'C', b'T'];
+                let _ = self_.transact_expect(FACT, fact_payload, &[FACT]);
+                let _ = self_.transact_expect(pk, pp.clone(), &[msg_type::PING]);
+                on_progress("sync (0x50)");
+                let _ = self_.transact_expect(0x50, vec![0x00, 0x00, 0x00], &[0x50]);
+                // 开会话会清空预设表并触发后台重建；重建完成前的提交会被吞掉。
+                // 官方流程的资产阶段恰好充当了这个等待期。
+                on_progress("waiting 60s for the device to settle after session open");
+                std::thread::sleep(Duration::from_millis(60_000));
+                Ok(())
+            };
+        // resume 模式（跳过部分组）绝不发会话开场——0x49 会清空整张预设表，
+        // 把已恢复的槽位再次抹掉。预设写以 0x42 开门，无需资产会话。
+        if skip.is_empty() {
+            recovery_preamble(self, on_progress)?;
+        } else {
+            on_progress("resume mode: skipping the session preamble (0x49 would wipe the table)");
+        }
+
+        // 按组切分（PING 原位保留在所属片内），逐组重放。
+        let slices = pr::group_slices(frames).map_err(|e| format!("internal: {e}"))?;
+        let loose = self.config;
+        let mut ack_log: Vec<String> = Vec::with_capacity(frames.len());
+
+        for (gi, slice) in slices.iter().enumerate() {
+            let slot = gi; // 0-based，与片内 0x46 的末字节一致
+            if skip.contains(&slot) {
+                on_progress(&format!("group {}: already named, skipping", slot + 1));
+                continue;
+            }
+            let mut attempt = 0usize;
+            loop {
+                attempt += 1;
+                let outcome = self.replay_group(slice, slot, &mut ack_log, on_progress);
+                match outcome {
+                    Ok(()) => break,
+                    Err(e) if attempt < 3 => {
+                        // 会话可能在长序列中途失效：重新武装（0x49 + FACT）后重做本组。
+                        // 已提交的组重复写入是幂等的，向前推进不受影响。
+                        on_progress(&format!(
+                            "group {}: {} — re-arming session, redo group",
+                            slot + 1,
+                            e
+                        ));
+                        recovery_preamble(self, on_progress)?;
+                    }
+                    Err(e) => {
+                        return Err(format!(
+                            "group {}: giving up after {attempt} attempts: {e}\n                             full ack log (frame:kind/payload): {ack_log:?}",
+                            slot + 1
+                        ));
+                    }
+                }
+            }
+        }
+        self.set_config(loose);
+        on_progress("all 40 groups replayed");
+        Ok(())
+    }
+
+    /// 重放一个组（含片内 PING 与落槽等待）。失败时返回 `Err`，由调用方决定重试。
+    fn replay_group(
+        &mut self,
+        slice: &[&crate::preset_restore::PresetRestoreFrame],
+        slot: usize,
+        ack_log: &mut Vec<String>,
+        on_progress: &mut dyn FnMut(&str),
+    ) -> Result<(), String> {
+        use crate::preset_restore::KIND_SLOT_SEEK;
+
+        for (ri, f) in slice.iter().enumerate() {
+            on_progress(&format!(
+                "group {}/40 frame {}/{} (kind 0x{:02x})",
+                slot + 1,
+                ri + 1,
+                slice.len(),
+                f.kind
+            ));
+
+            if f.kind == crate::preset_restore::KIND_PING {
+                let _ = self.transact_with_flags(f.flags, f.kind, f.payload.clone(), &[f.kind]);
+                continue;
+            }
+
+            if f.kind == KIND_SLOT_SEEK {
+                // 提交可能因后台重建被吞：长等待 + 重发，最多 3 轮。
+                let mut ack = None;
+                for round in 0..3 {
+                    let seq = self.next_seq();
+                    let wire =
+                        Frame::new(Direction::Tx, f.flags, seq, f.kind, f.payload.clone());
+                    self.transport
+                        .send(&wire.encode())
+                        .map_err(|e| format!("slot-seek send failed: {e}"))?;
+                    match self.wait_for_slot_seek_ack(slot, 20_000) {
+                        Ok(a) => {
+                            ack = Some(a);
+                            break;
+                        }
+                        Err(e) => {
+                            on_progress(&format!(
+                                "group {}: slot-seek attempt {} failed ({}), waiting 30s",
+                                slot + 1,
+                                round + 1,
+                                e
+                            ));
+                            std::thread::sleep(Duration::from_millis(30_000));
+                        }
+                    }
+                }
+                let ack = ack.ok_or_else(|| {
+                    format!("slot-seek ack for group {} never arrived", slot + 1)
+                })?;
+                let hex: String = ack
+                    .payload
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ack_log.push(format!("g{slot}:0x46/{hex} (settled)"));
+                // flash 提交后的沉淀时间。
+                std::thread::sleep(Duration::from_millis(400));
+                continue;
+            }
+
+            let ack = self
+                .transact_with_flags(f.flags, f.kind, f.payload.clone(), &[f.kind])
+                .map_err(|e| format!("kind 0x{:02x}: {e}", f.kind))?;
+            let hex: String = ack
+                .payload
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            ack_log.push(format!("g{slot}:0x{:02x}/{hex}", f.kind));
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        Ok(())
+    }
+
+    /// 轮询等待落槽（`0x46`）应答中槽位字节追上 `slot`（0-based）。
+    ///
+    /// 设备的 flash 提交是异步的，应答会滞后若干个组；期间到达的旧槽位 ack
+    /// 会被丢弃。seq 不作匹配依据——滞后场景下设备应答的 seq 与请求对不上。
+    fn wait_for_slot_seek_ack(
+        &mut self,
+        slot: usize,
+        timeout_ms: u64,
+    ) -> Result<Frame, String> {
+        let want = [0x00u8, 0x00, 0x01, 0x00, 0x00, slot as u8];
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        loop {
+            if Instant::now() >= deadline {
+                return Err(format!("no slot-seek ack for slot {slot} within {timeout_ms} ms"));
+            }
+            if let Ok(arrived) = self.pump() {
+                // pump 已把新帧放入 pending，下面统一在 pending 里找。
+                let _ = arrived;
+            }
+            if let Some(pos) = self
+                .pending
+                .iter()
+                .position(|f| f.kind == crate::preset_restore::KIND_SLOT_SEEK)
+                && let Some(f) = self.pending.remove(pos)
+                && f.payload == want
+            {
+                return Ok(f);
+                // 旧槽位的迟到 ack：丢弃并继续等。
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+
+    /// 抽干 `ms` 毫秒内的所有到达帧（含先前积压的），返回可读摘要。
+    /// 目前仅用于人工诊断（失败路径的手动排查），常态编译为死代码。
+    #[allow(dead_code)]
+    fn drain_frames(&mut self, ms: u64) -> String {
+        let deadline = Instant::now() + Duration::from_millis(ms);
+        let mut all: Vec<Frame> = self.pending.drain(..).collect();
+        while Instant::now() < deadline {
+            if let Ok(frames) = self.pump() {
+                all.extend(frames);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if all.is_empty() {
+            return "(nothing arrived)".to_string();
+        }
+        all.iter()
+            .map(|f| {
+                let hex: String =
+                    f.payload.iter().take(12).map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ");
+                format!(
+                    "[{:?} type=0x{:02x} seq=0x{:04x} flags=0x{:02x} len={}] {}",
+                    f.direction, f.kind, f.seq, f.flags, f.payload.len(), hex
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// 读取全部预设槽位（0–63）的名称。
     ///
     /// 设备对一次 `0x40` 预设列表查询每条应答返回 8 条固定大小的记录，

@@ -182,6 +182,13 @@ pub enum PresetCmd {
     List,
     /// 显示当前活动预设（待快照解码）
     Show,
+    /// 重放出厂预设写序列，修复被清空的预设表（槽位 0–39 的名字与内容）
+    RestoreFactory {
+        /// 断点续传：跳过名表中已有非占位名的槽位（会话提交预算 ~22 组/次，
+        /// 全表恢复可分多次运行，每次重启设备后再跑）
+        #[arg(long)]
+        resume: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
