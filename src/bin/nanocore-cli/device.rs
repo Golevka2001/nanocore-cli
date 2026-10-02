@@ -22,13 +22,13 @@ pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
         .and_then(|st| st.chain.clone())
         .or_else(|| protocol::parse_snapshot_chain_order(&s.payload));
     match chain {
-        Some(order) => println!("  chain:    {}", render_chain(&order)),
-        None => println!("  chain:    (not decodable from this snapshot)"),
+        Some(order) => println!("  chain:         {}", render_chain(&order)),
+        None => println!("  chain:         (not decodable from this snapshot)"),
     }
     match decoded {
         Some(state) => {
-            println!("  preset:   #{}", state.preset_index + 1);
-            println!("  volume:   {} (presetVolume)", state.preset_volume);
+            println!("  preset:        #{}", state.preset_index + 1);
+            println!("  preset volume: {}", state.preset_volume);
             // 记录按角色序（= b5 槽位）排列，**不是**链上的物理顺序；
             // 链序见上面那行（它给出角色 -> 链位的映射）。
             println!("  modules (record order = b5 slot = role):");
@@ -46,9 +46,9 @@ pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
                     r.variant + 1
                 );
             }
-            println!("  note:     fx1(fx gate)/fx2(comp) `enabled` in the snapshot");
-            println!("            reflects live DSP state (signal-dependent);");
-            println!("            fx8 params are runtime values, not factory ones.");
+            println!("  note:          fx1(fx gate)/fx2(comp) `enabled` in the snapshot");
+            println!("                reflects live DSP state (signal-dependent);");
+            println!("                fx8 params are runtime values, not factory ones.");
         }
         None => {
             // 无法结构化解码（例如 BLE 抓包形态）时退回经验字段。
@@ -61,7 +61,7 @@ pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
         }
     }
     println!(
-        "  data:     snapshot {} bytes, {} raw float candidate(s)",
+        "  data:          snapshot {} bytes, {} raw float candidate(s)",
         s.payload.len(),
         protocol::scan_snapshot_floats(&s.payload).len()
     );

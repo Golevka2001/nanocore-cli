@@ -32,10 +32,10 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 Some(_) => "  (slot is empty)".into(),
                 None => String::new(),
             };
-            println!("preset:   #{}{label}", state.preset_index + 1);
-            println!("volume:   {} (presetVolume)", state.preset_volume);
+            println!("preset:        #{}{label}", state.preset_index + 1);
+            println!("preset volume: {}", state.preset_volume);
             if let Some(chain) = state.chain.as_deref() {
-                println!("chain:    {}", crate::common::render_chain(chain));
+                println!("chain:         {}", crate::common::render_chain(chain));
             }
             Ok(())
         }
@@ -305,7 +305,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             // 设备的快照不是即时刷新的，稍候再回读。
             std::thread::sleep(std::time::Duration::from_secs(1));
             let after = read_volume(&mut dev)?;
-            println!("volume:   {before} -> {after} (presetVolume)");
+            println!("preset volume: {before} -> {after}");
             if after == percent {
                 Ok(())
             } else {
