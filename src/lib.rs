@@ -21,6 +21,7 @@ pub mod midicc;
 pub mod models_data;
 pub mod params_data;
 pub mod asset;
+pub mod amp_write;
 pub mod preset_restore;
 pub mod tail;
 pub mod transport;

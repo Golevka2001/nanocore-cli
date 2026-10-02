@@ -47,61 +47,123 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
             file,
             name,
         } => {
-            if region != RegionArg::Ir {
-                return Err(Failure::error(
-                    "asset write currently supports ir slots only",
-                ));
-            }
-            if slot >= asset::IR_SLOTS {
+            // 槽位先于文件读取校验，避免编号错误被文件错误盖住。
+            let slots = match region {
+                RegionArg::Amp => asset::AMP_SLOTS,
+                RegionArg::Ir => asset::IR_SLOTS,
+            };
+            if slot == 0 || slot > slots {
                 return Err(Failure::error(format!(
-                    "ir slot must be 0-{}, got {slot}",
-                    asset::IR_SLOTS - 1
+                    "{} slot must be 1-{slots}, got {slot}",
+                    region.name()
                 )));
             }
             let blob = std::fs::read(&file).map_err(|e| format!("cannot read {file}: {e}"))?;
-            if blob.len() as u32 != asset::IR_TOTAL {
-                return Err(Failure::error(format!(
-                    "IR blob must be exactly {} bytes (got {})",
-                    asset::IR_TOTAL,
-                    blob.len()
-                )));
+            warn_write_session();
+            match region {
+                RegionArg::Amp => cmd_write_amp(slot, blob, name, conn),
+                RegionArg::Ir => cmd_write_ir(slot, blob, name, conn),
             }
-            println!("asset write ir slot {slot} — {} bytes", blob.len());
-            eprintln!(
-                "warning: asset write is dangerous — a write session (even a clean, \
-                 fully-committed one with passing read-back verification) has been \
-                 observed to wipe the device's preset table: all 64 slots lose their \
-                 names AND content, and only the official app's factory reset \
-                 recovers them (observed 2026-09-30, fw 1.04). Root cause unknown; \
-                 do not use until investigated."
+        }
+    }
+}
+
+/// 写会话破坏性警告（amp / IR 共用）：写会话有清空预设名表等副作用。
+fn warn_write_session() {
+    eprintln!(
+        "warning: asset write is dangerous — write sessions have been observed to \
+         wipe the device's preset table (all slots lose their names and content; \
+         observed 2026-09-30, fw 1.04). After the write completes, run \
+         `preset restore-factory` to restore factory presets. \
+         preset restore-factory recovers slots 1-40 (factory presets). \
+         Do not disconnect the device until this command prints its final verdict."
+    );
+}
+
+/// `asset write amp`：写入完整 `.ead`（12302 B）或 `.eadl`（解包内嵌 `.ead`）。
+fn cmd_write_amp(
+    slot: u8,
+    blob: Vec<u8>,
+    name: Option<String>,
+    conn: &Conn,
+) -> Result<(), Failure> {
+    use nanocore::amp_write as aw;
+    use nanocore::asset;
+
+    // 用户编号 1 起 → wire 槽位 0 起。
+    if slot == 0 || slot > asset::AMP_SLOTS {
+        return Err(Failure::error(format!(
+            "amp slot must be 1-{}, got {slot}",
+            asset::AMP_SLOTS
+        )));
+    }
+    let wire = slot - 1;
+    let ead = aw::prepare_amp_input(&blob).map_err(Failure::error)?;
+    println!("asset write amp slot {slot} — full .ead, {} bytes", ead.len());
+    let mut dev = open_device(conn)?;
+    // 成功判据在 write_amp_slot 内部：0x33 提交状态 00 + 0x35 名字被接受 +
+    // 型号表（0x36）回读为新名字。回读的 DDBP 内部格式仅作信息展示。
+    let back = dev.write_amp_slot(wire, &ead, name.as_deref(), |msg| {
+        eprint!("\r{msg}");
+    })?;
+    eprintln!();
+    println!(
+        "OK: model committed; device reports it as a custom model (read-back \
+         internal blob {} bytes, crc32 {:08x}).",
+        back.len(),
+        asset::crc32(&back)
+    );
+    Ok(())
+}
+
+/// `asset write ir`：写入 4096 B 裸 f32le IR blob。
+fn cmd_write_ir(
+    slot: u8,
+    blob: Vec<u8>,
+    name: Option<String>,
+    conn: &Conn,
+) -> Result<(), Failure> {
+    // 用户编号 1 起 → wire 槽位 0 起。
+    if slot == 0 || slot > asset::IR_SLOTS {
+        return Err(Failure::error(format!(
+            "ir slot must be 1-{}, got {slot}",
+            asset::IR_SLOTS
+        )));
+    }
+    let wire = slot - 1;
+    if blob.len() as u32 != asset::IR_TOTAL {
+        return Err(Failure::error(format!(
+            "IR blob must be exactly {} bytes (got {})",
+            asset::IR_TOTAL,
+            blob.len()
+        )));
+    }
+    println!("asset write ir slot {slot} — {} bytes", blob.len());
+    let mut dev = open_device(conn)?;
+    let back = dev.write_ir_slot(wire, &blob, name.as_deref(), |msg| {
+        eprint!("\r{msg}");
+    })?;
+    eprintln!();
+    match back == blob {
+        true => {
+            let crc = asset::crc32(&back);
+            println!(
+                "OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).",
+                back.len()
             );
-            let mut dev = open_device(conn)?;
-            let back = dev.write_ir_slot(slot, &blob, name.as_deref(), |msg| {
-                eprint!("\r{msg}");
-            })?;
-            eprintln!();
-            match back == blob {
-                true => {
-                    let crc = asset::crc32(&back);
-                    println!(
-                        "OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).",
-                        back.len()
-                    );
-                    Ok(())
-                }
-                false => {
-                    let at = back
-                        .iter()
-                        .zip(blob.iter())
-                        .position(|(a, b)| a != b)
-                        .unwrap_or(0);
-                    Err(Failure::mismatch(format!(
-                        "MISMATCH after write: first difference at byte {at} \
-                         (device 0x{:02x}, file 0x{:02x})",
-                        back[at], blob[at]
-                    )))
-                }
-            }
+            Ok(())
+        }
+        false => {
+            let at = back
+                .iter()
+                .zip(blob.iter())
+                .position(|(a, b)| a != b)
+                .unwrap_or(0);
+            Err(Failure::mismatch(format!(
+                "MISMATCH after write: first difference at byte {at} \
+                 (device 0x{:02x}, file 0x{:02x})",
+                back[at], blob[at]
+            )))
         }
     }
 }
@@ -117,18 +179,19 @@ struct ReadTarget {
 }
 
 impl ReadTarget {
+    /// `slot` 是用户编号（1 起）；分块计划按 wire 槽位（0 起）构造。
     fn new(region: RegionArg, slot: u8) -> Result<Self, String> {
         let region_byte = region.asset_region();
         let slots = asset::slots_for(region_byte)
             .ok_or_else(|| format!("no read plan for region {}", region.name()))?;
-        if slot >= slots {
+        if slot == 0 || slot > slots {
             return Err(format!(
-                "{} slot must be 0-{} (device has {slots} slots), got {slot}",
+                "{} slot must be 1-{} (device has {slots} slots), got {slot}",
                 region.name(),
-                slots - 1
+                slots
             ));
         }
-        let (total, plan) = asset::read_plan(region_byte, slot)
+        let (total, plan) = asset::read_plan(region_byte, slot - 1)
             .ok_or_else(|| format!("internal: no plan for {} slot {slot}", region.name()))?;
         Ok(Self {
             region,

@@ -508,6 +508,209 @@ impl<T: Transport> Nanocore<T> {
         Ok(back)
     }
 
+    /// 将 amp 模型（完整 `.ead`，12302 B）写入设备 amp 槽位，并回读校验 crc32。
+    ///
+    /// 会话时序逐帧对齐官方"导入 RESONA"抓包（[`crate::amp_write`] 模块文档）：
+    /// PING → `0x30` → `0x31`(长度+槽) → `0x32`×N(数据) → `0x33`(提交+crc)
+    /// → `0x35`(模型名) → `0x30` → `0x37`(收尾) → `0x30` → `0x36`×38(型号表刷新)。
+    /// 无 IR 写的 `0x49`/`0x50` 会话门控。
+    ///
+    /// * 数据帧编码直接复用 [`crate::asset::encode_data_frame`]（`0x52`/`0x32` 同构，
+    ///   已用两份抓包共 7520 帧全量验证）。
+    /// * `0x33` 提交帧完全可推导（38/38 出厂会话逐字节验证，见 [`crate::amp_write`]）。
+    /// * `name_override` 为新模型名；缺省时先查询当前槽位名并沿用
+    ///   （官方 App 在导入时把新模型名发给 `0x35`，设备以此更新型号表）。
+    ///
+    /// 与 IR 写一样：写会话有清空预设名表等副作用（见 README），失败后用
+    /// `preset restore-factory` 恢复。
+    ///
+    /// 返回回读的剥壳负载（12242 B），调用方与 `ead[60..]` 比较。
+    pub fn write_amp_slot(
+        &mut self,
+        slot: u8,
+        ead: &[u8],
+        name_override: Option<&str>,
+        mut on_progress: impl FnMut(&str),
+    ) -> Result<Vec<u8>, String> {
+        use crate::amp_write as aw;
+
+        assert_eq!(ead.len(), aw::EAD_TOTAL, "amp blob must be a full .ead");
+
+        // 宽松预算（同 write_ir_slot）：会话/提交应答可能迟到。
+        let saved = self.config;
+        self.set_config(crate::client::RetryConfig {
+            initial_timeout: Duration::from_millis(500),
+            max_timeout: Duration::from_millis(2000),
+            hard_limit: Duration::from_secs(10),
+            max_retries: 2,
+            poll_interval: Duration::from_millis(10),
+        });
+        let result = self.write_amp_slot_inner(slot, ead, name_override, &mut on_progress);
+        self.set_config(saved);
+        result
+    }
+
+    fn write_amp_slot_inner(
+        &mut self,
+        slot: u8,
+        ead: &[u8],
+        name_override: Option<&str>,
+        on_progress: &mut dyn FnMut(&str),
+    ) -> Result<Vec<u8>, String> {
+        use crate::amp_write as aw;
+        use crate::asset;
+        use crate::msg_type;
+
+        // 1. 先趁设备还在正常（读取友好）模式查当前模型名，作为缺省新名。
+        let name: String = match name_override {
+            Some(n) => n.to_string(),
+            None => {
+                let (k, p) = crate::protocol::model_query(slot);
+                match self.transact_expect(k, p, &[msg_type::MODEL_LIST]) {
+                    Ok(reply) => crate::protocol::parse_model_name(&reply.payload)
+                        .map(|m| m.name)
+                        .ok_or_else(|| "0x36 reply did not parse as a model name".to_string())?,
+                    Err(_) => {
+                        return Err(
+                            "model name query failed and no --name given".to_string()
+                        )
+                    }
+                }
+            }
+        };
+        on_progress(&format!("model name {name:?}"));
+
+        // 2. PING → 0x30（会话开始，尽力而为）。
+        let (pk, pp) = crate::protocol::ping();
+        self.transact_expect(pk, pp.clone(), &[msg_type::PING])
+            .map_err(|e| e.to_string())?;
+        on_progress("xfer begin (0x30)");
+        if let Ok(ack) =
+            self.transact_expect(aw::XFER_BEGIN, aw::xfer_begin(), &[aw::XFER_BEGIN])
+        {
+            on_progress(&format!("0x30 ack {}", hex(&ack.payload)));
+        } else {
+            on_progress("0x30 unanswered");
+        }
+
+        // 3. 0x31 长度 + 槽位。
+        on_progress("xfer header (0x31)");
+        let ack = self
+            .transact_expect(aw::XFER_HEADER, aw::xfer_header(slot, ead.len()), &[aw::XFER_HEADER])
+            .map_err(|e| format!("0x31 header not acked: {e}"))?;
+        on_progress(&format!("0x31 ack {}", hex(&ack.payload)));
+
+        // 4. 数据帧：64 B/帧，与 IR 写同构。
+        let n_chunks = ead.len().div_ceil(asset::WRITE_CHUNK_BYTES);
+        for (ci, chunk) in ead.chunks(asset::WRITE_CHUNK_BYTES).enumerate() {
+            let reply = self.transact_expect(
+                aw::XFER_DATA,
+                asset::encode_data_frame(chunk, ci, slot),
+                &[aw::XFER_DATA],
+            )
+            .map_err(|e| {
+                on_progress(&format!("FAILED at chunk {}/{}", ci + 1, n_chunks));
+                format!("0x32 data frame {ci} rejected: {e}")
+            })?;
+            if ci < 2 || reply.payload.get(1) != Some(&0x00) {
+                on_progress(&format!("0x32 ack[{ci}] {}", hex(&reply.payload)));
+            }
+            if (ci + 1) % 16 == 0 || ci + 1 == n_chunks {
+                on_progress(&format!("chunk {}/{}", ci + 1, n_chunks));
+            }
+        }
+
+        // 5. 0x33 提交（crc32 尾部，38/38 验证）。状态字节非 0 = 设备拒收
+        //    （数据不完整 / crc 不符）——立即报错，不要继续。
+        on_progress("xfer commit (0x33)");
+        let ack = self
+            .transact_expect(aw::XFER_COMMIT, aw::xfer_commit(slot, ead.len(), ead), &[aw::XFER_COMMIT])
+            .map_err(|e| format!("0x33 commit not acked: {e}"))?;
+        on_progress(&format!("0x33 ack {}", hex(&ack.payload)));
+        if ack.payload.get(1) != Some(&0x00) {
+            return Err(format!(
+                "device rejected the commit (status {:02x}): written data did not \
+                 verify; the slot content is unchanged",
+                ack.payload[1]
+            ));
+        }
+
+        // 6. 0x35 模型名。5 字节头；设备以状态字节报告是否接受。
+        on_progress("model name (0x35)");
+        let ack = self
+            .transact_expect(
+                aw::XFER_META,
+                aw::xfer_meta(slot, &aw::encode_model_name(&name)),
+                &[aw::XFER_META],
+            )
+            .map_err(|e| format!("0x35 name not acked: {e}"))?;
+        on_progress(&format!("0x35 ack {}", hex(&ack.payload)));
+        if ack.payload.get(1) != Some(&0x00) {
+            return Err(format!(
+                "device rejected the model name (status {:02x})",
+                ack.payload[1]
+            ));
+        }
+
+        // 7. 0x30 → 0x37 → 0x30 收尾节拍（时序对齐官方抓包）。
+        //    会话在 0x33+0x35 后已完结：官方流程里 0x37 得到 00，实测我们这边
+        //    回 01（空会话上的收尾空操作）——无害，尽力而为即可。
+        let _ = self.transact_expect(aw::XFER_BEGIN, aw::xfer_begin(), &[aw::XFER_BEGIN]);
+        on_progress("xfer finalize (0x37)");
+        if let Ok(ack) =
+            self.transact_expect(aw::XFER_FINALIZE, aw::xfer_finalize(slot), &[aw::XFER_FINALIZE])
+        {
+            on_progress(&format!("0x37 ack {}", hex(&ack.payload)));
+        }
+        let _ = self.transact_expect(aw::XFER_BEGIN, aw::xfer_begin(), &[aw::XFER_BEGIN]);
+
+        // 8. 验证：0x36 型号名应为新名字（设备内部把模型转为 DDBP 格式存储，
+        //    `asset read` 读回的是内部格式而非写入的 .ead 负载，因此不能用
+        //    字节比对验证）。flash 落盘异步生效，重试直到名字更新。
+        std::thread::sleep(Duration::from_millis(1500));
+        let (k, p) = crate::protocol::model_query(slot);
+        for attempt in 0..4 {
+            if let Ok(reply) = self.transact_expect(k, p.clone(), &[msg_type::MODEL_LIST]) {
+                if let Some(m) = crate::protocol::parse_model_name(&reply.payload) {
+                    if m.name == name {
+                        on_progress(&format!("model table updated to {name:?}"));
+                        break;
+                    }
+                    if attempt == 3 {
+                        return Err(format!(
+                            "model table still shows {:?} after write",
+                            m.name
+                        ));
+                    }
+                }
+            }
+            on_progress(&format!("name stale (attempt {}), waiting…", attempt + 1));
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+
+        // 9. 回读（信息性）：设备内部 DDBP 格式，无法与 .ead 负载逐字节比对，
+        //    仅供调用方展示 crc 变化。
+        let (_total, plan) = asset::read_plan(asset::REGION_AMP, slot)
+            .ok_or_else(|| "no read plan for that amp slot".to_string())
+            .map_err(|e| e)?;
+        let mut chunks = Vec::new();
+        for req in &plan {
+            let reply = self
+                .transact_expect(req.region, req.payload(), &[req.region])
+                .map_err(|e| e.to_string())?;
+            if let Some(c) = asset::parse_chunk(&reply.payload) {
+                chunks.push(c);
+            }
+        }
+        on_progress("done");
+        Ok(asset::assemble(&chunks))
+    }
+
+    /// 查询全部 38 个 amp/drive 型号槽，返回被标记为"活动"的槽位
+    /// （即当前预设引用的 amp 型号）。
+    ///
+    /// 恰好一个活动槽才返回 `Some`；0 个或多个（含个别槽位查询失败）返回
+    /// `None`，调用方应回退到显式指定。
     /// 重放官方"仅 DSP 恢复出厂"流程：前置枚举 + 40 组预设写（名字 + 内容，槽位 0–39）。
     ///
     /// 帧序列来自官方 App 抓包（[`crate::preset_restore`]），跨会话逐字节稳定。
@@ -947,6 +1150,11 @@ fn next_seq_after(s: u16) -> u16 {
         next = (next | 0xFF).wrapping_add(1) & 0x7FFF;
     }
     next
+}
+
+/// 载荷的小写十六进制（调试日志用）。
+fn hex(payload: &[u8]) -> String {
+    payload.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
