@@ -63,23 +63,25 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = protocol::set_enabled(slot, state.on());
             transact(&mut dev, conn, k, p, &[])
         }
-        DebugCmd::Setparam { b3, b5, b6, value } => {
+        DebugCmd::Setparam { b5, b6, value } => {
             let p = |s: &str| {
                 u8::from_str_radix(s.trim_start_matches("0x"), 16)
                     .map_err(|_| format!("{s:?} must be hex"))
             };
-            let (b3, b5, b6) = (p(&b3)?, p(&b5)?, p(&b6)?);
+            let (b5, b6) = (p(&b5)?, p(&b6)?);
             let mut dev = open_device(conn)?;
-            let (k, payload) = protocol::param_write(b3, b5, b6, value);
+            let (k, payload) = protocol::param_write(b5, b6, value);
             transact(&mut dev, conn, k, payload, &[])
         }
         DebugCmd::Variant { index } => {
-            match models_data::lookup_amp(index) {
+            // 槽位编号 1-38 → wire 0-37。
+            let wire = index - 1;
+            match models_data::lookup_amp(wire) {
                 Some(m) => println!("variant {index} -> {} ({})", m.name, m.code),
-                None => println!("variant {index} (unknown slot; device has 0-37)"),
+                None => println!("variant {index} (unknown slot; device has 1-38)"),
             }
             let mut dev = open_device(conn)?;
-            let (k, p) = protocol::select_variant(index);
+            let (k, p) = protocol::select_variant(wire);
             transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Raw { bytes } => {

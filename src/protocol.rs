@@ -8,8 +8,8 @@ use crate::sub;
 
 /// 将值编码为小端 float32（原始值，非线上安全格式）。
 ///
-/// 仅用于解码/检查。发送参数值请使用 [`encode_param_value`]，
-/// 它生成的字节才是设备在 MIDI 上实际能接收的格式。
+/// 仅用于解码/检查。发送参数值请使用 [`param_write`]，
+/// 它会同时生成 7 比特安全的字节和还原用的 mask。
 pub fn encode_param_float(value: f32) -> [u8; 4] {
     value.to_le_bytes()
 }
@@ -22,26 +22,37 @@ pub fn decode_param_float(bytes: &[u8]) -> Option<f32> {
     Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
-/// 编码用于传输的参数值 —— **这就是线上格式。**
+/// 剥掉 float32 四个字节的最高位 —— **只有这样字节才能合法地走 SysEx**。
 ///
-/// 该值是 32 位 IEEE754 浮点数，但它运行在 SysEx 消息内，
-/// 其中每个数据字节必须 `< 0x80`，因此浮点数只有 28 位能到达设备（4 个字节中每个的最高位恒被强制为 0）。
-/// 官方应用的处理方式是直接发送 `float32(value)` 并清除每个字节的最高位 —— **我们也这么做**。
-/// 这一点通过两种方式验证：
+/// SysEx 的数据字节必须 `< 0x80`，所以每个字节的 bit7 必须去掉。
+/// 但**不能只剥不还**：剥掉的位由 [`param_value_mask`] 记录，
+/// [`param_write`] 把它放进消息的 mask 字节，设备据此把 bit7 还原，
+/// 因此 float32 是**全精度**到达设备的（早期版本误以为设备只能收到 28 位，
+/// 进而接受了 `0.3 -> 0.166` 这类塌缩 —— 那是我们没发 mask 的结果，不是硬件限制）。
 ///
-/// * `scream-knob-sweep.mmon` 中全部 481 次写入的四个值字节都 `< 0x80` —— 即应用确实清除了最高位。
-/// * 一次实机往返（`setparam 0 0 0 0.2` -> 快照）精确存下 `4e 4c 4c 3e`（= 0.19951），
-///   即设备保留的是清除最高位后的浮点值。
-///
-/// 因此精度为 28 位。丢失的四个位是浮点数的第 7/15/23/31 位：
-/// 第 7 位和第 15 位是低尾数位（影响可忽略），第 31 位是符号位（正值时恒为 0），
-/// 但**第 23 位是指数的最低有效位** ——
-/// 所以 float32 指数为奇数的值会塌缩到下一个更低的*偶数*指数
-/// （最坏情况约 2 倍误差，例如 `0.3 -> 0.1495`）。
-/// 这是硬件固有限制，不是 bug；官方应用同样承受这一量化误差。
+/// 唯一还用到「只剥不还」的是 [`load_effect`]（该消息的第 4 字节是 `model_flag`，
+/// 不是 mask）；它目前没有 CLI 调用方。
 pub fn encode_param_value(value: f32) -> [u8; 4] {
     let b = value.to_le_bytes();
     [b[0] & 0x7F, b[1] & 0x7F, b[2] & 0x7F, b[3] & 0x7F]
+}
+
+/// 还原掩码：`bit(3 + j)` = 第 `j` 个值字节的 bit7 被 [`encode_param_value`] 剥掉了。
+///
+/// 见 [`param_write`] 中的布局说明（mask 覆盖其后的 7 个数据字节，
+/// `bit0..2` 对应恒定的 `01`、`b5`、`b6`，正常情况下恒为 0）。
+pub fn param_value_mask(value: f32) -> u8 {
+    value
+        .to_le_bytes()
+        .iter()
+        .enumerate()
+        .fold(0u8, |mask, (j, &b)| {
+            if b & 0x80 != 0 {
+                mask | (1 << (3 + j))
+            } else {
+                mask
+            }
+        })
 }
 
 // ─── 构造器 ───────────────────────────
@@ -73,31 +84,49 @@ pub fn set_enabled(slot: u8, enabled: bool) -> (u8, Vec<u8>) {
 
 /// `0x6D` sub `0x07`：写入单个参数。
 ///
-/// 线上布局，来自抓包中每一条 `0x07` 消息：
+/// 线上布局，来自抓包中全部 805 条 `0x07` 消息（`0..3` 号抓包逐条对账 805/805 命中）：
 ///
 /// ```text
-/// 00 07 00 [b3] 01 [b5] [b6] <float32 x 4>
+/// 00 07 00 [mask] 01 [b5] [b6] <float32 x 4>
 /// ```
 ///
+/// * `mask` —— 覆盖其后 7 个数据字节的**还原掩码**：`bit(3 + j)` 表示第 `j` 个值字节的
+///   bit7 被 [`encode_param_value`] 剥掉了，设备收到后把它还回去。
+///   `bit0..2` 对应恒定的 `01`、`b5`、`b6`（都 `< 0x80`），因此恒为 0。
+///   **所以 float32 是全精度写入的**，不需要牺牲任何位。
 /// * `b6` —— 效果内的**参数索引**。由 `noise-gate-tweak.mmon` 验证：
 ///   噪声门恰好暴露两个参数，`b6` 也恰好只取 `0x00`（阈值）和 `0x01`（释放）两个值。
 /// * `b5` —— **槽位 / 效果实例**。fx1 抓包中的每次写入均为 `0x00`，
 ///   fx2 抓包中的每次写入均为 `0x01`。
-/// * `b3` —— 在*单次旋钮拖动内*循环取 `0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38`
-///   （即 0x08/0x10/0x20 位的全部组合），因此它**不是**参数地址的一部分。
-///   它是应用侧的分片标记：官方应用最多把完整浮点值重发 8 次，每种不同半字节对应一次。
-///   **已在实机上验证：任一 `b3` 值（我们用 [`DEFAULT_B3`]）的单帧都会被完整接受并更新整个参数**
-///   —— 所以从本库写入时 `b3` 可保持为 0。
 ///
-/// 值使用 [`encode_param_value`] 编码（7 比特安全的 float32）。
-pub fn param_write(b3: u8, b5: u8, b6: u8, value: f32) -> (u8, Vec<u8>) {
-    let mut p = vec![0x00, sub::PARAM_WRITE, 0x00, b3, 0x01, b5, b6];
+/// 关于 `mask` 的三重证据：
+///
+/// * 结构：4 份抓包里 `mask` 只会出现 `0x08/0x10/0x18/0x20/0x28/0x30/0x38`
+///   （即 bit3..5 的组合，对应 v0/v1/v2 的 bit7），`bit6`（v3 = 指数高位）恒为 0。
+/// * 形状：`scream-knob-sweep.mmon` 里旋钮 0→100% 的一整段，**只有**按 mask 还原后
+///   才是单调平滑的 `0.404 -> 1.000`；按裸值读会得到 `0.202 -> 0.500`，
+///   并在参数本应到达 1.0 的地方卡在 0.5。
+/// * 真机：`0.6 -> mask 0x18 + 1a 19 19 3f` 读回 `0.6`（mask=0 时存成 `0.598`）；
+///   `1.0 -> mask 0x20 + 00 00 00 3f` 读回 `1.0`（mask=0 时存成 `0.5`）。
+///
+/// 设备把存下的值四舍五入到 **0.001 网格**：40 组出厂预设的 1215 个参数值全部落在
+/// 该网格上，真机实测发送 `0.5996` 读回 `0.6`、发送 `0.123456789` 读回 `0.123`。
+///
+/// `b6` 超出该模块设备存储范围时，设备回一条 5 字节错误帧 `00 03 00 00 00`
+/// 并**保持原值不变**；`module` 命令据此报错。
+pub fn param_write(b5: u8, b6: u8, value: f32) -> (u8, Vec<u8>) {
+    let mut p = vec![0x00, sub::PARAM_WRITE, 0x00, param_value_mask(value), 0x01, b5, b6];
     p.extend_from_slice(&encode_param_value(value));
     (msg_type::DATA, p)
 }
 
-/// 抓包中最常用的 `b3` 值。
-pub const DEFAULT_B3: u8 = 0x00;
+/// 参数写入被拒绝时设备回的 5 字节载荷：`b6` 超出该模块的设备存储范围。
+///
+/// 真机实测（cab `b6=2`，设备只存 2 个值）：应答为 `type=0x6d payload[5] 00 03 00 00 00`，
+/// 随后读回快照确认**原值未变**。同形状的 `00 01 00 00 00` 出现在载荷含
+/// `>= 0x80` 的数据字节或长度不对时（帧解析失败），正常写入则回一条 13 字节的
+/// mask 回显。
+pub const PARAM_WRITE_REJECTED: [u8; 5] = [0x00, 0x03, 0x00, 0x00, 0x00];
 
 // ─── 效果链序（`chainOrder`） ────────
 
@@ -1105,13 +1134,46 @@ mod tests {
 
     #[test]
     fn param_write_matches_the_captured_layout() {
-        let (kind, p) = param_write(0x08, 0x00, 0x01, 0.25);
+        let (kind, p) = param_write(0x00, 0x01, 0.25);
         assert_eq!(kind, msg_type::DATA);
-        assert_eq!(&p[..7], &[0x00, 0x07, 0x00, 0x08, 0x01, 0x00, 0x01]);
         assert_eq!(p.len(), 11);
-        // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`；
-        // 掩掉最高位会清除指数最低有效位（第 23 位）-> `00 00 00 3E`。
+        // 00 07 00 [mask] 01 [b5] [b6] <float32> —— 与 805 条抓包同构。
+        assert_eq!(&p[..3], &[0x00, 0x07, 0x00]);
+        assert_eq!(&p[4..7], &[0x01, 0x00, 0x01]);
+        // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`；v2 的 bit7 被剥掉 -> mask bit5。
+        assert_eq!(p[3], 0x20);
         assert_eq!(&p[7..], &[0x00, 0x00, 0x00, 0x3E]);
+    }
+
+    #[test]
+    fn param_write_carries_the_stripped_bits_in_the_mask() {
+        // 真机验证过的两条编码（cab b5=3 b6=1）。
+        let (_, p) = param_write(0x03, 0x01, 0.6);
+        assert_eq!(p[3], 0x18);
+        assert_eq!(&p[7..], &[0x1a, 0x19, 0x19, 0x3f]);
+        let (_, p) = param_write(0x03, 0x01, 1.0);
+        assert_eq!(p[3], 0x20);
+        assert_eq!(&p[7..], &[0x00, 0x00, 0x00, 0x3f]);
+    }
+
+    #[test]
+    fn param_write_round_trips_through_the_mask() {
+        for v in [0.0f32, 0.1, 0.2, 0.25, 0.3, 0.5, 0.6, 0.75, 1.0, 0.3333333, 0.123_456_79] {
+            let (_, p) = param_write(0x03, 0x01, v);
+            let mask = p[3];
+            assert!(
+                p.iter().all(|b| b & 0x80 == 0),
+                "{v}: payload must be 7-bit safe"
+            );
+            let mut raw = [0u8; 4];
+            raw.copy_from_slice(&p[7..11]);
+            for (j, b) in raw.iter_mut().enumerate() {
+                if mask & (1 << (3 + j)) != 0 {
+                    *b |= 0x80;
+                }
+            }
+            assert_eq!(f32::from_le_bytes(raw), v, "{v}: mask {mask:#04x}");
+        }
     }
 }
 

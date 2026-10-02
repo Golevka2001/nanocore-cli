@@ -223,6 +223,22 @@ pub fn transact(
     payload: Vec<u8>,
     expect: &[u8],
 ) -> Result<(), Failure> {
+    transact_reply(dev, conn, kind, payload, expect).map(|_| ())
+}
+
+/// 与 [`transact`] 相同，但把应答帧交回调用方
+/// （`--no-wait` 或不等待的命令路径返回 `None`）。
+///
+/// 参数写入需要它：设备会用一条 5 字节帧 [`protocol::PARAM_WRITE_REJECTED`]
+/// 拒绝 `b6` 超出存储范围的写入，此时原值保持不变 —— 只打印应答会让用户
+/// 以为写成功了。
+pub fn transact_reply(
+    dev: &mut Dev,
+    conn: &Conn,
+    kind: u8,
+    payload: Vec<u8>,
+    expect: &[u8],
+) -> Result<Option<Frame>, Failure> {
     println!(
         "tx: type=0x{kind:02x} payload[{}] {}",
         payload.len(),
@@ -238,13 +254,13 @@ pub fn transact(
         dev.send(kind, payload)
             .map_err(|e| Failure::error(e.to_string()))?;
         println!("sent (no wait)");
-        return Ok(());
+        return Ok(None);
     }
     match dev.transact_with_flags(conn.flags, kind, payload, expect) {
         Ok(reply) => {
             println!("rx:");
             describe(&reply);
-            Ok(())
+            Ok(Some(reply))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(
             "timeout after {attempts} attempt(s) in {elapsed:?}"

@@ -258,23 +258,29 @@ pub enum ModuleAction {
         id: u8,
     },
     /// 列出模块的参数（无需设备）
+    /// 列出模块的参数表
+    ///
+    /// 类型依赖的模块未给 `--type` 时会尝试从设备读当前效果类型；设备不在时
+    /// 退回只按 `--type`（或类型无关的固定表）列出。
     Params {
-        /// 参数依赖效果类型的模块所需的效果类型 id
-        /// （如 `delay --type 1` = Digital）
-        #[arg(long, value_name = "N")]
+        /// 参数依赖效果类型的模块所需的效果类型编号
+        /// （1 起，wire = N-1；如 `delay --type 2` = Digital）
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=255))]
         r#type: Option<u8>,
     },
-    /// 设置指定名称的模块参数（0.0–1.0，设备归一化）
+    /// 设置或读取指定名称的模块参数（0.0–1.0，设备归一化）
     ///
-    /// 省略 VALUE 可读取当前值——读取路径尚待效果数据/快照解码，
-    /// 因此目前写入时必须提供 VALUE。
+    /// 省略 VALUE 即读取：值来自当前预设快照，`b6` 直接索引快照里的设备数组
+    /// （真机校准二者逐位对应）。类型依赖的模块未给 `--type` 时从快照读当前
+    /// 效果类型。写入会检查设备应答：`b6` 超出该模块的存储时设备回拒绝帧并
+    /// **保持原值不变**，此处报错而不是假装写入成功。
     Param {
-        /// 参数名（如 `threshold`）或其 b6 索引
+        /// 参数名（如 `threshold`）或其 b6 索引（裸线缆字节，0 起）
         key: String,
-        /// 参数值 0.0–1.0；省略则读取（待实现）
+        /// 参数值 0.0–1.0；省略则从快照读取当前值
         value: Option<f32>,
-        /// 参数依赖效果类型的模块所需的效果类型 id
-        #[arg(long, value_name = "N")]
+        /// 参数依赖效果类型的模块所需的效果类型编号（1 起；省略时从快照读）
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=255))]
         r#type: Option<u8>,
     },
 }
@@ -366,9 +372,8 @@ pub enum DebugCmd {
         /// 必须显式给出：有副作用的命令不设默认状态
         state: Power,
     },
-    /// 原始 SysEx 参数写入（b3/b5/b6 为十六进制——见协议笔记）
+    /// 原始 SysEx 参数写入（b5/b6 为十六进制；还原 mask 由值自动推导）
     Setparam {
-        b3: String,
         b5: String,
         b6: String,
         /// 参数值 0.0–1.0
