@@ -330,12 +330,13 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
         PresetCmd::Rename { slot, name } => {
             let field = nanocore::protocol::encode_preset_name_field(&name)
                 .map_err(Failure::error)?;
+            let wire = slot - 1;
             let mut dev = open_device(conn)?;
             // 与官方抓包一致：field 0x09 选槽 → 等设备自发切槽事件 → 写名字区。
             // （官方在选槽与改名之间有 ~6 个 PING 的等待；等事件比等时间更可靠。）
-            let (k, p) = nanocore::protocol::select_preset(slot);
+            let (k, p) = nanocore::protocol::select_preset(wire);
             transact(&mut dev, conn, k, p, &[])?;
-            match dev.wait_for_preset_switch_event(slot, 5_000) {
+            match dev.wait_for_preset_switch_event(wire, 5_000) {
                 Ok(f) => println!("switch event: {}", crate::common::hex(&f.payload)),
                 Err(e) => {
                     let traffic = dev.drain_frames(3_000);
@@ -352,7 +353,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let entries = dev.read_preset_names()?;
             let got = entries
                 .iter()
-                .find(|e| e.slot == slot)
+                .find(|e| e.slot == wire)
                 .map(|e| e.name.clone())
                 .unwrap_or_default();
             let want: String = name.chars().filter(|&c| c != '\0').collect();
@@ -367,7 +368,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
         }
         PresetCmd::Set { index } => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::program_change(conn.channel, index))
+            send_standard(&mut dev, &midicc::program_change(conn.channel, index - 1))
         }
         PresetCmd::Next => {
             let mut dev = open_device(conn)?;

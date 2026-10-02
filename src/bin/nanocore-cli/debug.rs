@@ -60,7 +60,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         }
         DebugCmd::Enable { slot, state } => {
             let mut dev = open_device(conn)?;
-            let (k, p) = protocol::set_enabled(slot, state.on());
+            // 模块编号 1-8 → wire b5 槽位 0-7。
+            let (k, p) = protocol::set_enabled(slot - 1, state.on());
             transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Setparam { b5, b6, value } => {
@@ -121,7 +122,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         }
         DebugCmd::Probe { index } => {
             let mut dev = open_device(conn)?;
-            probe(&mut dev, conn, index)
+            // 预设编号 1-64 → wire 0-63；缺省仍是 wire 0（#1）。
+            probe(&mut dev, conn, index.map(|i| i - 1))
         }
     }
 }

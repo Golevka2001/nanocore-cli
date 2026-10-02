@@ -14,27 +14,36 @@ use crate::common::{Failure, open_device, render_chain, send_standard, transact}
 pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
+    let decoded = protocol::decode_snapshot_state(&s.payload);
     println!("Current device state:");
-    match protocol::parse_snapshot_chain_order(&s.payload) {
+    // 链序优先取数据流解码（对所有长度都成立），旧的尾部锚点只作退回。
+    let chain = decoded
+        .as_ref()
+        .and_then(|st| st.chain.clone())
+        .or_else(|| protocol::parse_snapshot_chain_order(&s.payload));
+    match chain {
         Some(order) => println!("  chain:    {}", render_chain(&order)),
         None => println!("  chain:    (not decodable from this snapshot)"),
     }
-    match protocol::decode_snapshot_state(&s.payload) {
+    match decoded {
         Some(state) => {
-            println!("  preset:   #{}", state.preset_index);
+            println!("  preset:   #{}", state.preset_index + 1);
             println!("  volume:   {} (presetVolume)", state.preset_volume);
-            println!("  chain positions:");
+            // 记录按角色序（= b5 槽位）排列，**不是**链上的物理顺序；
+            // 链序见上面那行（它给出角色 -> 链位的映射）。
+            println!("  modules (record order = b5 slot = role):");
             for (i, r) in state.records.iter().enumerate() {
+                let role = protocol::CHAIN_ROLES[i].0;
                 let params = r
                     .params
                     .iter()
                     .map(|p| format!("{p:.3}"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let state = if r.enabled != 0 { "on" } else { "off" };
+                let on = if r.enabled != 0 { "on " } else { "off" };
                 println!(
-                    "    [{i}] {state} variant={} params=[{params}]",
-                    r.variant
+                    "    {role:<6} {on} type={} params=[{params}]",
+                    r.variant + 1
                 );
             }
             println!("  note:     fx1(fx gate)/fx2(comp) `enabled` in the snapshot");
@@ -46,10 +55,9 @@ pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
             if s.payload.len() > 6 {
                 println!(
                     "  preset:   #{} (empirical — payload[6])",
-                    s.payload[6]
+                    s.payload[6] + 1
                 );
             }
-            println!("  data:     snapshot {} bytes (structured decode unavailable)", s.payload.len());
         }
     }
     println!(

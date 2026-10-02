@@ -9,17 +9,17 @@ use crate::common::{Dev, Failure, describe, hex, open_device, render_chain};
 pub fn print_chain_help() {
     println!("Effect chain order (`chainOrder`) — the order effects are routed in.");
     println!();
-    println!("  Left-to-right order, using these role names (or their 0-7 indices):");
+    println!("  Left-to-right order, using these role names (or their 1-8 numbers):");
     for (i, (cli, disp)) in protocol::CHAIN_ROLES.iter().enumerate() {
-        println!("    {i}  {cli:<8} ({disp})");
+        println!("    {}  {cli:<8} ({disp})", i + 1);
     }
     println!();
-    println!("  nanocore-cli chain set <8 roles|indices>   write the chain order");
+    println!("  nanocore-cli chain set <8 roles|numbers>   write the chain order");
     println!("  nanocore-cli chain show                    read the current order");
     println!();
     println!("  examples:");
     println!("    nanocore-cli chain set delay eq fx1 fx2 amp cab mod reverb");
-    println!("    nanocore-cli chain set 4 7 0 1 2 3 5 6          # same thing");
+    println!("    nanocore-cli chain set 5 8 1 2 3 4 6 7          # same thing");
     println!();
     println!("  NOTE: this order is NOT the CC module order — in the chain, DEL comes");
     println!("  before MOD (CC25 is Mod, CC26 is Delay). This is a live edit to the");
@@ -46,7 +46,7 @@ fn cmd_chain_set(tokens: &[String], conn: &Conn) -> Result<(), Failure> {
         "                    as: [{}]",
         order
             .iter()
-            .map(|v| v.to_string())
+            .map(|v| (v + 1).to_string())
             .collect::<Vec<_>>()
             .join(", ")
     );
@@ -60,8 +60,8 @@ fn cmd_chain_set(tokens: &[String], conn: &Conn) -> Result<(), Failure> {
 
 /// 解析并校验 8 个链位置。
 ///
-/// 接受角色名（`delay`、`del`、`mod` 等）或 0-7 索引，可任意混用。
-/// 拒绝任何不是 `0..8` 排列的输入，确保错误的链序永远不会到达设备。
+/// 接受角色名（`delay`、`del`、`mod` 等）或 1-8 的编号，可任意混用。
+/// 拒绝任何不是 `1..8` 排列的输入，确保错误的链序永远不会到达设备。
 pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
     let n = protocol::CHAIN_LEN;
     if tokens.len() != n {
@@ -78,12 +78,13 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
     let mut order: Vec<u8> = Vec::with_capacity(n);
     for (i, tok) in tokens.iter().enumerate() {
         let v = match tok.parse::<u8>() {
-            Ok(v) if (v as usize) < n => v,
+            // 用户编号 1-8 → wire 角色下标 0-7。
+            Ok(v) if v >= 1 && (v as usize) <= n => v - 1,
             Ok(v) => {
                 return Err(format!(
-                    "position {}: index {v} out of range (0-{})",
+                    "position {}: number {v} out of range (1-{})",
                     i + 1,
-                    n - 1
+                    n
                 ));
             }
             Err(_) => protocol::chain_role_index(tok).ok_or_else(|| {
@@ -107,7 +108,7 @@ pub fn parse_chain_positions(tokens: &[String]) -> Result<Vec<u8>, String> {
             "order must contain each module exactly once; got [{}] = {}",
             order
                 .iter()
-                .map(|v| v.to_string())
+                .map(|v| (v + 1).to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
             render_chain(&order)

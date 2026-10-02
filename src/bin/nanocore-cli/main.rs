@@ -7,13 +7,17 @@
 //! nanocore-cli preset set 12                 select preset 12
 //! nanocore-cli preset next
 //! nanocore-cli module amp off                mute the amp module
-//! nanocore-cli module amp model 5            pick amp model 5 (Fender 65 Darkface)
+//! nanocore-cli module amp model 6            pick amp model 6 (Fender 65 Darkface)
 //! nanocore-cli module delay param mix 0.3    set a parameter on the delay module
 //! nanocore-cli module delay params           list that module's parameters
 //! nanocore-cli chain set delay eq fx1 ...    re-route the effect chain
 //! nanocore-cli show                          current device state (best-effort)
-//! nanocore-cli asset read ir 0 --out out.bin pull the raw IR blob out of slot 0
+//! nanocore-cli asset read ir 1 --out out.bin pull the raw IR blob out of slot 1
 //! ```
+//!
+//! 所有用户可见的编号一律 **1 起**（预设号、型号/效果类型、链位、模块、槽位、
+//! MIDI 通道、端口），与设备屏和官方 App 同号；例外是 `debug` 里直接对应线缆
+//! 字节的参数（`b5`/`b6`、CC 号/值、裸帧）保持原始值。
 //!
 //! 所有涉及原始/未公开帧的操作都归入 `debug`；这些命令面向协议研究，
 //! 而非演奏。底层旋钮（`--expect`、`--flags`、`--no-wait`、`--no-sysex`）

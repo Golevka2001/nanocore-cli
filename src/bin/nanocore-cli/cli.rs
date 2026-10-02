@@ -9,7 +9,7 @@ use nanocore::midicc::Block;
 use nanocore::models_data;
 use nanocore::protocol;
 
-/// `chain set` 位置的补全候选：角色名、设备显示名（小写，`chain_role_index` 可接受的形式）以及 0-7 的索引。
+/// `chain set` 位置的补全候选：角色名、设备显示名（小写，`chain_role_index` 可接受的形式）以及 1-8 的索引。
 fn chain_position_candidates() -> Vec<CompletionCandidate> {
     let mut out: Vec<CompletionCandidate> = protocol::CHAIN_ROLES
         .iter()
@@ -18,7 +18,8 @@ fn chain_position_candidates() -> Vec<CompletionCandidate> {
             [
                 CompletionCandidate::new(*cli).help(Some((*disp).to_string().into())),
                 CompletionCandidate::new(disp.to_ascii_lowercase()),
-                CompletionCandidate::new(i.to_string()).help(Some((*disp).to_string().into())),
+                CompletionCandidate::new((i + 1).to_string())
+                    .help(Some((*disp).to_string().into())),
             ]
         })
         .collect();
@@ -29,25 +30,25 @@ fn chain_position_candidates() -> Vec<CompletionCandidate> {
 
 /// `module <m> model <N>` 的补全候选。
 ///
-/// 索引的含义随模块而变（amp/cab 是 0–29 的型号表，其余模块是各自的效果类型
-/// id），而 clap 的候选项是静态的——拿不到同一命令行的模块名。因此这里只给
+/// 编号的含义随模块而变（amp/cab 是 1–30 的型号表，其余模块是各自的效果类型
+/// 编号），而 clap 的候选项是静态的——拿不到同一命令行的模块名。因此这里只给
 /// 中性提示：候选必须对任何模块都成立，标注音箱名会对非 amp/cab 模块产生误导。
-/// 30–37 不在候选内：amp/cab 的 CC 路径会拒绝它们，那几个槽位只对
+/// 31–38 不在候选内：amp/cab 的 CC 路径会拒绝它们，那几个槽位只对
 /// `debug variant` 有意义。
 fn model_id_candidates() -> Vec<CompletionCandidate> {
-    (0u8..=29)
+    (1u8..=30)
         .map(|i| {
             CompletionCandidate::new(i.to_string())
-                .help(Some("model / effect type index — see `models` or `module <m> params`".into()))
+                .help(Some("model / effect type number — see `models` or `module <m> params`".into()))
         })
         .collect()
 }
 
-/// `debug variant <INDEX>` 的补全候选：完整的音箱 / 踏板槽位表（0–37），
-/// 该命令正是唯一能寻址 30–37 的路径，因此这里标注型号名是准确的。
+/// `debug variant <N>` 的补全候选：完整的音箱 / 踏板槽位表（1–38），
+/// 该命令正是唯一能寻址 31–38 的路径，因此这里标注型号名是准确的。
 fn variant_candidates() -> Vec<CompletionCandidate> {
-    (0u8..=37)
-        .map(|i| match models_data::lookup_amp(i) {
+    (1u8..=38)
+        .map(|i| match models_data::lookup_amp(i - 1) {
             Some(m) => CompletionCandidate::new(i.to_string())
                 .help(Some(format!("{} ({})", m.name, m.code).into())),
             None => CompletionCandidate::new(i.to_string()),
@@ -67,17 +68,17 @@ fn variant_candidates() -> Vec<CompletionCandidate> {
                   (`delay` may be shortened to `del`, `reverb` to `rev`)"
 )]
 pub struct Cli {
-    /// MIDI 输入端口索引（见 `ports`）
+    /// MIDI 输入端口号（见 `ports`，1 起）
     #[arg(long, global = true, value_name = "N")]
     pub in_port: Option<usize>,
-    /// MIDI 输出端口索引（见 `ports`）
+    /// MIDI 输出端口号（见 `ports`，1 起）
     #[arg(long, global = true, value_name = "N")]
     pub out_port: Option<usize>,
     /// 用于自动探测的端口名子串 [default: nanocore]
     #[arg(long, global = true, value_name = "NAME")]
     pub hint: Option<String>,
-    /// CC/PC 命令使用的 MIDI 通道（0–15；设备将 0 视为 omni）
-    #[arg(long, global = true, value_name = "0-15", default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=15))]
+    /// CC/PC 命令使用的 MIDI 通道（1–16，wire = N-1；线缆 0 设备视为 omni）
+    #[arg(long, global = true, value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     pub ch: u8,
     /// 应答超时初值，单位毫秒（每次重试翻倍，硬上限为 8 倍）
     ///
@@ -148,7 +149,7 @@ pub enum Command {
     Models {
         /// 省略时列出两张表
         table: Option<ModelTableArg>,
-        /// 查询真实设备而非内置表（只读；覆盖 amp/drive 槽位 0-37）
+        /// 查询真实设备而非内置表（只读；覆盖 amp/drive 槽位 1-38）
         #[arg(long)]
         live: bool,
     },
@@ -177,9 +178,9 @@ pub enum Command {
 
 #[derive(Subcommand, Debug)]
 pub enum PresetCmd {
-    /// 按索引选择预设（0–63，设备显示索引+1）
+    /// 按编号选择预设（1–64，与设备屏 / App 同号）
     Set {
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
         index: u8,
     },
     /// 切换到下一个预设
@@ -190,8 +191,8 @@ pub enum PresetCmd {
     List,
     /// 重命名预设槽位（1-8 个可打印 ASCII 字符，写入设备的名字区）
     Rename {
-        /// 预设槽位（0–63）
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        /// 预设槽位（1–64）
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
         slot: u8,
         /// 新名字（1-8 个可打印 ASCII 字符）
         name: String,
@@ -293,14 +294,13 @@ pub enum ModuleAction {
     Off,
     /// 选择型号 / 效果类型
     ///
-    /// `amp` 与 `cab` 接受型号索引 0–29（CC43 / CC44）；其余模块接受各自的
-    /// 效果类型 id（CC40-CC48）。音箱表索引 30–37 是 FX2 踏板效果，此处
+    /// `amp` 与 `cab` 接受型号编号 1–30（CC43 / CC44）；其余模块接受各自的
+    /// 效果类型编号（CC40-CC48）。音箱表编号 31–38 是 FX2 踏板效果，此处
     /// 无法访问——请使用 `debug variant`。
     Model {
-        #[arg(add = ArgValueCandidates::new(model_id_candidates))]
+        #[arg(add = ArgValueCandidates::new(model_id_candidates), value_parser = clap::value_parser!(u8).range(1..=255))]
         id: u8,
     },
-    /// 列出模块的参数（无需设备）
     /// 列出模块的参数表
     ///
     /// 类型依赖的模块未给 `--type` 时会尝试从设备读当前效果类型；设备不在时
@@ -330,9 +330,9 @@ pub enum ModuleAction {
 
 #[derive(Subcommand, Debug)]
 pub enum ChainCmd {
-    /// 写入链序（恰好 8 个角色/索引，每个模块一次）
+    /// 写入链序（恰好 8 个角色/编号，每个模块一次）
     Set {
-        /// 8 个位置，每个模块恰好一次（`fx1 fx2 amp cab delay mod reverb eq`）
+        /// 8 个位置，每个模块恰好一次（角色名，或 1-8 的编号：1=fx1 … 8=eq）
         #[arg(add = ArgValueCandidates::new(chain_position_candidates))]
         positions: Vec<String>,
     },
@@ -442,8 +442,8 @@ pub enum DebugCmd {
     },
     /// 原始槽位开关（SysEx；模块开关建议使用 `module <m> on/off`）
     Enable {
-        /// b5 槽位 0–7（fx1 fx2 amp cab mod delay reverb eq）
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=7))]
+        /// 模块编号 1–8（1=fx1 2=fx2 3=amp 4=cab 5=delay 6=mod 7=reverb 8=eq，即 b5+1）
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=8))]
         slot: u8,
         /// 必须显式给出：有副作用的命令不设默认状态
         state: Power,
@@ -457,10 +457,10 @@ pub enum DebugCmd {
     },
     /// 通过 SysEx 选择音箱型号（与 `module amp model` 同一张表）
     ///
-    /// 与 CC 路径不同，此命令可访问槽位 30–37（FX2 踏板效果）。
+    /// 与 CC 路径不同，此命令可访问编号 31–38（FX2 踏板效果）。
     Variant {
-        /// 音箱/踏板槽位 0–37（30 amp sims + 8 FX2 drive pedals）
-        #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(0..=37))]
+        /// 音箱/踏板槽位 1–38（30 amp sims + 8 FX2 drive pedals）
+        #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(1..=38))]
         index: u8,
     },
     /// 发送原始帧：第一个十六进制字节为消息类型，其余为载荷
@@ -472,7 +472,8 @@ pub enum DebugCmd {
     Replay { bytes: Vec<String> },
     /// 预设切换探测流程：选择 → 快照 → 查询 → 3 秒尾随监听
     Probe {
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=63))]
+        /// 预设编号（1–64；省略 = #1）
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
         index: Option<u8>,
     },
 }
@@ -565,6 +566,9 @@ impl Power {
 }
 
 /// 从全局标志提取出的连接选项。
+///
+/// 编号约定：`in_port` / `out_port` 是 1 起的用户编号（打开端口时换算成
+/// 0 起的系统索引）；`channel` 已是线缆字节（0–15）。
 pub struct Conn {
     pub in_port: Option<usize>,
     pub out_port: Option<usize>,
@@ -600,13 +604,15 @@ impl Conn {
             Some(v) => parse_hex_byte("flags", v)?,
         };
         Ok(Self {
+            // 端口号保持用户空间的 1 起编号，打开时再减 1（见 `open_device`）。
             in_port: cli.in_port,
             out_port: cli.out_port,
             hint: cli
                 .hint
                 .clone()
                 .unwrap_or_else(|| midi::DEFAULT_HINT.into()),
-            channel: cli.ch,
+            // 通道在这里就换算成线缆字节：`--ch 1-16` → wire `0-15`。
+            channel: cli.ch - 1,
             timeout_ms: cli.timeout,
             retries: cli.retries,
             expect,

@@ -21,6 +21,22 @@
 ## 真机验证（USB-MIDI，macOS）
 
 设备枚举为 `Nanocore` MIDI in/out 端口。预设索引 0 基（`select_preset(2)` 显示 `03`）。
+## CLI 编号约定
+
+CLI 面向用户的编号一律 **1 起**（wire = N-1），与设备屏 / 官方 App 同号：
+
+| CLI 输入/输出                                                                                                                          | wire              |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 预设号 1–64（`preset set/list/show`、`debug probe`）；导入 `--slot` 1–40                                                               | 0–63（导入 0–39） |
+| 型号 / 效果类型（`module <m> model`、`--type`、`show` 的 `type=`）                                                                     | 0 起              |
+| 链位 / 模块编号 1–8（`chain set`、`debug enable`，顺序 = `CHAIN_ROLES`）                                                               | b5 = N-1          |
+| 资产槽位：ir 1–30、amp 1–38（`asset`、`models`、`debug variant`）；`--amp-slot`/`--ir-slot` 1 起，**0 = unknown**（manifest 仍写 255） | 0 起              |
+| `--ch` 1–16、`ports` / `--in-port` / `--out-port` 1 起                                                                                 | 0 起              |
+
+**保持原始值**（裸线缆字节 / 量值，不做换算）：`module <m> param <b6>` 的数字键、
+输出里的 `b5=` / `b6=`、`debug cc <cc> <value>`、`debug setparam b5 b6`、
+`debug raw` / `replay`、音量/增益等 0–100 的值。本文其余部分描述协议，全部是
+wire 值。
 
 | 命令               | 结果                                            |
 | ------------------ | ----------------------------------------------- |

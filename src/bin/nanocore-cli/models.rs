@@ -7,17 +7,17 @@ use nanocore::protocol;
 use crate::cli::{Conn, ModelTableArg};
 use crate::common::{Dev, Failure, open_device};
 
-/// 表标题：设备槽位 = 表索引 + 1。
-const AMP_HEADER: &str = "AMP models (0-37, device slot = index+1):";
-const CAB_HEADER: &str = "CAB / IR models (0-29, device slot = index+1):";
+/// 表标题：打印的编号即用户可直接填入 `module amp model` / `debug variant` 的编号（1 起）。
+const AMP_HEADER: &str = "AMP models (1-38):";
+const CAB_HEADER: &str = "CAB / IR models (1-30):";
 
 pub fn cmd_models(table: Option<ModelTableArg>, live: bool, conn: &Conn) -> Result<(), Failure> {
     if live {
-        // 实时查询覆盖设备的 amp/drive 槽位（0-37）；表过滤在此不适用，明确拒绝
+        // 实时查询覆盖设备的 amp/drive 槽位（1-38）；表过滤在此不适用，明确拒绝
         // 而不是静默忽略。
         if table.is_some() {
             return Err(Failure::error(
-                "`models --live` queries the device's amp/drive slots (0-37) and takes \
+                "`models --live` queries the device's amp/drive slots (1-38) and takes \
                  no table argument; drop it (or drop --live to read the embedded tables)",
             ));
         }
@@ -41,24 +41,27 @@ fn print_table(header: &str, rows: &[models_data::ModelInfo]) {
     for m in rows {
         println!(
             "  {:>2}  {:<10} {:<34} [{}]",
-            m.index, m.code, m.name, m.category
+            m.index + 1,
+            m.code,
+            m.name,
+            m.category
         );
     }
 }
 
-/// 向实际设备查询每个音箱 / 踏板效果型号名（槽位 0-37），并与内置表交叉核对。
+/// 向实际设备查询每个音箱 / 踏板效果型号名（槽位 1-38），并与内置表交叉核对。
 /// 只读：发送 `0x36` 查询并解析 `0x36` 应答。
 ///
 /// 实时名称与出厂表不一致的槽位标记为 `[CUSTOM]`（例如导入的 NAM 文件覆盖了它们）；
 /// 设备当前正在使用的槽位额外标记 `[active]`。两者与真正的表项不一致分开计数。
 fn query_models_live(dev: &mut Dev) -> Result<(), Failure> {
-    println!("Querying device model list (amp/drive slots 0-37, read-only)...");
+    println!("Querying device model list (amp/drive slots 1-38, read-only)...");
     let mut mismatches = 0usize;
     let mut custom = 0usize;
     for i in 0u8..=37 {
         let reply = dev.query_model(i).map_err(|e| match e {
             Error::Timeout { attempts, elapsed } => {
-                format!("timeout on slot {i} after {attempts} attempt(s) in {elapsed:?}")
+                format!("timeout on slot {} after {attempts} attempt(s) in {elapsed:?}", i + 1)
             }
             Error::Transport(t) => t.to_string(),
         })?;
@@ -73,19 +76,24 @@ fn query_models_live(dev: &mut Dev) -> Result<(), Failure> {
                 if matches_factory {
                     let em = models_data::lookup_amp(i).unwrap();
                     println!(
-                        "  {i:>2}  {:<18} (matches embedded {}){tag}",
-                        mn.name, em.code
+                        "  {:>2}  {:<18} (matches embedded {}){tag}",
+                        i + 1,
+                        mn.name,
+                        em.code
                     );
                 } else if mn.active
                     || mn.name != models_data::lookup_amp(i).map(|e| e.name).unwrap_or("")
                 {
                     match models_data::lookup_amp(i) {
                         Some(em) => println!(
-                            "  {i:>2}  {:<18} [CUSTOM]{tag} (embedded: {} / {})",
-                            mn.name, em.name, em.code
+                            "  {:>2}  {:<18} [CUSTOM]{tag} (embedded: {} / {})",
+                            i + 1,
+                            mn.name,
+                            em.name,
+                            em.code
                         ),
                         None => {
-                            println!("  {i:>2}  {:<18} [CUSTOM]{tag} (no factory entry)", mn.name)
+                            println!("  {:>2}  {:<18} [CUSTOM]{tag} (no factory entry)", i + 1, mn.name)
                         }
                     }
                     custom += 1;
@@ -94,7 +102,7 @@ fn query_models_live(dev: &mut Dev) -> Result<(), Failure> {
                 }
             }
             None => {
-                println!("  {i:>2}  <no name in reply>");
+                println!("  {:>2}  <no name in reply>", i + 1);
                 mismatches += 1;
             }
         }

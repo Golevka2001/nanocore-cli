@@ -36,11 +36,13 @@ fn module_action(
             cmd_param_action(block, key, value, r#type, conn)
         }
         Some(ModuleAction::Model { id }) => {
-            report_model_selection(block.midicc(), id)?;
+            // 用户编号 1 起 → wire 效果类型 / 型号 id（0 起）。
+            let wire_id = id - 1;
+            report_model_selection(block.midicc(), id, wire_id)?;
             let mut dev = open_device(conn)?;
             send_standard(
                 &mut dev,
-                &midicc::block_type(conn.channel, block.midicc(), id),
+                &midicc::block_type(conn.channel, block.midicc(), wire_id),
             )
         }
         Some(ModuleAction::On) => {
@@ -412,30 +414,31 @@ fn cmd_param(
 /// 校验并描述通过标准 CC 进行的 Amp/Cab **型号**选择。
 ///
 /// `CC43`（Amp）与 `CC44`（Cab）在文档中标记为 "Type CC"，但 OEM 指南未给出这两个模块的类型表，并声称型号选择未分配。
-/// 硬件实测表明它们*确实是*覆盖 30 项表的型号选择器，且索引 `>= 30` 会被静默忽略。
+/// 硬件实测表明它们*确实是*覆盖 30 项表的型号选择器，且 wire id `>= 30` 会被静默忽略。
 /// 因此在此处拒绝，而不是让写入无声失效。
 ///
-/// 对其余模块这是空操作：它们的 "type" 是真实的效果类型 ID，在 OEM MIDI CC 参考中拥有自己的表。
-fn report_model_selection(block: Block, id: u8) -> Result<(), Failure> {
+/// 对其余模块这是空操作：它们的 "type" 是真实的效果类型编号，在 OEM MIDI CC 参考中拥有自己的表。
+///
+/// `id` 是用户编号（1 起），`wire` 是发送到 CC 的 0 起 id。
+fn report_model_selection(block: Block, id: u8, wire: u8) -> Result<(), Failure> {
     let (label, count, name) = match block {
         Block::Amp => (
             "amp",
             midicc::AMP_MODEL_COUNT,
-            models_data::lookup_amp(id).map(|m| format!("{} ({})", m.name, m.code)),
+            models_data::lookup_amp(wire).map(|m| format!("{} ({})", m.name, m.code)),
         ),
         Block::Cab => (
             "cab",
             midicc::CAB_MODEL_COUNT,
-            models_data::lookup_cab(id).map(|m| format!("{} ({})", m.name, m.code)),
+            models_data::lookup_cab(wire).map(|m| format!("{} ({})", m.name, m.code)),
         ),
         _ => return Ok(()),
     };
-    if id >= count {
+    if wire >= count {
         return Err(Failure::error(format!(
-            "{label} model index must be 0-{} (device has {count} models); \
-             {id} would be silently ignored — drive pedals 30-37 belong to FX2 and \
-             need `debug variant`, not the {label} module",
-            count - 1
+            "{label} model number must be 1-{count} (device has {count} models); \
+             {id} would be silently ignored — drive pedals 31-38 belong to FX2 and \
+             need `debug variant`, not the {label} module"
         )));
     }
     match name {
@@ -444,8 +447,7 @@ fn report_model_selection(block: Block, id: u8) -> Result<(), Failure> {
             block.type_cc()
         ),
         None => println!(
-            "module {label} model {id} (not in embedded table; device has 0-{})",
-            count - 1
+            "module {label} model {id} (not in embedded table; device has 1-{count})"
         ),
     }
     Ok(())

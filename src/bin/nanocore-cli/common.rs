@@ -56,7 +56,7 @@ pub fn cmd_list() {
         Ok(ports) => {
             println!("inputs:");
             for (i, n) in &ports {
-                println!("  #{i} {n}");
+                println!("  #{} {n}", i + 1);
             }
         }
         Err(e) => println!("inputs:  <error: {e}>"),
@@ -66,7 +66,7 @@ pub fn cmd_list() {
         Ok(ports) => {
             println!("outputs:");
             for (i, n) in &ports {
-                println!("  #{i} {n}");
+                println!("  #{} {n}", i + 1);
             }
         }
         Err(e) => println!("outputs: <error: {e}>"),
@@ -122,10 +122,11 @@ pub fn describe(frame: &Frame) {
     }
 }
 
-/// 解析一个方向的 MIDI 端口索引，优先级：显式索引 > hint 匹配 > 唯一端口。
+/// 解析一个方向的 MIDI 端口号，优先级：显式端口号 > hint 匹配 > 唯一端口。
 ///
+/// 入参是 1 起的用户编号（与 `ports` 打印的一致），返回 0 起的系统索引。
 /// 前两级都无法确定时，只有在恰好只有一个可用端口（无歧义）时才采用它；
-/// 否则报错并列出端口——静默回落到 #0 可能打到无关的 MIDI 设备上。
+/// 否则报错并列出端口——静默回落到第 1 个可能打到无关的 MIDI 设备上。
 fn resolve_port(
     explicit: Option<usize>,
     ports: &[(usize, String)],
@@ -133,7 +134,16 @@ fn resolve_port(
     dir: &str,
     flag: &str,
 ) -> Result<usize, Failure> {
-    if let Some(i) = explicit {
+    if let Some(u) = explicit {
+        let i = u.checked_sub(1).ok_or_else(|| {
+            Failure::error(format!("{flag} must be 1 or greater (see `ports`)"))
+        })?;
+        if i >= ports.len() {
+            return Err(Failure::error(format!(
+                "no {dir} port #{u} ({} available)",
+                ports.len()
+            )));
+        }
         return Ok(i);
     }
     if let Some(i) = midi::find_port(ports, hint) {
@@ -147,7 +157,7 @@ fn resolve_port(
         _ => {
             let list = ports
                 .iter()
-                .map(|(i, n)| format!("  #{i} {n}"))
+                .map(|(i, n)| format!("  #{} {n}", i + 1))
                 .collect::<Vec<_>>()
                 .join("\n");
             Err(Failure::error(format!(
@@ -158,23 +168,21 @@ fn resolve_port(
 }
 
 pub fn open_device(conn: &Conn) -> Result<Dev, Failure> {
-    let transport = match (conn.in_port, conn.out_port) {
-        (Some(i), Some(o)) => MidiTransport::open(i, o).map_err(|e| e.to_string()),
-        _ => {
-            let ins = midi::input_ports().map_err(|e| e.to_string())?;
-            let outs = midi::output_ports().map_err(|e| e.to_string())?;
-            let i = resolve_port(conn.in_port, &ins, &conn.hint, "input", "--in-port")?;
-            let o = resolve_port(conn.out_port, &outs, &conn.hint, "output", "--out-port")?;
-            eprintln!(
-                "input  #{} {:?}\noutput #{} {:?}",
-                i,
-                ins.get(i).map(|p| p.1.as_str()).unwrap_or("?"),
-                o,
-                outs.get(o).map(|p| p.1.as_str()).unwrap_or("?")
-            );
-            MidiTransport::open(i, o).map_err(|e| e.to_string())
-        }
-    }?;
+    let ins = midi::input_ports().map_err(|e| e.to_string())?;
+    let outs = midi::output_ports().map_err(|e| e.to_string())?;
+    let i = resolve_port(conn.in_port, &ins, &conn.hint, "input", "--in-port")?;
+    let o = resolve_port(conn.out_port, &outs, &conn.hint, "output", "--out-port")?;
+    // 只有走了自动探测才回显选择；显式指定全部端口时保持安静。
+    if conn.in_port.is_none() || conn.out_port.is_none() {
+        eprintln!(
+            "input  #{} {:?}\noutput #{} {:?}",
+            i + 1,
+            ins.get(i).map(|p| p.1.as_str()).unwrap_or("?"),
+            o + 1,
+            outs.get(o).map(|p| p.1.as_str()).unwrap_or("?")
+        );
+    }
+    let transport = MidiTransport::open(i, o).map_err(|e| e.to_string())?;
     let mut dev = Nanocore::with_config(transport, retry_config(conn));
     if conn.no_sysex {
         dev.transport().set_sysex(false);

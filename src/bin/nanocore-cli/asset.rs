@@ -10,18 +10,18 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
         AssetCmd::List => {
             println!("asset regions (device blob storage):");
             println!(
-                "  amp   region 0x{:02x} — slots 0-{} (30 amp sims + 8 FX2 drive pedals), {} bytes each",
+                "  amp   region 0x{:02x} — slots 1-{} (30 amp sims + 8 FX2 drive pedals), {} bytes each",
                 asset::REGION_AMP,
-                asset::AMP_SLOTS - 1,
+                asset::AMP_SLOTS,
                 asset::AMP_TOTAL
             );
             println!(
-                "  ir    region 0x{:02x} — slots 0-{}, {} bytes each (write supported)",
+                "  ir    region 0x{:02x} — slots 1-{}, {} bytes each (write supported)",
                 asset::REGION_IR,
-                asset::IR_SLOTS - 1,
+                asset::IR_SLOTS,
                 asset::IR_TOTAL
             );
-            println!("  operations: read | verify | write (ir only)");
+            println!("  operations: read | verify | write (ir: 4096-byte blob; amp: full .ead/.eadl)");
             Ok(())
         }
         AssetCmd::Read { region, slot, out } => {
