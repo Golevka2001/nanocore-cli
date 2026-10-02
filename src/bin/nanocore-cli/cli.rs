@@ -66,15 +66,15 @@ fn variant_candidates() -> Vec<CompletionCandidate> {
     long_about = None,
 )]
 pub struct Cli {
+    /// Substring of the port name used for auto-detection [default: nanocore]
+    #[arg(long, global = true, value_name = "NAME")]
+    pub hint: Option<String>,
     /// MIDI input port number (see `ports`, 1-based)
     #[arg(long, global = true, value_name = "N")]
     pub in_port: Option<usize>,
     /// MIDI output port number (see `ports`, 1-based)
     #[arg(long, global = true, value_name = "N")]
     pub out_port: Option<usize>,
-    /// Substring of the port name used for auto-detection [default: nanocore]
-    #[arg(long, global = true, value_name = "NAME")]
-    pub hint: Option<String>,
     /// MIDI channel for CC/PC commands (1–16, wire = N-1; a cabled 0 device is treated as omni)
     #[arg(long, global = true, value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     pub ch: u8,
@@ -117,16 +117,37 @@ pub struct ProtocolKnobs {
     pub no_sysex: bool,
 }
 
+/// 顶层命令。
+///
+/// 变体声明顺序 = `--help` 里的显示顺序，按「拿到程序 → 第一次用 → 逐步
+/// 深入」排列，而不是按功能分类：
+///
+/// 1. `ports` —— 不知道端口号，后面全跑不了，所以排第一
+/// 2. `show` —— 确认连上之后第一件事：看设备现在什么状态
+/// 3. `preset` / `module` —— 两个核心操作对象
+/// 4. `chain` —— 改链序，需要先理解模块概念
+/// 5. `tuner` —— 演奏向
+/// 6. `settings` —— 设备级设置页
+/// 7. `models` / `asset` —— 低频
+/// 8. `debug` —— 协议研究，最低频
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    // ── 预设 ────────────────────────────────────────────────────────────
+    /// List the available MIDI ports
+    Ports,
+
+    /// Show the current device state snapshot in readable form
+    ///
+    /// Structurally decoded (validated against 40 factory baselines): chain order, active
+    /// preset, volume, plus the 8 modules' on/off state, effect type and parameters.
+    /// Modules print in record order, which is the `b5` slot = role; the physical
+    /// order along the chain is the `chain` line above.
+    Show,
+
     /// Manage presets
     Preset {
         #[command(subcommand)]
         cmd: PresetCmd,
     },
-
-    // ── 音频引擎 ──────────────────────────────────────────────────────
     /// Control effect modules (fx1 fx2 amp cab mod delay reverb eq)
     Module {
         #[command(subcommand)]
@@ -137,27 +158,19 @@ pub enum Command {
         #[command(subcommand)]
         cmd: Option<ChainCmd>,
     },
-    /// Show the current device state snapshot in readable form
-    ///
-    /// Structurally decoded (validated against 40 factory baselines): chain order, active
-    /// preset, volume, plus the 8 modules' on/off state, effect type and parameters.
-    /// Modules print in record order, which is the `b5` slot = role; the physical
-    /// order along the chain is the `chain` line above.
-    Show,
-    /// Set the USB output volume (0–100)
-    Volume {
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
-        percent: u8,
-    },
+
     /// Toggle the tuner (its state cannot be read; invoked bare it explains and errors)
     ///
     /// Verified on hardware: CC80 is write-only, and both `0x65` and `0x63` are
     /// byte-identical before and after `tuner on/off` — no path can read the state back.
     Tuner { state: Option<Power> },
 
-    // ── 设备信息 ───────────────────────────────────────────────────────
-    /// List the available MIDI ports
-    Ports,
+    /// Show or modify the device settings-page items
+    Settings {
+        #[command(subcommand)]
+        cmd: SettingsCmd,
+    },
+
     /// List the built-in model tables, or query them from the device
     Models {
         /// List both tables when omitted
@@ -166,22 +179,22 @@ pub enum Command {
         #[arg(long)]
         live: bool,
     },
-
-    // ── 资源（音箱型号与 IR）─────────────────────────────────────────
     /// Read, verify or write the raw amp/IR blobs stored in device slots
     Asset {
         #[command(subcommand)]
         cmd: AssetCmd,
     },
 
-    // ── 设置页（无线 / 回放 / 输入增益 / 蓝牙音量 / 输入通道）───────
-    /// Show or modify the device settings-page items
-    Settings {
-        #[command(subcommand)]
-        cmd: SettingsCmd,
+    /// Set the USB output volume (0–100)
+    ///
+    /// Deprecated alias for `settings usb-volume` — the same `0x66` field 0x08.
+    /// Kept working so existing scripts don't break; hidden from `--help`.
+    #[command(hide = true)]
+    Volume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
     },
 
-    // ── 协议探测（原始/未公开）───────────────────────────────
     /// Low-level MIDI/protocol tools (raw frames, SysEx, debugging)
     Debug {
         #[command(flatten)]
@@ -358,10 +371,22 @@ pub enum ChainCmd {
     Show,
 }
 
+/// 变体声明顺序 = `--help` 显示顺序：先总览，再按「音量 → 开关 → 增益 →
+/// 通道」——音量是最常调的，所以排在最前。
 #[derive(Subcommand, Debug)]
 pub enum SettingsCmd {
     /// Show all settings items (0x65 snapshot)
     Show,
+    /// Set the USB output volume (0–100)
+    UsbVolume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
+    },
+    /// Set the Bluetooth volume (0–100)
+    BtVolume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
+    },
     /// Turn wireless on or off
     Wireless {
         /// `on` or `off`
@@ -379,13 +404,9 @@ pub enum SettingsCmd {
         /// Gain value, e.g. `-3` or `0`
         db: i8,
     },
-    /// Set the Bluetooth volume (0–100)
-    BtVolume {
-        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
-        percent: u8,
-    },
     /// Set the input channel (all = every channel, or 1-16)
     InputChannel {
+        /// `all` or 1-16
         #[arg(value_name = "all|1-16")]
         channel: String,
     },

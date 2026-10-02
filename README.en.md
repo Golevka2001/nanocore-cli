@@ -47,11 +47,11 @@ nanocore-cli models / models --live       # built-in model tables / live query
 
 nanocore-cli show                         # state snapshot: chain, preset, volume, modules
 
-nanocore-cli volume 90                    # USB output volume
-nanocore-cli settings show                # settings overview (wireless/playback/gain/volume/channel)
+nanocore-cli settings show                # settings overview (volume/wireless/playback/gain/channel)
+nanocore-cli settings usb-volume 90        # USB output volume
+nanocore-cli settings bt-volume 80        # bluetooth volume
 nanocore-cli settings wireless off        # enable / disable wireless
 nanocore-cli settings input-gain -- -3    # input gain (dB, may be negative)
-nanocore-cli settings bt-volume 80        # bluetooth volume
 nanocore-cli settings input-channel 2     # input channel
 
 nanocore-cli asset read ir 1 --out out.bin   # pull the slot-1 IR blob
@@ -106,6 +106,11 @@ source <(COMPLETE=zsh nanocore-cli)
 ```sh
 cargo build --features midi
 ```
+
+> **`--features midi` is not optional.** The `[[bin]]` target declares
+> `required-features = ["midi"]`; without that flag cargo builds the library
+> only and produces no executable. For a release build use
+> `cargo build --release --features midi`.
 
 ```sh
 cargo test

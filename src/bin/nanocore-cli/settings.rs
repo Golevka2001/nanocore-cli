@@ -1,8 +1,11 @@
-//! `settings` 命令：显示 / 修改设备设置页项目（无线、回放、输入增益、蓝牙音量、
-//! 输入通道）。USB 音量沿用顶层 `volume` 命令。
+//! `settings` 命令：显示 / 修改设备设置页项目（USB / 蓝牙音量、无线、回放、
+//! 输入增益、输入通道）。
 //!
 //! 写入走 `0x66` SET_FIELD，读取走 `0x65` 设置快照——字段映射见
 //! [`nanocore::setting`] 与 [`nanocore::protocol::decode_settings`]。
+//!
+//! 顶层 `volume` 是本命令 `usb-volume` 的历史别名（同为 `0x66` 字段 0x08），
+//! 已从 `--help` 隐藏，见 [`crate::cli::Command::Volume`]。
 
 use nanocore::setting;
 
@@ -16,6 +19,17 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
             let s = dev.read_settings()?;
             print_settings(&s);
             Ok(())
+        }
+        SettingsCmd::UsbVolume { percent } => set_and_verify(
+            conn,
+            setting::USB_VOLUME,
+            percent,
+            |s| format!("usb volume: {} -> {}", s.usb_volume, percent),
+        ),
+        SettingsCmd::BtVolume { percent } => {
+            set_and_verify(conn, setting::BT_VOLUME, percent, |s| {
+                format!("bt volume: {} -> {}", s.bt_volume, percent)
+            })
         }
         SettingsCmd::Wireless { state } => {
             let value = parse_on_off(&state)?;
@@ -47,11 +61,6 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
                 )))
             }
         }
-        SettingsCmd::BtVolume { percent } => {
-            set_and_verify(conn, setting::BT_VOLUME, percent, |s| {
-                format!("bt volume: {} -> {}", s.bt_volume, percent)
-            })
-        }
         SettingsCmd::InputChannel { channel } => {
             let value = parse_channel(&channel)?;
             set_and_verify(conn, setting::INPUT_CHANNEL, value, |s| {
@@ -65,12 +74,13 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
     }
 }
 
+/// 打印顺序与 `SettingsCmd` 的变体顺序一致：音量 → 开关 → 增益 → 通道。
 fn print_settings(s: &nanocore::protocol::DeviceSettings) {
+    println!("usb volume:      {}", s.usb_volume);
+    println!("bt volume:       {}", s.bt_volume);
     println!("wireless:        {}", on_off(s.wireless));
     println!("playback:        {}", on_off(s.playback));
     println!("input gain:      {} dB", s.input_gain_db);
-    println!("usb volume:      {}", s.usb_volume);
-    println!("bt volume:       {}", s.bt_volume);
     println!("input channel:   {}", channel_label(s.input_channel));
 }
 

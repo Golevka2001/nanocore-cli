@@ -47,11 +47,11 @@ nanocore-cli models / models --live       # 内置模型表 / 真机查询
 
 nanocore-cli show                         # 状态快照：链序、预设、音量、各模块
 
-nanocore-cli volume 90                    # USB 输出音量
-nanocore-cli settings show                # 设置页全览（无线/回放/增益/音量/通道）
+nanocore-cli settings show                # 设置页全览（音量/无线/回放/增益/通道）
+nanocore-cli settings usb-volume 90        # USB 输出音量
+nanocore-cli settings bt-volume 80        # 蓝牙音量
 nanocore-cli settings wireless off        # 启用/关闭无线
 nanocore-cli settings input-gain -- -3    # 输入增益（dB，可为负）
-nanocore-cli settings bt-volume 80        # 蓝牙音量
 nanocore-cli settings input-channel 2     # 输入通道
 
 nanocore-cli asset read ir 1 --out out.bin   # 把 1 号槽的 IR blob 拉出来
@@ -106,6 +106,10 @@ source <(COMPLETE=zsh nanocore-cli)
 ```sh
 cargo build --features midi
 ```
+
+> **注意**：`--features midi` 不能省。`[[bin]]` 声明了
+> `required-features = ["midi"]`，不加这个 flag 时 cargo 只编译库、不产出
+> 可执行文件。发布用 `cargo build --release --features midi`。
 
 ```sh
 cargo test
