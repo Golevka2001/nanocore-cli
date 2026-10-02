@@ -92,12 +92,19 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// 协议探测旋钮：只挂在 `debug` 下（`#[command(flatten)]` 到 `Command::Debug`）。
+/// 协议探测旋钮：逐个 flatten 到 `debug` 下**会发帧的**叶子命令
+/// （`ping` / `snapshot` / `enable` / `setparam` / `variant` / `raw` /
+/// `replay` / `probe`）。
 ///
 /// 这些是裸协议层的应急手段——非 `debug` 命令一个都用不到，所以**不**是
 /// 全局参数：让 `preset list --no-sysex` 之类通过只会掩盖"此处不该有这个
-/// 开关"。挂在 `debug` 上还有个额外好处：它们不再是隐藏项，会正大光明地
-/// 出现在 `debug --help` 里。
+/// 开关"。
+///
+/// 为什么逐个挂而不挂在 `Command::Debug` 上：clap 的 `flatten` **不向孙命令
+/// 传播**。挂在 `debug` 层的话 `debug raw --no-sysex` 会被拒——而 `raw` /
+/// `replay` 恰恰是最需要它的两个（逐字节重放正是 `--no-sysex` 的用途）。
+/// `monitor`（纯监听）与 `cc`（裸 3 字节包，自己切 SysEx 模式）不发 SysEx
+/// 帧，故不挂。
 #[derive(Args, Debug)]
 pub struct ProtocolKnobs {
     /// Treat only these reply types as valid (comma-separated hex); empty = accept any.
@@ -203,8 +210,6 @@ pub enum Command {
 
     /// Low-level MIDI/protocol tools (raw frames, SysEx, debugging)
     Debug {
-        #[command(flatten)]
-        knobs: ProtocolKnobs,
         #[command(subcommand)]
         cmd: DebugCmd,
     },
@@ -465,7 +470,10 @@ pub enum AssetCmd {
 )]
 pub enum DebugCmd {
     /// Ping the device
-    Ping,
+    Ping {
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
     /// Read the current preset's state snapshot
     ///
     /// By default only the raw tx/rx frames are printed. `--decode` appends a structured
@@ -475,6 +483,8 @@ pub enum DebugCmd {
         /// Append a readable structured decoding (0x63 masked stream -> state table)
         #[arg(long)]
         decode: bool,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
     /// Print every frame the device emits (ctrl-c to stop)
     Monitor,
@@ -493,6 +503,8 @@ pub enum DebugCmd {
         slot: u8,
         /// Must be given explicitly: commands with side effects carry no default state
         state: Power,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
     /// Raw SysEx parameter write (b5/b6 in hex; the restore mask is derived from the value)
     Setparam {
@@ -500,6 +512,8 @@ pub enum DebugCmd {
         b6: String,
         /// Parameter value 0.0–1.0
         value: f32,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
     /// Select an amp model via SysEx (the same table as `module amp model`)
     ///
@@ -508,19 +522,29 @@ pub enum DebugCmd {
         /// Amp/pedal slot 1–38 (30 amp sims + 8 FX2 drive pedals)
         #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(1..=38))]
         index: u8,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
     /// Send a raw frame: the first hex byte is the message type, the rest is the payload
     Raw {
         /// Hex bytes, e.g. `raw 6d 00 02 00 00 09 01`
         bytes: Vec<String>,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
     /// Replay a frame byte for byte (header included) and print replies within 2 s
-    Replay { bytes: Vec<String> },
+    Replay {
+        bytes: Vec<String>,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
     /// Preset-switch probe sequence: select -> snapshot -> query -> 3 s trailing listen
     Probe {
         /// Preset number (1–64; omit for #1)
         #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
         index: Option<u8>,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
     },
 }
 
@@ -615,6 +639,7 @@ impl Power {
 ///
 /// 编号约定：`in_port` / `out_port` 是 1 起的用户编号（打开端口时换算成
 /// 0 起的系统索引）；`channel` 已是线缆字节（0–15）。
+#[derive(Clone)]
 pub struct Conn {
     pub in_port: Option<usize>,
     pub out_port: Option<usize>,

@@ -7,22 +7,35 @@ use nanocore::models_data;
 use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
-use crate::cli::{Conn, DebugCmd};
+use crate::cli::{Conn, DebugCmd, ProtocolKnobs};
 use crate::common::{
     Failure, describe, hex, open_device, parse_hex, render_snapshot, send_standard, transact,
     transact_reply,
 };
 use crate::probe::probe;
 
+/// 把协议旋钮落到连接选项的副本上。
+///
+/// 旋钮挂在每个叶子变体上（`raw` / `replay` 恰恰只有叶子级才拿得到），
+/// 所以这里克隆一份 `Conn` 再应用，而不是就地改调用方持有的那个——
+/// `Conn` 的其余字段（端口、通道、超时）与旋钮无关，克隆成本可忽略。
+fn conn_with(conn: &Conn, knobs: &ProtocolKnobs) -> Result<Conn, Failure> {
+    let mut c = conn.clone();
+    c.apply_knobs(knobs).map_err(Failure::error)?;
+    Ok(c)
+}
+
 /// 各分支都先完成自己的输入解析，再打开端口——手误不该触碰 MIDI。
 pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
-        DebugCmd::Ping => {
+        DebugCmd::Ping { knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::ping();
             transact(&mut dev, conn, k, p, &[msg_type::PING])
         }
-        DebugCmd::Snapshot { decode } => {
+        DebugCmd::Snapshot { decode, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
             let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
@@ -71,13 +84,15 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             send_standard(&mut dev, &midicc::control_change(conn.channel, cc_num, value))
         }
-        DebugCmd::Enable { slot, state } => {
+        DebugCmd::Enable { slot, state, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             // 模块编号 1-8 → wire b5 槽位 0-7。
             let (k, p) = protocol::set_enabled(slot - 1, state.on());
             transact(&mut dev, conn, k, p, &[])
         }
-        DebugCmd::Setparam { b5, b6, value } => {
+        DebugCmd::Setparam { b5, b6, value, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let p = |s: &str| {
                 u8::from_str_radix(s.trim_start_matches("0x"), 16)
                     .map_err(|_| format!("{s:?} must be hex"))
@@ -87,7 +102,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, payload) = protocol::param_write(b5, b6, value);
             transact(&mut dev, conn, k, payload, &[])
         }
-        DebugCmd::Variant { index } => {
+        DebugCmd::Variant { index, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             // 槽位编号 1-38 → wire 0-37。
             let wire = index - 1;
             match models_data::lookup_amp(wire) {
@@ -98,7 +114,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = protocol::select_variant(wire);
             transact(&mut dev, conn, k, p, &[])
         }
-        DebugCmd::Raw { bytes } => {
+        DebugCmd::Raw { bytes, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let bytes = parse_hex(&bytes)?;
             if bytes.len() < 2 {
                 return Err(Failure::error("raw needs at least a message type"));
@@ -112,7 +129,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 &conn.expect.clone(),
             )
         }
-        DebugCmd::Replay { bytes } => {
+        DebugCmd::Replay { bytes, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let bytes = parse_hex(&bytes)?;
             let mut dev = open_device(conn)?;
             println!("replay[{}]: {}", bytes.len(), hex(&bytes));
@@ -133,7 +151,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             println!("{got} frame(s) in 2s");
             Ok(())
         }
-        DebugCmd::Probe { index } => {
+        DebugCmd::Probe { index, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             // 预设编号 1-64 → wire 0-63；缺省仍是 wire 0（#1）。
             probe(&mut dev, conn, index.map(|i| i - 1))

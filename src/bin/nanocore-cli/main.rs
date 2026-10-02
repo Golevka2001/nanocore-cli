@@ -76,7 +76,7 @@ fn main() {
 /// 设备由各命令族自行打开，并且都在打开之前完成参数校验——手误不该触碰
 /// MIDI，也不该为一个必然失败的调用占用端口。
 fn run(cli: Cli) -> Result<(), Failure> {
-    let mut conn = Conn::from_cli(&cli)?;
+    let conn = Conn::from_cli(&cli)?;
     match cli.command {
         // 完全不需要设备。
         Command::Ports => {
@@ -97,11 +97,7 @@ fn run(cli: Cli) -> Result<(), Failure> {
         Command::Models { table, live } => cmd_models(table, live, &conn),
         Command::Asset { cmd } => cmd_asset(cmd, &conn),
         Command::Settings { cmd } => cmd_settings(cmd, &conn),
-        // 协议旋钮只挂在 `debug` 下（见 `ProtocolKnobs`），在这里落到连接
-        // 选项上——解析失败即退出，不占用端口。
-        Command::Debug { knobs, cmd } => {
-            conn.apply_knobs(&knobs).map_err(Failure::error)?;
-            cmd_debug(cmd, &conn)
-        }
+        // 协议旋钮挂在各叶子变体上，由 `cmd_debug` 就地应用（见 `ProtocolKnobs`）。
+        Command::Debug { cmd } => cmd_debug(cmd, &conn),
     }
 }
