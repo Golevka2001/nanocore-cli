@@ -75,12 +75,20 @@ pub fn cmd_volume(percent: u8, conn: &Conn) -> Result<(), Failure> {
     transact(&mut dev, conn, k, p, &[])
 }
 
-/// 开关调音表。读取当前状态需要快照解码，尚未实现。
+/// 开关调音表。
+///
+/// **读取状态不可行**（2026-10-01 真机验证，不是"还没做"）：
+/// OEM 指南里 CC80 是只写的，App 侧 `global-tuner` 控制同样是 CC80；
+/// `0x65` 设置查询（13 字节载荷，index 9 = USB 音量）在 `tuner on/off`
+/// 前后逐字节不变，`0x63` 快照同样不变，且设备从不回显写入的 CC。
+/// 协议里没有调音表状态查询这条消息。
 pub fn cmd_tuner(state: Option<Power>, conn: &Conn) -> Result<(), Failure> {
     let Some(state) = state else {
         return Err(Failure::error(
-            "tuner state read is not implemented yet (needs snapshot decode); \
-             pass `tuner on` or `tuner off`",
+            "the tuner state cannot be read — the protocol has no tuner query:\n  \
+             CC80 is write-only (OEM guide), `tuner on/off` leaves both the 0x65\n  \
+             settings reply and the 0x63 snapshot byte-identical, and the device\n  \
+             never echoes written CCs. Pass `tuner on` or `tuner off`.",
         ));
     };
     let mut dev = open_device(conn)?;
