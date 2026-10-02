@@ -972,8 +972,10 @@ impl<T: Transport> Nanocore<T> {
                     .collect::<Vec<_>>()
                     .join(" ");
                 ack_log.push(format!("g{slot}:0x46/{hex} (settled)"));
-                // flash 提交后的沉淀时间。
-                std::thread::sleep(Duration::from_millis(400));
+                // flash 提交后的沉淀时间。提交触发的扇区擦除窗口内，设备会
+                // ack 但丢弃后续 0x43（内容静默丢失、下一组内容占位——
+                // 2026-10-01 实测 7/40 组确定性复现）；400ms 不够，2s 全量通过。
+                std::thread::sleep(Duration::from_millis(2000));
                 continue;
             }
 
@@ -987,7 +989,14 @@ impl<T: Transport> Nanocore<T> {
                 .collect::<Vec<_>>()
                 .join(" ");
             ack_log.push(format!("g{slot}:0x{:02x}/{hex}", f.kind));
-            std::thread::sleep(Duration::from_millis(30));
+            // 0x44 之后的 0x43 特别容易在 flash 提交竞争中丢失（ack 正常但
+            // 内容不落表，2026-10-01 实测 7/40 组），加长节拍缓解。
+            let settle = if f.kind == crate::preset_restore::KIND_BULK_DATA {
+                Duration::from_millis(150)
+            } else {
+                Duration::from_millis(60)
+            };
+            std::thread::sleep(settle);
         }
         Ok(())
     }

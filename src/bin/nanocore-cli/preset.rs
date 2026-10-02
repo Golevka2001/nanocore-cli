@@ -380,11 +380,11 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。
             // 会话开场（0x49）会清空预设表，随后流程将其完整重写。
+            // seq 7 位安全修复（b632aaa）后已在 fw 1.04 真机验证 40/40 恢复。
             eprintln!(
-                "warning: experimental — replays the official DSP-only factory restore\n  \
-                 (preamble enumeration + 40 preset groups). Slots 0-39 will be\n  \
-                 overwritten with factory names and contents. Do not disconnect the\n  \
-                 device until the command prints its final verdict."
+                "warning: this overwrites slots 1-40 with factory names and\n  \
+                 contents. Do not disconnect the device until the command\n  \
+                 prints its final verdict."
             );
             let mut dev = open_device(conn)?;
             dev.restore_factory_presets(|msg| {
