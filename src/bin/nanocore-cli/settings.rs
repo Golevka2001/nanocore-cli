@@ -76,12 +76,28 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
 
 /// 打印顺序与 `SettingsCmd` 的变体顺序一致：音量 → 开关 → 增益 → 通道。
 fn print_settings(s: &nanocore::protocol::DeviceSettings) {
-    println!("usb volume:      {}", s.usb_volume);
-    println!("bt volume:       {}", s.bt_volume);
-    println!("wireless:        {}", on_off(s.wireless));
-    println!("playback:        {}", on_off(s.playback));
-    println!("input gain:      {} dB", s.input_gain_db);
-    println!("input channel:   {}", channel_label(s.input_channel));
+    print!("{}", render_settings(s, ""));
+}
+
+/// 把 `0x65` 设置快照渲染为多行可读文本。
+///
+/// `indent` 是每行的前导空白——`settings show` 用空串（顶格），`show` 里的
+/// 那一段用两格缩进以与 `chain` / `preset` 等行对齐。
+pub fn render_settings(s: &nanocore::protocol::DeviceSettings, indent: &str) -> String {
+    format!(
+        "{indent}usb volume:      {}\n\
+         {indent}bt volume:       {}\n\
+         {indent}wireless:        {}\n\
+         {indent}playback:        {}\n\
+         {indent}input gain:      {} dB\n\
+         {indent}input channel:   {}",
+        s.usb_volume,
+        s.bt_volume,
+        on_off(s.wireless),
+        on_off(s.playback),
+        s.input_gain_db,
+        channel_label(s.input_channel),
+    )
 }
 
 fn set_and_verify(

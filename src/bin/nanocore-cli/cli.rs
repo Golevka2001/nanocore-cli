@@ -154,6 +154,10 @@ pub enum Command {
         /// or when the name is irrelevant to the check.
         #[arg(long)]
         no_name: bool,
+        /// Skip the settings-page block (one extra 0x65 round trip). Use it when
+        /// polling from a script or when only the preset state matters.
+        #[arg(long)]
+        no_settings: bool,
     },
 
     /// Manage presets

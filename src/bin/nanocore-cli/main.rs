@@ -91,7 +91,7 @@ fn run(cli: Cli) -> Result<(), Failure> {
         Command::Preset { cmd } => cmd_preset(cmd, &conn),
         Command::Module { cmd } => cmd_module(cmd, &conn),
         Command::Chain { cmd: Some(cmd) } => cmd_chain(cmd, &conn),
-        Command::Show { no_name } => cmd_show(no_name, &conn),
+        Command::Show { no_name, no_settings } => cmd_show(no_name, no_settings, &conn),
         Command::Volume { percent } => cmd_volume(percent, &conn),
         Command::Tuner { state } => cmd_tuner(state, &conn),
         Command::Models { table, live } => cmd_models(table, live, &conn),

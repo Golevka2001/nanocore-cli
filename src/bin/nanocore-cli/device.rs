@@ -12,11 +12,15 @@ use crate::common::{Failure, open_device, send_standard, transact};
 /// `docs/protocol/snapshot.md`）：载荷从 `[3]` 起是连续 `[mask][7 data]`
 /// 打包流，数据流 = 前导 + 8 条链位记录 + 链尾。
 ///
-/// 预设名来自一次额外的 `0x40` 查询（只查当前槽位所在的那一批，1 次往返）。
-/// `--no-name` 跳过它——名字只是补充信息，省掉不影响其余字段的解码。
-/// 渲染由 [`crate::common::render_snapshot`] 承担，`debug snapshot --decode`
-/// 复用同一份实现。
-pub fn cmd_show(no_name: bool, conn: &Conn) -> Result<(), Failure> {
+/// 另有两处补充查询，都可跳过（`--no-name` / `--no-settings`），因为它们
+/// 都不是 `0x63` 的内容，缺了不影响其余字段：
+/// * 预设名：一次 `0x40`（只查当前槽位所在的那一批，1 次往返）
+/// * 设置页：一次 `0x65`
+///
+/// 渲染由 [`crate::common::render_snapshot`] 与
+/// [`crate::settings::render_settings`] 承担，`debug snapshot --decode` 与
+/// `settings show` 分别复用同一份实现。
+pub fn cmd_show(no_name: bool, no_settings: bool, conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
     let name = if no_name {
@@ -36,6 +40,13 @@ pub fn cmd_show(no_name: bool, conn: &Conn) -> Result<(), Failure> {
         "{}",
         crate::common::render_snapshot(&s.payload, "  ", name.as_deref())
     );
+    // 同理：设置页读不到就整段略过，不让 `show` 因此失败。
+    if !no_settings
+        && let Ok(st) = dev.read_settings()
+    {
+        println!("  settings:");
+        print!("{}\n", crate::settings::render_settings(&st, "    "));
+    }
     Ok(())
 }
 
