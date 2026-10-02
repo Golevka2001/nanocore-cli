@@ -67,25 +67,25 @@ fn variant_candidates() -> Vec<CompletionCandidate> {
 )]
 pub struct Cli {
     /// Substring of the port name used for auto-detection [default: nanocore]
-    #[arg(long, global = true, value_name = "NAME")]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "NAME")]
     pub hint: Option<String>,
     /// MIDI input port number (see `ports`, 1-based)
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "N")]
     pub in_port: Option<usize>,
     /// MIDI output port number (see `ports`, 1-based)
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "N")]
     pub out_port: Option<usize>,
     /// MIDI channel for CC/PC commands (1–16, wire = N-1; a cabled 0 device is treated as omni)
-    #[arg(long, global = true, value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     pub ch: u8,
     /// Initial reply timeout in milliseconds (doubles on each retry, hard cap 8x)
     ///
     /// Capped at 60000: a larger initial value is meaningless for a MIDI transaction
     /// and would overflow `Duration` in the retry multipliers (`retry_config`'s x4/x8).
-    #[arg(long, global = true, value_name = "MS", value_parser = clap::value_parser!(u64).range(1..=60000))]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "MS", value_parser = clap::value_parser!(u64).range(1..=60000))]
     pub timeout: Option<u64>,
     /// Maximum retries per transaction [default: 3]
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, global = true, help_heading = "Global options", value_name = "N")]
     pub retries: Option<u32>,
 
     #[command(subcommand)]
