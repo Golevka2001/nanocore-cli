@@ -30,13 +30,44 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             }
             Ok(())
         }
+        PresetCmd::Volume { percent } => {
+            let mut dev = open_device(conn)?;
+            let read_volume =
+                |dev: &mut crate::common::Dev| -> Result<u8, Failure> {
+                let snap = dev.read_snapshot().map_err(|e| e.to_string())?;
+                let state = nanocore::protocol::decode_snapshot_state(&snap.payload).ok_or_else(
+                    || {
+                        Failure::error(
+                            "the 0x63 snapshot did not decode (only the USB payload form \
+                             is supported)",
+                        )
+                    },
+                )?;
+                Ok(state.preset_volume)
+            };
+            let before = read_volume(&mut dev)?;
+            let (k, p) = nanocore::protocol::set_preset_volume(percent);
+            transact(&mut dev, conn, k, p, &[])?;
+
+            // 设备的快照不是即时刷新的，稍候再回读。
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let after = read_volume(&mut dev)?;
+            println!("volume:   {before} -> {after} (presetVolume)");
+            if after == percent {
+                Ok(())
+            } else {
+                Err(Failure::mismatch(format!(
+                    "volume write did not stick: set {percent}, snapshot reads {after}"
+                )))
+            }
+        }
         PresetCmd::List => {
             let mut dev = open_device(conn)?;
             let entries = dev.read_preset_names()?;
             for e in &entries {
                 println!(
                     "  #{:<2} {:<12} {}",
-                    e.slot,
+                    e.slot + 1,
                     e.name,
                     if e.named { "" } else { "(empty)" }
                 );

@@ -63,8 +63,28 @@ pub mod sub {
     // 效果类型切换使用 `4 * (param_count + 1)`。
 }
 
+/// 设置页字段 id（`0x66` SET_FIELD 写、`0x65` 快照广播读；
+/// 全部由 2026-10-01 的"设置-*.mmon"系列抓包逐一确证）。
+pub mod setting {
+    /// 无线开关（0/1）。
+    pub const WIRELESS: u8 = 0x01;
+    /// 回放开关（0/1）。
+    pub const PLAYBACK: u8 = 0x02;
+    /// 输入增益（dB，7-bit 补码负数 + 符号标志字节）。
+    pub const INPUT_GAIN: u8 = 0x04;
+    /// USB 音量（0-100）。
+    pub const USB_VOLUME: u8 = 0x08;
+    /// 蓝牙音量（0-100）。
+    pub const BT_VOLUME: u8 = 0x10;
+    /// 输入通道（Ch1-Ch16 = 1-16，0 = 全通道）。
+    pub const INPUT_CHANNEL: u8 = 0x20;
+}
+
 /// [`sub::SET_FIELD`] 及设置类消息使用的字段 id。
 pub mod field {
+    /// 预设音量（0-100），App"预设音量"滑条走此字段
+    /// （`调整预设音量.mmon`：`0x6D` SET_FIELD `00 02 00 00 04 <val>`）。
+    pub const PRESET_VOLUME: u8 = 0x04;
     /// 效果 variant / amp 型号。
     pub const VARIANT: u8 = 0x06;
     /// 音箱 / IR。

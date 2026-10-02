@@ -338,6 +338,48 @@ pub fn set_usb_volume(percent: u8) -> (u8, Vec<u8>) {
     (msg_type::USB_VOLUME, vec![0x00, 0x02, 0x00, 0x00, field::USB_VOLUME, percent])
 }
 
+/// `0x66` sub `0x02`：设置任意设置页字段（字段 id 见 [`crate::setting`]）。
+///
+/// 与 `0x6D` 的 [`set_field`] 同形但走 `0x66` 设置通道。验证：无线/回放/
+/// 蓝牙音量/输入通道均来自"设置-*.mmon"（2026-10-01）。
+pub fn set_setting(setting_field: u8, value: u8) -> (u8, Vec<u8>) {
+    (msg_type::USB_VOLUME, vec![0x00, 0x02, 0x00, 0x00, setting_field, value])
+}
+
+/// `0x66` sub `0x02`：设置输入增益（dB，可为负）。
+///
+/// 编码来自 `设置-输入增益调节到-1～-5dB.mmon`：负数在 byte3 携带符号标志
+/// `0x02`，值字节为 7-bit 补码（-1 → `0x7F`、-5 → `0x7B`）；0 与正数标志为
+/// `0x00`（0 实测；**正数路径未真机实测**，UI 是否提供正增益未知）。
+pub fn set_input_gain(db: i8) -> (u8, Vec<u8>) {
+    if db < 0 {
+        (
+            msg_type::USB_VOLUME,
+            vec![0x00, 0x02, 0x00, 0x02, crate::setting::INPUT_GAIN, (db as u8) & 0x7F],
+        )
+    } else {
+        (
+            msg_type::USB_VOLUME,
+            vec![0x00, 0x02, 0x00, 0x00, crate::setting::INPUT_GAIN, db as u8],
+        )
+    }
+}
+
+/// `0x65`：查询设置快照（载荷 `00 00 00`；设备每 ~250 ms 也主动广播一份）。
+pub fn query_settings() -> (u8, Vec<u8>) {
+    (msg_type::SETTINGS, vec![0x00, 0x00, 0x00])
+}
+
+/// `0x6D` SET_FIELD：设置预设音量（0-100）。
+///
+/// 来自 `调整预设音量.mmon`（App"预设音量"滑条全程抓包）：载荷
+/// `00 02 00 00 04 <val>`，值 0x00–0x53 随滑条连续变化，每步设备回
+/// `0x01` 事件回显该值。当前值可由 [`decode_snapshot_state`] 的
+/// `preset_volume` 读回。
+pub fn set_preset_volume(percent: u8) -> (u8, Vec<u8>) {
+    set_field(field::PRESET_VOLUME, percent)
+}
+
 /// `0x63`：请求当前预设快照。
 ///
 /// 载荷为 `00 00 00`。在抓包中该命令之后总是紧跟元数据尾（`da 00 0e ...`）；见 [`crate::tail`]。
@@ -704,6 +746,51 @@ pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
     Some(SnapshotState { preset_index, preset_volume, records, chain })
 }
 
+/// 设备设置页快照（`0x65`，13 B 载荷）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceSettings {
+    /// 无线开关。
+    pub wireless: bool,
+    /// 回放开关。
+    pub playback: bool,
+    /// 输入增益（dB，可为负）。
+    pub input_gain_db: i8,
+    /// USB 音量（0-100）。
+    pub usb_volume: u8,
+    /// 蓝牙音量（0-100）。
+    pub bt_volume: u8,
+    /// 输入通道（Ch1-Ch16 = 1-16；0 = 全通道。抓包只覆盖过 1-5，全量由作者确认）。
+    pub input_channel: u8,
+}
+
+/// 解码 `0x65` 设置快照载荷（13 B）。
+///
+/// 字段映射由"设置-*.mmon"系列抓包逐一确证（2026-10-01，每项设置调整前后
+/// 的快照 diff 逐下标对账）：`[3]` = 增益符号标志（负 = `0x10`）、`[6]` = 无线、
+/// `[7]` = 回放、`[8]` = 输入增益（7-bit 补码，负数 ≥ `0x40`）、`[9]` = USB 音量、
+/// `[10]` = 蓝牙音量、`[12]` = 输入通道。`[1][4][5][11]` 含义未定（[5] 恒 `01`，
+/// 疑为 MIDI 通道）。
+pub fn decode_settings(payload: &[u8]) -> Option<DeviceSettings> {
+    if payload.len() < 13 || payload[0] != 0x00 || payload[2] != 0x07 {
+        return None;
+    }
+    let raw_gain = payload[8];
+    let input_gain_db: i8 = if raw_gain >= 0x40 {
+        // 7-bit 补码负数：-1 = 0x7F …（符号标志 [3]=0x10 一并核对）。
+        (raw_gain as i16 - 128) as i8
+    } else {
+        raw_gain as i8
+    };
+    Some(DeviceSettings {
+        wireless: payload[6] != 0x00,
+        playback: payload[7] != 0x00,
+        input_gain_db,
+        usb_volume: payload[9],
+        bt_volume: payload[10],
+        input_channel: payload[12],
+    })
+}
+
 /// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
 ///
 /// 已观察到两种布局：
@@ -826,6 +913,72 @@ mod tests {
         let (k, p) = model_query(7);
         assert_eq!(k, msg_type::MODEL_LIST);
         assert_eq!(p, vec![0x00, 0x01, 0x00, 0x00, 7]);
+    }
+
+    #[test]
+    fn set_preset_volume_matches_capture() {
+        // `调整预设音量.mmon`：App 滑条写 83 时载荷为 00 02 00 00 04 53。
+        let (k, p) = set_preset_volume(83);
+        assert_eq!(k, msg_type::DATA);
+        assert_eq!(p, vec![0x00, sub::SET_FIELD, 0x00, 0x00, field::PRESET_VOLUME, 83]);
+    }
+
+    #[test]
+    fn setting_setters_match_captures() {
+        // 设置-启用无线.mmon：66 00 02 00 00 01 01
+        let (_k, p) = set_setting(crate::setting::WIRELESS, 1);
+        assert_eq!(_k, msg_type::USB_VOLUME);
+        assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::WIRELESS, 1]);
+        // 设置-输入通道调节到Ch1-Ch5-全通道.mmon：66 00 02 00 00 20 05
+        let (_k, p) = set_setting(crate::setting::INPUT_CHANNEL, 5);
+        assert_eq!(_k, msg_type::USB_VOLUME);
+        assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::INPUT_CHANNEL, 5]);
+        // 设置-蓝牙音量调整到0.mmon：66 00 02 00 00 10 00
+        let (_k, p) = set_setting(crate::setting::BT_VOLUME, 0);
+        assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::BT_VOLUME, 0]);
+    }
+
+    #[test]
+    fn input_gain_encoding_is_7bit_complement_with_sign_flag() {
+        // 设置-输入增益调节到-1～-5dB.mmon：-1 → 00 02 00 02 04 7f、-5 → …7b、0 → 00…00。
+        let (k, p) = set_input_gain(-1);
+        assert_eq!(k, msg_type::USB_VOLUME);
+        assert_eq!(p, vec![0x00, 0x02, 0x00, 0x02, crate::setting::INPUT_GAIN, 0x7f]);
+        assert_eq!(set_input_gain(-5).1, vec![0x00, 0x02, 0x00, 0x02, crate::setting::INPUT_GAIN, 0x7b]);
+        assert_eq!(set_input_gain(0).1, vec![0x00, 0x02, 0x00, 0x00, crate::setting::INPUT_GAIN, 0]);
+    }
+
+    #[test]
+    fn decode_settings_matches_capture_snapshots() {
+        // 设置-输入增益调节到-1～-5dB.mmon 的快照（USB=85、BT=100、增益 -1）。
+        let s = decode_settings(&[
+            0x00, 0x00, 0x07, 0x10, 0x00, 0x01, 0x01, 0x01, 0x7f, 0x55, 0x64, 0x00, 0x00,
+        ])
+        .expect("decode");
+        assert_eq!(
+            s,
+            DeviceSettings {
+                wireless: true,
+                playback: true,
+                input_gain_db: -1,
+                usb_volume: 85,
+                bt_volume: 100,
+                input_channel: 0
+            }
+        );
+        // 关闭无线后：[6] 00。
+        let s = decode_settings(&[
+            0x00, 0x00, 0x07, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x55, 0x64, 0x00, 0x00,
+        ])
+        .expect("decode");
+        assert!(!s.wireless);
+        assert_eq!(s.input_gain_db, 0);
+        // 输入通道 Ch5：[12] 05。
+        let s = decode_settings(&[
+            0x00, 0x00, 0x07, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x55, 0x64, 0x00, 0x05,
+        ])
+        .expect("decode");
+        assert_eq!(s.input_channel, 5);
     }
 
     #[test]

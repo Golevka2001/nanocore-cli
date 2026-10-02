@@ -160,6 +160,13 @@ pub enum Command {
         cmd: AssetCmd,
     },
 
+    // ── 设置页（无线 / 回放 / 输入增益 / 蓝牙音量 / 输入通道）───────
+    /// 显示或修改设备设置页项目
+    Settings {
+        #[command(subcommand)]
+        cmd: SettingsCmd,
+    },
+
     // ── 协议探测（原始/未公开）───────────────────────────────
     /// 底层 MIDI/协议工具（原始帧、SysEx、调试）
     Debug {
@@ -192,6 +199,11 @@ pub enum PresetCmd {
     /// 显示当前活动预设（槽位号 + 名称、音量、链序）
     Show,
     /// 导出预设槽位为 .npreset 包（manifest + 引用的资产）
+    /// 设置预设音量（0–100，App 中的"预设音量"滑条）
+    Volume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
+    },
     /// 重放官方"仅 DSP 恢复出厂"流程（40 组预设的名字与内容）
     RestoreFactory,
 }
@@ -297,6 +309,39 @@ pub enum ChainCmd {
     },
     /// 从设备读取当前链序
     Show,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SettingsCmd {
+    /// 显示全部设置项（0x65 快照）
+    Show,
+    /// 启用或关闭无线
+    Wireless {
+        /// `on` 或 `off`
+        #[arg(value_name = "on|off")]
+        state: String,
+    },
+    /// 启用或关闭回放
+    Playback {
+        /// `on` 或 `off`
+        #[arg(value_name = "on|off")]
+        state: String,
+    },
+    /// 设置输入增益（dB，可为负；正数路径未真机实测）
+    InputGain {
+        /// 增益值，如 `-3` 或 `0`
+        db: i8,
+    },
+    /// 设置蓝牙音量（0–100）
+    BtVolume {
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
+        percent: u8,
+    },
+    /// 设置输入通道（all = 全通道，或 1-16）
+    InputChannel {
+        #[arg(value_name = "all|1-16")]
+        channel: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]

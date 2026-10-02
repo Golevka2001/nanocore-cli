@@ -827,6 +827,27 @@ impl<T: Transport> Nanocore<T> {
         self.send(k, p)
     }
 
+    pub fn set_preset_volume(&mut self, percent: u8) -> Result<(), T::Error> {
+        let (k, p) = protocol::set_preset_volume(percent);
+        self.send(k, p)
+    }
+
+    /// 查询设置快照（`0x65`；设备也会每 ~250 ms 主动广播）。
+    pub fn read_settings(&mut self) -> Result<protocol::DeviceSettings, String> {
+        let (k, p) = protocol::query_settings();
+        let reply = self
+            .transact_expect(k, p, &[crate::msg_type::SETTINGS])
+            .map_err(|e| e.to_string())?;
+        protocol::decode_settings(&reply.payload)
+            .ok_or_else(|| "0x65 settings snapshot did not decode".to_string())
+    }
+
+    /// 写一个设置页字段（`0x66`；字段 id 见 [`crate::setting`]）。
+    pub fn set_setting(&mut self, setting_field: u8, value: u8) -> Result<(), T::Error> {
+        let (k, p) = protocol::set_setting(setting_field, value);
+        self.send(k, p)
+    }
+
     pub fn set_name(&mut self, name: &[u8]) -> Result<(), T::Error> {
         let (k, p) = protocol::set_name(name);
         self.send(k, p)

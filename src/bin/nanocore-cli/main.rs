@@ -28,6 +28,7 @@
 //! [`Failure`]（消息 + 退出码）返回，`main` 是进程唯一的退出点。
 
 mod asset;
+mod settings;
 mod chain;
 mod cli;
 mod common;
@@ -41,6 +42,7 @@ mod probe;
 use clap::{CommandFactory, Parser};
 
 use crate::asset::cmd_asset;
+use crate::settings::cmd_settings;
 use crate::chain::cmd_chain;
 use crate::cli::{Cli, Command, Conn};
 use crate::common::{Failure, cmd_list};
@@ -89,6 +91,7 @@ fn run(cli: Cli) -> Result<(), Failure> {
         Command::Tuner { state } => cmd_tuner(state, &conn),
         Command::Models { table, live } => cmd_models(table, live, &conn),
         Command::Asset { cmd } => cmd_asset(cmd, &conn),
+        Command::Settings { cmd } => cmd_settings(cmd, &conn),
         Command::Debug { cmd } => cmd_debug(cmd, &conn),
     }
 }
