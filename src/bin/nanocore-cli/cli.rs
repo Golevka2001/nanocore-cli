@@ -141,7 +141,13 @@ pub enum Command {
     /// preset, volume, plus the 8 modules' on/off state, effect type and parameters.
     /// Modules print in record order, which is the `b5` slot = role; the physical
     /// order along the chain is the `chain` line above.
-    Show,
+    Show {
+        /// Skip the preset-name lookup (one extra 0x40 round trip). The `preset`
+        /// line then shows the slot number only. Use it when polling from a script
+        /// or when the name is irrelevant to the check.
+        #[arg(long)]
+        no_name: bool,
+    },
 
     /// Manage presets
     Preset {
