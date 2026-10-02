@@ -138,11 +138,11 @@ pub fn write_bundle(path: &Path, manifest: &Manifest, assets: &BundleAssets) -> 
     let options: zip::write::SimpleFileOptions =
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let manifest_json = serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?;
-    zip.start_file("manifest.json", options.clone())
+    zip.start_file("manifest.json", options)
         .map_err(|e| e.to_string())?;
     zip.write_all(&manifest_json).map_err(|e| e.to_string())?;
     for (name, data) in assets {
-        zip.start_file(name.as_str(), options.clone())
+        zip.start_file(name.as_str(), options)
             .map_err(|e| e.to_string())?;
         zip.write_all(data).map_err(|e| e.to_string())?;
     }

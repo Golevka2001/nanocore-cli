@@ -275,7 +275,7 @@ mod tests {
         for (g, pair) in payloads.chunks(2).enumerate() {
             let decoded = decode_frames(&pair[0], &pair[1])
                 .unwrap_or_else(|| panic!("preset {g}: decode failed"));
-            assert_eq!(decoded.name.len() <= 8, true);
+            assert!(decoded.name.len() <= 8);
             let rebuilt = build_frames(&PresetWrite {
                 name: decoded.name.clone(),
                 chain_order: decoded.chain_order,

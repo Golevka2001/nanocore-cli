@@ -286,7 +286,7 @@ mod tests {
 
         // 裸负载被拒绝。
         assert!(prepare_amp_input(&vec![0u8; EAD_PAYLOAD]).is_err());
-        assert!(prepare_amp_input(&vec![0u8; 100]).is_err());
+        assert!(prepare_amp_input(&[0u8; 100]).is_err());
     }
 
     #[test]

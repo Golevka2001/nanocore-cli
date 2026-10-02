@@ -670,8 +670,8 @@ impl<T: Transport> Nanocore<T> {
         std::thread::sleep(Duration::from_millis(1500));
         let (k, p) = crate::protocol::model_query(slot);
         for attempt in 0..4 {
-            if let Ok(reply) = self.transact_expect(k, p.clone(), &[msg_type::MODEL_LIST]) {
-                if let Some(m) = crate::protocol::parse_model_name(&reply.payload) {
+            if let Ok(reply) = self.transact_expect(k, p.clone(), &[msg_type::MODEL_LIST])
+                && let Some(m) = crate::protocol::parse_model_name(&reply.payload) {
                     if m.name == name {
                         on_progress(&format!("model table updated to {name:?}"));
                         break;
@@ -683,7 +683,6 @@ impl<T: Transport> Nanocore<T> {
                         ));
                     }
                 }
-            }
             on_progress(&format!("name stale (attempt {}), waiting…", attempt + 1));
             std::thread::sleep(Duration::from_millis(1500));
         }
@@ -691,8 +690,7 @@ impl<T: Transport> Nanocore<T> {
         // 9. 回读（信息性）：设备内部 DDBP 格式，无法与 .ead 负载逐字节比对，
         //    仅供调用方展示 crc 变化。
         let (_total, plan) = asset::read_plan(asset::REGION_AMP, slot)
-            .ok_or_else(|| "no read plan for that amp slot".to_string())
-            .map_err(|e| e)?;
+            .ok_or_else(|| "no read plan for that amp slot".to_string())?;
         let mut chunks = Vec::new();
         for req in &plan {
             let reply = self
@@ -718,11 +716,10 @@ impl<T: Transport> Nanocore<T> {
             let reply = self
                 .transact_expect(k, p, &[crate::msg_type::MODEL_LIST])
                 .map_err(|e| e.to_string())?;
-            if let Some(m) = protocol::parse_model_name(&reply.payload) {
-                if m.active {
+            if let Some(m) = protocol::parse_model_name(&reply.payload)
+                && m.active {
                     active.push(m.index);
                 }
-            }
         }
         Ok(match active.as_slice() {
             [only] => Some(*only),

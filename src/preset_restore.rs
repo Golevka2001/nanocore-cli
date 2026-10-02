@@ -225,11 +225,10 @@ pub fn build_import_stream(
             out.push(f);
             continue; // PING 不推进组/步进计数（与 validate 的分组规则一致）。
         }
-        if f.kind == KIND_PRESET_WRITE {
-            if let Some((lo, sh)) = &built[group] {
+        if f.kind == KIND_PRESET_WRITE
+            && let Some((lo, sh)) = &built[group] {
                 f.payload = if step == 1 { lo.clone() } else { sh.clone() };
             }
-        }
         out.push(f);
         step += 1;
         if step == FRAMES_PER_GROUP {
