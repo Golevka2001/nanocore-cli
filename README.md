@@ -2,6 +2,10 @@
 
 简体中文 | [English](README.en.md)
 
+<p align="center">
+  <img src="README.assets/banner.jpeg" alt="nanocore-cli banner" />
+</p>
+
 ---
 
 用于控制 [LIVTRA NanoCore](https://livtramusic.com/products/nanocore) 口袋效果器（TPE-S10）的非官方 Rust CLI。

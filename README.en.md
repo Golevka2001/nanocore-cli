@@ -2,6 +2,10 @@
 
 [简体中文](README.md) | English
 
+<p align="center">
+  <img src="README.assets/banner.jpeg" alt="nanocore-cli banner" />
+</p>
+
 ---
 
 Unofficial Rust CLI for the [LIVTRA NanoCore](https://livtramusic.com/products/nanocore) pocket effects pedal (TPE-S10).
