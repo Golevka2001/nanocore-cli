@@ -7,11 +7,29 @@ use crate::common::{Failure, open_device, send_standard, transact};
 
 pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
-        // 读取活动预设需要快照解码——在打开端口之前就拒绝。
-        PresetCmd::Show => Err(Failure::error(
-            "the active preset is not decoded yet (full snapshot decode pending). \
-             Try `preset list` for the slot names.",
-        )),
+        PresetCmd::Show => {
+            let mut dev = open_device(conn)?;
+            let snap = dev.read_snapshot().map_err(|e| e.to_string())?;
+            let state = nanocore::protocol::decode_snapshot_state(&snap.payload)
+                .ok_or_else(|| {
+                    Failure::error(
+                        "the 0x63 snapshot did not decode (only the USB payload form \
+                         is supported); `debug snapshot` prints the raw bytes",
+                    )
+                })?;
+            let names = dev.read_preset_names().map_err(Failure::error)?;
+            let label = match names.iter().find(|e| e.slot == state.preset_index) {
+                Some(e) if e.named => format!(" {}", e.name),
+                Some(_) => "  (slot is empty)".into(),
+                None => String::new(),
+            };
+            println!("preset:   #{}{label}", state.preset_index + 1);
+            println!("volume:   {} (presetVolume)", state.preset_volume);
+            if let Some(chain) = state.chain.as_deref() {
+                println!("chain:    {}", crate::common::render_chain(chain));
+            }
+            Ok(())
+        }
         PresetCmd::List => {
             let mut dev = open_device(conn)?;
             let entries = dev.read_preset_names()?;

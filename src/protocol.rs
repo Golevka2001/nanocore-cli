@@ -601,8 +601,38 @@ pub struct SnapshotState {
     pub preset_index: u8,
     /// 预设音量（0–100）。
     pub preset_volume: u8,
-    /// 恰 8 条记录（每条对应 `chainOrder` 的一个链位）。
+    /// 恰 8 条记录（**按角色序**：下标 i 就是 `CHAIN_ROLES[i]`，即 `b5` 槽位）。
     pub records: Vec<SnapshotRecord>,
+    /// 链序（`chainOrder`）：8 个角色索引的排列，按从左到右的链位排列。
+    ///
+    /// 数据流尾部通常只剩裸的 8 字节链序（线上分隔/填充 `0x00` 已被掩码位吞掉）；
+    /// 解不出来时为 `None`，此时可退回 [`parse_snapshot_chain_order`] 处理
+    /// 那些计数锚仍落在原位的旧形态。
+    pub chain: Option<Vec<u8>>,
+}
+
+/// `0..CHAIN_LEN` 的一个排列？
+fn is_chain_permutation(v: &[u8]) -> bool {
+    let mut seen = [false; CHAIN_LEN];
+    v.iter().all(|&b| {
+        (b as usize) < CHAIN_LEN && !std::mem::replace(&mut seen[b as usize], true)
+    })
+}
+
+/// 从解包后数据流的尾部（链计数 `0x08` **之后**）解出链序。
+///
+/// 只接受**恰好 `CHAIN_LEN` 字节**的裸排列。线上原始尾部的分隔/填充
+/// `0x00` 会落在掩码位上被吞掉，因此数据流里看到的正是这 8 字节——
+/// 40 组出厂快照 + 真机 USB 快照 41/41 全部如此。
+///
+/// 不接受 9 字节（sep/填充未被吞）的形态：链序里必然含 `0`（FX1），
+/// 分隔/填充又是 `0`，两个 `0` 各去掉一次都能得到一个合法排列且互不相同，
+/// 没有计数锚点就无法判定。那种形态请退回 [`parse_snapshot_chain_order`]。
+fn chain_order_from_stream(tail: &[u8]) -> Option<Vec<u8>> {
+    if tail.len() == CHAIN_LEN && is_chain_permutation(tail) {
+        return Some(tail.to_vec());
+    }
+    None
 }
 
 /// 完整解码 `0x63` 快照载荷（真机 USB 形态，无 BLE 元数据尾）。
@@ -612,18 +642,21 @@ pub struct SnapshotState {
 /// ```text
 /// [00][03][presetIndex][presetVolume]
 /// × 8: [enabled][variant][count] + float32 × count
-/// [08] + 链序（sep/填充 0x00 可能已被掩码位置吞掉）
+/// [08] + 链序（sep/填充 0x00 通常已被掩码位置吞掉 → 恰 8 字节）
 /// ```
 ///
 /// 校验：前导标记 `[00][03]`、记录数恰为 8、每条 `count ≤ 16`、
 /// float 不得为 NaN/Inf（与固件解码器 `FUN_004777bc` 的
 /// `(bits & 0x7FFFFFFF) <= 0x7F7FFFFF` 一致）、记录后紧跟链计数 `0x08`。
 ///
-/// 注意：**不要**用 [`parse_snapshot_chain_order`] 做前置校验 —— 它锚定
+/// 记录下标 == `CHAIN_ROLES` 下标 == `b5` 槽位（40 组出厂基线与
+/// `.npreset` manifest 对账逐位确认，真机读写实验双向印证）。
+///
+/// 注意：**不要**用 [`parse_snapshot_chain_order`] 做前置校验——它锚定
 /// 原始尾部的 `count@len-11` 布局，那只对特定快照长度（197B/165B，
-/// 掩码相位恰好把 sep/填充留在原位）成立；187B 等其它长度的原始尾部
-/// 字节因掩码吞位而整体移位。链序请继续用 [`parse_snapshot_chain_order`]
-/// 单独解（它对已验证的形态可靠），结构化解码以数据流内的 `0x08` 计数为准。
+/// 掩码相位恰好把 sep/填充留在原位）成立；187B/169B 等长度的原始尾部
+/// 字节因掩码吞位而整体移位。链序改由数据流尾部解出（见
+/// [`chain_order_from_stream`]），[`parse_snapshot_chain_order`] 仅作旧形态的退回。
 ///
 /// 已知语义差异（**不是**解码错误，40 组基线上与 manifest 对账得出）：
 /// * `fx1`（噪音门）/`fx2`（压缩器）的 `enabled` 在快照里是**实时 DSP 状态**
@@ -666,7 +699,9 @@ pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
     if take(1)?[0] != CHAIN_LEN as u8 {
         return None;
     }
-    Some(SnapshotState { preset_index, preset_volume, records })
+    // 其余就是链序本身（不强求：解不出只影响展示，不影响记录解码）。
+    let chain = chain_order_from_stream(&data[p..]);
+    Some(SnapshotState { preset_index, preset_volume, records, chain })
 }
 
 /// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
@@ -1035,6 +1070,9 @@ mod tests {
     const SNAP_CLNARP: &str = "00002000000300540103060336731d3f00000002006c51383e295c050f3d381e053e5201381e3f000003000000003f0000003f034d4c4c3f000005031a19193f000000443f1f052b3f0a570c633f4d4c4c3f000c00024d4c0c3f334033333f0000041a1919193e414a213f300000003f1a1919603f0100025c0f420e3e4d4c4c3e010120057b142e3e6c5140383e713d4a3f4d014c4c3e7b142e3e000000040000003f000000003f000000003f0000003f08000001020304050607";
     /// `preset set 1`（Ambient）后的快照载荷，165 字节。
     const SNAP_AMBIENT: &str = "00000c0000030153010102400000003f1d5a24003e000003000000603f0000003f4d4c004c3f00000566664c663f4d4c0c3f1a1919193f4375283f034d4c4c3f00000202142e073f713d0a303f0101031a19196c3e6065503e1a1901193e000002000000003f0000003f01500605295c0f3d4d194c4c3f1a19193f4000000000666666003e000004000000003f0000003f000000003f0000003f0800000102030405060007";
+    /// `slot_13.bin`（Psych）——非恒等链序 `[0,1,5,7,6,4,2,3]`，165 字节。
+    /// 用于证明链序确实来自数据流尾部，而不是碰巧恒等。
+    const SNAP_PSYCH: &str = "00000c0000030d55000002634d4c4c3e213072003e000403000000603f0000003f4d4c604c3f0000051a191c193f4d4c4c3d001000003f5c0f023f034375683f000002020a57233f295c0f703f0104034d4c4c483d7f6a3c3e0a5701233d010002713d040a3f2e47213f015007050e2d323d4d394c4c3e63251b3e36142e473e1a1919003e000004000000003f0000003f000000003f0000003f0800000105070604020003";
 
     #[test]
     fn unpack_stream_restores_masked_high_bits() {
@@ -1096,6 +1134,40 @@ mod tests {
         let mut big = good.clone();
         big[58] = 0x11;
         assert!(decode_snapshot_state(&big).is_none());
+    }
+
+    #[test]
+    fn snapshot_state_decodes_chain_from_the_data_stream() {
+        // 恒等链序：两条出厂基线 + 真机 USB 快照（169B，count@len-10，
+        // 旧的 `parse_snapshot_chain_order` 锚点失效）都以裸 8 字节结束。
+        for hex in [SNAP_CLNARP, SNAP_AMBIENT] {
+            let s = decode_snapshot_state(&unhex(hex)).expect("decode");
+            assert_eq!(s.chain.as_deref(), Some(&[0, 1, 2, 3, 4, 5, 6, 7][..]));
+        }
+        // 非恒等：Psych 的 `[0,1,5,7,6,4,2,3]`，且与 manifest 的 chainOrder 一致。
+        let s = decode_snapshot_state(&unhex(SNAP_PSYCH)).expect("Psych decode");
+        assert_eq!(s.chain.as_deref(), Some(&[0, 1, 5, 7, 6, 4, 2, 3][..]));
+        // 记录数/参数不受链序影响。
+        assert_eq!(s.preset_index, 13);
+        assert_eq!(s.records.len(), CHAIN_LEN);
+    }
+
+    #[test]
+    fn chain_from_stream_rejects_bad_tails() {
+        let perm = [0u8, 1, 2, 3, 4, 5, 6, 7];
+        assert_eq!(chain_order_from_stream(&perm), Some(perm.to_vec()));
+        // 不是排列（越界 / 重复）。
+        assert_eq!(chain_order_from_stream(&[0, 1, 2, 3, 4, 5, 6, 8]), None);
+        assert_eq!(chain_order_from_stream(&[0, 1, 2, 3, 4, 5, 6, 6]), None);
+        // 长度不对（9 字节：sep/填充 + 链序 —— 两个 0 各去一次都是合法排列，无法判定）。
+        let mut nine = perm.to_vec();
+        nine.insert(3, 0x00);
+        assert_eq!(chain_order_from_stream(&nine), None);
+        // 截断 / 带 BLE 元数据尾。
+        assert_eq!(chain_order_from_stream(&perm[..7]), None);
+        let mut long = perm.to_vec();
+        long.extend_from_slice(&[0xAA, 0xBB]);
+        assert_eq!(chain_order_from_stream(&long), None);
     }
 
     // ─── 链 ACK ──────────────────────
