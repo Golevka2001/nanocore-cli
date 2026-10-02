@@ -1,0 +1,5148 @@
+{
+ "schema": "nanocore.preset.bundle",
+ "version": 1,
+ "deviceKind": "nanocore",
+ "exportedAt": "2026-09-22T07:20:47.399440Z",
+ "scope": "allValid",
+ "presets": [
+  {
+   "slot": 0,
+   "name": "ClnArp",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "ClnArp",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.6169999837875366,
+       0.0,
+       0.18000000715255737,
+       0.07000000029802322,
+       0.12999999523162842,
+       0.6200000047683716
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6000000238418579,
+       0.5,
+       0.6700000166893005,
+       0.8899999856948853,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.550000011920929,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.3799999952316284,
+       0.4000000059604645
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.17000000178813934,
+       0.18000000715255737,
+       0.7900000214576721,
+       0.20000000298023224,
+       0.17000000178813934
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 1,
+   "name": "Ambient",
+   "preset": {
+    "ampSlot": 24,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 24,
+    "name": "Ambient",
+    "presetVolume": 83,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.32100000977516174
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.8999999761581421,
+       0.550000011920929,
+       0.6000000238418579,
+       0.6600000262260437,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5299999713897705,
+       0.5400000214576721
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.15000000596046448,
+       0.40799999237060547,
+       0.30000001192092896
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.07000000029802322,
+       0.800000011920929,
+       0.6000000238418579,
+       0.0,
+       0.44999998807907104
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 2,
+   "name": "RhyOD",
+   "preset": {
+    "ampSlot": 7,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 32,
+    "irSlot": 7,
+    "name": "RhyOD",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4300000071525574,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.4000000059604645,
+       0.23000000417232513,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.699999988079071,
+       0.550000011920929,
+       0.6800000071525574,
+       0.5,
+       0.44999998807907104
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.11400000005960464,
+       0.07000000029802322,
+       0.6200000047683716,
+       0.0,
+       0.20000000298023224
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 3,
+   "name": "EpicSolo",
+   "preset": {
+    "ampSlot": 1,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 0,
+    "name": "EpicSolo",
+    "presetVolume": 83,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.3700000047683716,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.7200000286102295,
+       0.6700000166893005
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.5,
+       0.6200000047683716,
+       0.5,
+       0.6899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.550000011920929,
+       0.6299999952316284
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.11999999731779099,
+       0.30799999833106995,
+       0.25
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.21400000154972076,
+       0.25,
+       0.699999988079071,
+       0.30000001192092896,
+       0.30000001192092896
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 4,
+   "name": "ColdCln",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     5,
+     4,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "ColdCln",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5770000219345093,
+       0.4779999852180481,
+       0.800000011920929,
+       0.10000000149011612,
+       0.11999999731779099,
+       0.6600000262260437
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6499999761581421,
+       0.44999998807907104,
+       0.75,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.4300000071525574,
+       0.7799999713897705
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.10000000149011612,
+       0.20800000429153442,
+       0.1899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5299999713897705,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.11999999731779099,
+       0.75,
+       0.28999999165534973,
+       0.25999999046325684,
+       0.41999998688697815
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 5,
+   "name": "Piercing",
+   "preset": {
+    "ampSlot": 13,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 33,
+    "irSlot": 2,
+    "name": "Piercing",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.38999998569488525,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.5400000214576721,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.699999988079071,
+       0.6000000238418579,
+       0.41999998688697815,
+       0.75,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5600000023841858,
+       0.6800000071525574
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.10000000149011612,
+       0.36800000071525574,
+       0.3199999928474426
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.15399999916553497,
+       0.2199999988079071,
+       0.4099999964237213,
+       0.09000000357627869,
+       0.17000000178813934
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 6,
+   "name": "TightRhy",
+   "preset": {
+    "ampSlot": 12,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 33,
+    "irSlot": 2,
+    "name": "TightRhy",
+    "presetVolume": 83,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.4000000059604645,
+       0.699999988079071,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.8999999761581421,
+       0.20000000298023224,
+       0.38999998569488525,
+       0.800000011920929,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5600000023841858,
+       0.6800000071525574
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5899999737739563,
+       0.3499999940395355,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 7,
+   "name": "HeavyMut",
+   "preset": {
+    "ampSlot": 13,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 33,
+    "irSlot": 3,
+    "name": "HeavyMut",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.550000011920929,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.4000000059604645,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.699999988079071,
+       0.6499999761581421,
+       0.3499999940395355,
+       0.800000011920929,
+       0.6600000262260437
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5600000023841858,
+       0.6800000071525574
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 8,
+   "name": "WarmCln",
+   "preset": {
+    "ampSlot": 4,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 36,
+    "irSlot": 5,
+    "name": "WarmCln",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.8799999952316284,
+       0.0,
+       0.09000000357627869,
+       0.05000000074505806,
+       0.550000011920929,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.20000000298023224
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.6499999761581421,
+       0.4000000059604645,
+       0.7900000214576721,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.33000001311302185,
+       0.6899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 9,
+   "name": "Tremolo",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "Tremolo",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.800000011920929,
+       0.4300000071525574,
+       0.7300000190734863,
+       0.949999988079071,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.4300000071525574,
+       0.8799999952316284
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.23000000417232513,
+       0.6000000238418579,
+       0.0,
+       0.25,
+       0.7900000214576721
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.09000000357627869,
+       0.0,
+       0.5,
+       0.0,
+       0.20000000298023224
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 10,
+   "name": "EdgeOD",
+   "preset": {
+    "ampSlot": 4,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 31,
+    "irSlot": 5,
+    "name": "EdgeOD",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4099999964237213,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.7699999809265137,
+       0.8799999952316284
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.6499999761581421,
+       0.3799999952316284,
+       0.8199999928474426,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.33000001311302185,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 11,
+   "name": "FatSolo",
+   "preset": {
+    "ampSlot": 9,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 34,
+    "irSlot": 9,
+    "name": "FatSolo",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.32100000977516174
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.20000000298023224,
+       0.20000000298023224,
+       0.550000011920929
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.6000000238418579,
+       0.6399999856948853,
+       0.5299999713897705,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5600000023841858,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.699999988079071,
+       0.20000000298023224
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 12,
+   "name": "Smear",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 5,
+    "name": "Smear",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.800000011920929,
+       0.3799999952316284,
+       0.550000011920929,
+       0.8700000047683716,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.4699999988079071,
+       0.550000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.15000000596046448,
+       0.4779999852180481,
+       0.25
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.3440000116825104,
+       0.2199999988079071,
+       0.8600000143051147,
+       0.2800000011920929,
+       0.4000000059604645
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 13,
+   "name": "Psych",
+   "preset": {
+    "ampSlot": 24,
+    "chainOrder": [
+     0,
+     1,
+     5,
+     7,
+     6,
+     4,
+     2,
+     3
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 34,
+    "irSlot": 24,
+    "name": "Psych",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.4000000059604645,
+       0.699999988079071,
+       0.3199999928474426
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6000000238418579,
+       0.10000000149011612,
+       0.5,
+       0.5099999904632568,
+       0.9100000262260437
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.6399999856948853,
+       0.5600000023841858
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.10000000149011612,
+       0.36800000071525574,
+       0.07999999821186066
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.5400000214576721,
+       0.6299999952316284
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.08699999749660492,
+       0.20000000298023224,
+       0.30399999022483826,
+       0.38999998569488525,
+       0.15000000596046448
+      ],
+      "tempoSync": [],
+      "variant": 7
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 14,
+   "name": "Reverse",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "Reverse",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6000000238418579,
+       0.5699999928474426,
+       0.5899999737739563,
+       0.7200000286102295,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.7200000286102295
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.17000000178813934,
+       0.527999997138977,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.5080000162124634,
+       0.25999999046325684,
+       0.8100000023841858,
+       0.75,
+       0.44999998807907104
+      ],
+      "tempoSync": [],
+      "variant": 5
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 15,
+   "name": "FuzzWall",
+   "preset": {
+    "ampSlot": 14,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 34,
+    "irSlot": 14,
+    "name": "FuzzWall",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6000000238418579,
+       0.7400000095367432,
+       0.6299999952316284,
+       0.5799999833106995,
+       0.7300000190734863
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5600000023841858,
+       0.5199999809265137
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.09200000017881393,
+       0.6600000262260437,
+       0.4000000059604645
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 16,
+   "name": "DynNote",
+   "preset": {
+    "ampSlot": 4,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 255,
+    "irSlot": 5,
+    "name": "DynNote",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5450000166893005,
+       0.8700000047683716,
+       0.28999999165534973,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 9
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.4000000059604645,
+       0.6000000238418579,
+       0.7200000286102295,
+       0.8299999833106995,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 17,
+   "name": "Flanger",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "Flanger",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4970000088214874,
+       0.15800000727176666,
+       0.4099999964237213,
+       0.05000000074505806,
+       0.20000000298023224,
+       0.7099999785423279
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.800000011920929,
+       0.6000000238418579,
+       0.5,
+       0.7400000095367432,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6499999761581421
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.0,
+       0.503000020980835,
+       0.30000001192092896
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 18,
+   "name": "FunkCln",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "FunkCln",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.43700000643730164,
+       0.05000000074505806,
+       0.20999999344348907,
+       0.029999999329447746,
+       0.15000000596046448,
+       0.7300000190734863
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6000000238418579,
+       0.5400000214576721,
+       0.6299999952316284,
+       0.8100000023841858,
+       0.47999998927116394
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.550000011920929,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.4300000071525574,
+       0.6000000238418579,
+       0.6399999856948853,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 19,
+   "name": "AutoWah",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 255,
+    "irSlot": 4,
+    "name": "AutoWah",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.6669999957084656,
+       0.15800000727176666,
+       0.0,
+       0.05000000074505806,
+       0.10000000149011612,
+       0.8799999952316284
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5299999713897705,
+       0.6000000238418579,
+       0.3179999887943268,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 10
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6000000238418579,
+       0.5,
+       0.7300000190734863,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6499999761581421
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 20,
+   "name": "ClassRhy",
+   "preset": {
+    "ampSlot": 8,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 31,
+    "irSlot": 7,
+    "name": "ClassRhy",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.32100000977516174
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.5899999737739563,
+       0.5569999814033508,
+       0.7070000171661377,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5019999742507935,
+       0.5320000052452087
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.0989999994635582,
+       0.10999999940395355,
+       0.6000000238418579,
+       0.0,
+       0.17000000178813934
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 21,
+   "name": "BoostLd",
+   "preset": {
+    "ampSlot": 8,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 31,
+    "irSlot": 7,
+    "name": "BoostLd",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4300000071525574,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.6499999761581421,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.6299999952316284,
+       0.5270000100135803,
+       0.7170000076293945,
+       0.8600000143051147
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5019999742507935,
+       0.5320000052452087
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.28999999165534973,
+       0.1720000058412552,
+       0.8899999856948853,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.0989999994635582,
+       0.10999999940395355,
+       0.6000000238418579,
+       0.0,
+       0.17000000178813934
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 22,
+   "name": "ThickCln",
+   "preset": {
+    "ampSlot": 9,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 10,
+    "name": "ThickCln",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5680000185966492,
+       0.10499999672174454,
+       0.6129999756813049,
+       0.027000000700354576,
+       0.3149999976158142,
+       0.6230000257492065
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.6079999804496765,
+       0.777999997138977,
+       0.7350000143051147,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.0,
+       0.6899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.17399999499320984,
+       0.19200000166893005,
+       0.3400000035762787,
+       0.09300000220537186,
+       0.19200000166893005
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 23,
+   "name": "OctRiff",
+   "preset": {
+    "ampSlot": 9,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 255,
+    "irSlot": 9,
+    "name": "OctRiff",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.0,
+       0.5,
+       0.2630000114440918
+      ],
+      "tempoSync": [],
+      "variant": 8
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.800000011920929,
+       0.652999997138977,
+       0.5920000076293945,
+       0.7329999804496765,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5370000004768372,
+       0.5230000019073486
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 24,
+   "name": "GritCln",
+   "preset": {
+    "ampSlot": 25,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 25,
+    "name": "GritCln",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.40700000524520874,
+       0.05000000074505806,
+       0.2150000035762787,
+       0.6150000095367432,
+       0.625,
+       0.6700000166893005
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.6069999933242798,
+       0.6129999756813049,
+       0.21299999952316284,
+       0.1899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.4869999885559082,
+       0.375
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.13300000131130219,
+       0.17900000512599945,
+       0.17800000309944153
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.09799999743700027,
+       0.7049999833106995,
+       0.05000000074505806,
+       0.3499999940395355,
+       0.19499999284744263
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 25,
+   "name": "Dot8th",
+   "preset": {
+    "ampSlot": 24,
+    "chainOrder": [
+     0,
+     7,
+     1,
+     5,
+     4,
+     6,
+     2,
+     3
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 31,
+    "irSlot": 255,
+    "name": "Dot8th",
+    "presetVolume": 84,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5070000290870667,
+       0.0,
+       1.0,
+       0.029999999329447746,
+       0.3100000023841858,
+       0.2199999988079071
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.0,
+       1.0
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 1,
+      "enabled": false,
+      "params": [
+       0.44999998807907104,
+       0.5699999928474426,
+       0.6499999761581421,
+       0.699999988079071,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": false,
+      "params": [
+       0.5600000023841858,
+       0.6100000143051147
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.11999999731779099,
+       0.4180000126361847,
+       0.1599999964237213
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.14000000059604645,
+       0.6100000143051147,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.20000000298023224
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": true,
+      "params": [
+       0.0,
+       0.6000000238418579,
+       0.5400000214576721,
+       0.27000001072883606,
+       0.5400000214576721,
+       0.550000011920929,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 26,
+   "name": "FullBend",
+   "preset": {
+    "ampSlot": 11,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 34,
+    "irSlot": 13,
+    "name": "FullBend",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       1.0,
+       0.0,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.20000000298023224,
+       0.6029999852180481,
+       0.6980000138282776,
+       0.49000000953674316,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.4880000054836273,
+       0.5600000023841858
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.0,
+       0.0,
+       0.4169999957084656,
+       0.7300000190734863,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 5
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.30399999022483826,
+       0.25,
+       0.6000000238418579,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 27,
+   "name": "Shimmer",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 36,
+    "irSlot": 4,
+    "name": "Shimmer",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.32100000977516174
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.04500000178813934
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.699999988079071,
+       0.6000000238418579,
+       0.5699999928474426,
+       0.699999988079071,
+       0.6899999976158142
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.550000011920929,
+       0.699999988079071
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.828000009059906,
+       0.5,
+       0.800000011920929,
+       0.75,
+       0.550000011920929
+      ],
+      "tempoSync": [],
+      "variant": 5
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 28,
+   "name": "ComWarm",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 255,
+    "name": "ComWarm",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.6570000052452087,
+       0.050999999046325684,
+       0.23000000417232513,
+       0.28700000047683716,
+       0.3370000123977661,
+       0.652999997138977
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.5849999785423279,
+       0.5529999732971191,
+       0.6899999976158142,
+       0.7799999713897705
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": false,
+      "params": [
+       0.46299999952316284,
+       0.7670000195503235
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.07400000095367432,
+       0.06400000303983688,
+       0.37700000405311584,
+       0.09300000220537186,
+       0.15800000727176666
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 29,
+   "name": "SoftCho",
+   "preset": {
+    "ampSlot": 20,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 255,
+    "name": "SoftCho",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6880000233650208,
+       0.6050000190734863,
+       0.5649999976158142,
+       0.7170000076293945,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": false,
+      "params": [
+       0.5149999856948853,
+       0.5950000286102295
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.2980000078678131,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.15800000727176666,
+       0.1379999965429306,
+       0.5170000195503235,
+       0.2750000059604645,
+       0.25
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 30,
+   "name": "SmthSolo",
+   "preset": {
+    "ampSlot": 4,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 5,
+    "name": "SmthSolo",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.10000000149011612,
+       0.7400000095367432,
+       0.5130000114440918
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.49799999594688416,
+       0.6620000004768372,
+       0.7129999995231628,
+       0.5929999947547913,
+       1.0
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.5049999952316284,
+       0.5080000162124634
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": true,
+      "params": [
+       0.15000000596046448,
+       0.21400000154972076,
+       0.3070000112056732,
+       0.19499999284744263
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 31,
+   "name": "Vibrato",
+   "preset": {
+    "ampSlot": 5,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 4,
+    "name": "Vibrato",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.9269999861717224,
+       0.6200000047683716,
+       0.6019999980926514,
+       0.8320000171661377,
+       0.8880000114440918
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.46299999952316284,
+       0.5950000286102295
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.16500000655651093,
+       0.20000000298023224,
+       0.0,
+       0.16300000250339508
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.24799999594688416,
+       0.1899999976158142,
+       0.45500001311302185,
+       0.2280000001192093,
+       0.25999999046325684
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 32,
+   "name": "PwChord",
+   "preset": {
+    "ampSlot": 3,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 0,
+    "name": "PwChord",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4230000078678131,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.7279999852180481,
+       0.6980000138282776,
+       0.6470000147819519,
+       0.6970000267028809,
+       0.28200000524520874
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.3919999897480011,
+       0.5370000004768372
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": true,
+      "params": [
+       0.5730000138282776,
+       0.6320000290870667,
+       0.5950000286102295,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 33,
+   "name": "RawLead",
+   "preset": {
+    "ampSlot": 10,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 33,
+    "irSlot": 10,
+    "name": "RawLead",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.3479999899864197,
+       0.699999988079071,
+       0.23199999332427979
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.6100000143051147,
+       0.6069999933242798,
+       0.7580000162124634,
+       0.7929999828338623,
+       0.38999998569488525
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.0,
+       1.0
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": true,
+      "params": [
+       0.0430000014603138,
+       0.0,
+       0.7049999833106995,
+       0.0,
+       0.1550000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 34,
+   "name": "Sweep",
+   "preset": {
+    "ampSlot": 17,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 15,
+    "name": "Sweep",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4480000138282776,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.7820000052452087,
+       0.6380000114440918,
+       0.5879999995231628,
+       0.7580000162124634,
+       0.625
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.6019999980926514,
+       0.5220000147819519
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 35,
+   "name": "MuteOD",
+   "preset": {
+    "ampSlot": 255,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 32,
+    "irSlot": 255,
+    "name": "MuteOD",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.20200000703334808,
+       0.7120000123977661,
+       0.8899999856948853
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 1,
+      "enabled": false,
+      "params": [
+       0.4000000059604645,
+       0.6980000138282776,
+       0.7770000100135803,
+       0.6050000190734863,
+       0.6600000262260437
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": false,
+      "params": [
+       0.4970000088214874,
+       0.4169999957084656
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 36,
+   "name": "BassFing",
+   "preset": {
+    "ampSlot": 26,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 26,
+    "name": "BassFing",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.4970000088214874,
+       0.36800000071525574,
+       0.41999998688697815,
+       0.10000000149011612,
+       0.10000000149011612,
+       0.7099999785423279
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.7599999904632568,
+       0.6499999761581421,
+       0.6000000238418579,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.2199999988079071,
+       0.38999998569488525
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": true,
+      "params": [
+       0.6399999856948853,
+       0.41999998688697815,
+       0.5799999833106995,
+       0.5,
+       0.6000000238418579,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 1
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 37,
+   "name": "BassSlap",
+   "preset": {
+    "ampSlot": 27,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 30,
+    "irSlot": 27,
+    "name": "BassSlap",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": true,
+      "params": [
+       0.3269999921321869,
+       0.2879999876022339,
+       0.23000000417232513,
+       0.029999999329447746,
+       0.05000000074505806,
+       0.7409999966621399
+      ],
+      "tempoSync": [],
+      "variant": 3
+     },
+     {
+      "effectId": 8,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.699999988079071,
+       0.800000011920929,
+       0.28999999165534973,
+       0.8100000023841858,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.14000000059604645,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": true,
+      "params": [
+       0.5199999809265137,
+       0.33000001311302185,
+       0.8199999928474426,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 38,
+   "name": "BassPick",
+   "preset": {
+    "ampSlot": 25,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 32,
+    "irSlot": 25,
+    "name": "BassPick",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.4000000059604645,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.699999988079071,
+       0.699999988079071,
+       0.6499999761581421,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.30000001192092896,
+       0.3799999952316284
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  },
+  {
+   "slot": 39,
+   "name": "BassFuzz",
+   "preset": {
+    "ampSlot": 28,
+    "chainOrder": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "expressionMappings": [],
+    "extraTlvs": [],
+    "fx2Slot": 34,
+    "irSlot": 28,
+    "name": "BassFuzz",
+    "presetVolume": 85,
+    "runtimeEffects": [],
+    "slots": [
+     {
+      "effectId": 7,
+      "enabled": false,
+      "params": [
+       0.20000000298023224,
+       0.4740000069141388
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 8,
+      "enabled": true,
+      "params": [
+       0.20000000298023224,
+       0.30000001192092896,
+       0.8999999761581421
+      ],
+      "tempoSync": [],
+      "variant": 4
+     },
+     {
+      "effectId": 1,
+      "enabled": true,
+      "params": [
+       0.5,
+       0.75,
+       0.6000000238418579,
+       0.550000011920929,
+       0.800000011920929
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 2,
+      "enabled": true,
+      "params": [
+       0.3400000035762787,
+       0.30000001192092896
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 5,
+      "enabled": false,
+      "params": [
+       0.15000000596046448,
+       0.6320000290870667,
+       0.5,
+       0.6000000238418579
+      ],
+      "tempoSync": [],
+      "variant": 0
+     },
+     {
+      "effectId": 4,
+      "enabled": true,
+      "params": [
+       0.15199999511241913,
+       0.6000000238418579,
+       0.4000000059604645
+      ],
+      "tempoSync": [],
+      "variant": 1
+     },
+     {
+      "effectId": 3,
+      "enabled": false,
+      "params": [
+       0.550000011920929,
+       0.75,
+       0.4000000059604645,
+       0.25999999046325684,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 6
+     },
+     {
+      "effectId": 6,
+      "enabled": false,
+      "params": [
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5,
+       0.5
+      ],
+      "tempoSync": [],
+      "variant": 2
+     }
+    ],
+    "version": 7
+   }
+  }
+ ],
+ "ampSlots": [
+  {
+   "slot": 1,
+   "name": "BogXTC2",
+   "asset": "amp/slot_01.ead",
+   "length": 12242,
+   "crc32": 1153195876,
+   "encoding": "ead"
+  },
+  {
+   "slot": 3,
+   "name": "ENGP2",
+   "asset": "amp/slot_03.ead",
+   "length": 12242,
+   "crc32": 948818250,
+   "encoding": "ead"
+  },
+  {
+   "slot": 4,
+   "name": "Fd59Bm",
+   "asset": "amp/slot_04.ead",
+   "length": 12242,
+   "crc32": 836696087,
+   "encoding": "ead"
+  },
+  {
+   "slot": 5,
+   "name": "Fd65Dk",
+   "asset": "amp/slot_05.ead",
+   "length": 12242,
+   "crc32": 3750662766,
+   "encoding": "ead"
+  },
+  {
+   "slot": 7,
+   "name": "MarDSL1",
+   "asset": "amp/slot_07.ead",
+   "length": 12242,
+   "crc32": 1835767371,
+   "encoding": "ead"
+  },
+  {
+   "slot": 8,
+   "name": "MarDSL2",
+   "asset": "amp/slot_08.ead",
+   "length": 12242,
+   "crc32": 3643684840,
+   "encoding": "ead"
+  },
+  {
+   "slot": 9,
+   "name": "Mar8001",
+   "asset": "amp/slot_09.ead",
+   "length": 12242,
+   "crc32": 1144108742,
+   "encoding": "ead"
+  },
+  {
+   "slot": 10,
+   "name": "Mar8002",
+   "asset": "amp/slot_10.ead",
+   "length": 12242,
+   "crc32": 3638863616,
+   "encoding": "ead"
+  },
+  {
+   "slot": 11,
+   "name": "MesR1",
+   "asset": "amp/slot_11.ead",
+   "length": 12242,
+   "crc32": 1684522592,
+   "encoding": "ead"
+  },
+  {
+   "slot": 12,
+   "name": "MesR2",
+   "asset": "amp/slot_12.ead",
+   "length": 12242,
+   "crc32": 1107111727,
+   "encoding": "ead"
+  },
+  {
+   "slot": 13,
+   "name": "MesR3",
+   "asset": "amp/slot_13.ead",
+   "length": 12242,
+   "crc32": 3036777055,
+   "encoding": "ead"
+  },
+  {
+   "slot": 14,
+   "name": "OgG120",
+   "asset": "amp/slot_14.ead",
+   "length": 12242,
+   "crc32": 652050784,
+   "encoding": "ead"
+  },
+  {
+   "slot": 17,
+   "name": "Pey6505",
+   "asset": "amp/slot_17.ead",
+   "length": 12242,
+   "crc32": 168630928,
+   "encoding": "ead"
+  },
+  {
+   "slot": 20,
+   "name": "RoJC120",
+   "asset": "amp/slot_20.ead",
+   "length": 12242,
+   "crc32": 2488963393,
+   "encoding": "ead"
+  },
+  {
+   "slot": 24,
+   "name": "VXAC30",
+   "asset": "amp/slot_24.ead",
+   "length": 12242,
+   "crc32": 2778782441,
+   "encoding": "ead"
+  },
+  {
+   "slot": 25,
+   "name": "ApSVTVR",
+   "asset": "amp/slot_25.ead",
+   "length": 12242,
+   "crc32": 4189115786,
+   "encoding": "ead"
+  },
+  {
+   "slot": 26,
+   "name": "ApSVTCL",
+   "asset": "amp/slot_26.ead",
+   "length": 12242,
+   "crc32": 1035610696,
+   "encoding": "ead"
+  },
+  {
+   "slot": 27,
+   "name": "Adn900",
+   "asset": "amp/slot_27.ead",
+   "length": 12242,
+   "crc32": 1496918736,
+   "encoding": "ead"
+  },
+  {
+   "slot": 28,
+   "name": "Hiw320",
+   "asset": "amp/slot_28.ead",
+   "length": 12242,
+   "crc32": 1594338497,
+   "encoding": "ead"
+  }
+ ],
+ "irSlots": [
+  {
+   "slot": 0,
+   "name": "Bog412A",
+   "asset": "ir/slot_00.bin",
+   "length": 4096,
+   "crc32": 3669048126,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 2,
+   "name": "Eng412A",
+   "asset": "ir/slot_02.bin",
+   "length": 4096,
+   "crc32": 1785848145,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 3,
+   "name": "Eng412B",
+   "asset": "ir/slot_03.bin",
+   "length": 4096,
+   "crc32": 495440862,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 4,
+   "name": "FdTR212",
+   "asset": "ir/slot_04.bin",
+   "length": 4096,
+   "crc32": 427454397,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 5,
+   "name": "Fd59BM410",
+   "asset": "ir/slot_05.bin",
+   "length": 4096,
+   "crc32": 3987728053,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 7,
+   "name": "Mar412A",
+   "asset": "ir/slot_07.bin",
+   "length": 4096,
+   "crc32": 3207569225,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 9,
+   "name": "Mar96412A",
+   "asset": "ir/slot_09.bin",
+   "length": 4096,
+   "crc32": 1155150923,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 10,
+   "name": "Mar96412B",
+   "asset": "ir/slot_10.bin",
+   "length": 4096,
+   "crc32": 2229255039,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 13,
+   "name": "Mes412C",
+   "asset": "ir/slot_13.bin",
+   "length": 4096,
+   "crc32": 3849827229,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 14,
+   "name": "Og412",
+   "asset": "ir/slot_14.bin",
+   "length": 4096,
+   "crc32": 1688230527,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 15,
+   "name": "pey412A",
+   "asset": "ir/slot_15.bin",
+   "length": 3764,
+   "crc32": 11547137,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 24,
+   "name": "AC30212",
+   "asset": "ir/slot_24.bin",
+   "length": 4096,
+   "crc32": 3760194811,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 25,
+   "name": "AP810",
+   "asset": "ir/slot_25.bin",
+   "length": 4096,
+   "crc32": 3223657454,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 26,
+   "name": "Ap410",
+   "asset": "ir/slot_26.bin",
+   "length": 4096,
+   "crc32": 2455333328,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 27,
+   "name": "Adn410",
+   "asset": "ir/slot_27.bin",
+   "length": 4096,
+   "crc32": 3708781408,
+   "encoding": "f32le"
+  },
+  {
+   "slot": 28,
+   "name": "HiwB410",
+   "asset": "ir/slot_28.bin",
+   "length": 4096,
+   "crc32": 3095321110,
+   "encoding": "f32le"
+  }
+ ]
+}

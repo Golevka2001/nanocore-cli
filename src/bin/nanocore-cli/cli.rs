@@ -199,6 +199,35 @@ pub enum PresetCmd {
     /// 显示当前活动预设（槽位号 + 名称、音量、链序）
     Show,
     /// 导出预设槽位为 .npreset 包（manifest + 引用的资产）
+    Export {
+        /// 预设槽位（1–64）
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
+        slot: u8,
+        /// 输出文件路径（.npreset）
+        #[arg(long, value_name = "FILE")]
+        out: String,
+        /// 覆盖 amp 型号槽引用（1–38，0 = unknown；缺省用设备报告的活动型号）
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=38))]
+        amp_slot: Option<u8>,
+        /// 覆盖 IR 槽引用（1–30，0 = unknown；缺省 0 = 未知，App 兼容性受限）
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=30))]
+        ir_slot: Option<u8>,
+    },
+    /// 从 .npreset 包导入预设（覆盖目标槽位）
+    Import {
+        /// .npreset 文件路径
+        file: String,
+        /// 重定向目标槽位（1–40；缺省用包内记录的槽位）
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=40))]
+        slot: Option<u8>,
+        /// 同时写包内内嵌的 IR / amp 资产（先资产后预设；IR 写会清预设表，
+        /// 因此资产总是先于预设写入）
+        #[arg(long)]
+        with_assets: bool,
+        /// 只打印将发送的帧概要，不写设备
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// 设置预设音量（0–100，App 中的"预设音量"滑条）
     Volume {
         #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]

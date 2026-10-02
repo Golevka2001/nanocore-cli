@@ -22,6 +22,8 @@ pub mod models_data;
 pub mod params_data;
 pub mod asset;
 pub mod amp_write;
+pub mod preset43;
+pub mod preset_bundle;
 pub mod preset_restore;
 pub mod tail;
 pub mod transport;

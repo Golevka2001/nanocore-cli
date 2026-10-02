@@ -187,6 +187,96 @@ pub fn preset_name_bytes(frames: &[PresetRestoreFrame], slot: usize) -> Option<&
     None
 }
 
+/// 动态构造导入帧流：以官方 restore 流为**模板**，仅把目标组（组号 = 目标
+/// 槽位，0-39 一一对应）的两条 `0x43` 载荷替换为按内容构造的帧，其余
+/// `0x42`/`0x44`/`0x46`/`PING` 全部原样保留——包括 PING 的精确位置与每组
+/// 的 flags 模式（`0x02/0x22` 与 `0x00/0x20` 两段式，语义未解但实测设备
+/// 对节奏敏感：合成流的 10/40 落表故障复现 3 次，模板法 40/40）。
+///
+/// 目标槽位去重且必须 ≤ 39（写入路径不支持 40-63，真机实测：内容可写但
+/// 名字退化为占位、且前一槽被清）。
+pub fn build_import_stream(
+    presets: &[(u8, crate::preset43::PresetWrite)],
+) -> Result<Vec<PresetRestoreFrame>, String> {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    for (slot, _) in presets {
+        if *slot > 39 {
+            return Err(format!(
+                "import target slot {slot} out of range 0-39: the device write \
+                 path does not support slots 40-63"
+            ));
+        }
+        if !seen.insert(*slot) {
+            return Err(format!("duplicate target slot {slot}"));
+        }
+    }
+    let official = frames()?;
+    let mut built: Vec<Option<(Vec<u8>, Vec<u8>)>> = vec![None; GROUP_COUNT];
+    for (slot, pw) in presets {
+        let (lo, sh) = crate::preset43::build_frames(pw)?;
+        built[*slot as usize] = Some((lo, sh));
+    }
+    let mut out = Vec::with_capacity(official.len());
+    let mut group = 0usize;
+    let mut step = 0usize;
+    for mut f in official {
+        if f.kind == KIND_PING {
+            out.push(f);
+            continue; // PING 不推进组/步进计数（与 validate 的分组规则一致）。
+        }
+        if f.kind == KIND_PRESET_WRITE {
+            if let Some((lo, sh)) = &built[group] {
+                f.payload = if step == 1 { lo.clone() } else { sh.clone() };
+            }
+        }
+        out.push(f);
+        step += 1;
+        if step == FRAMES_PER_GROUP {
+            step = 0;
+            group += 1;
+            if group >= GROUP_COUNT {
+                break; // 官方模板只覆盖 40 组；目标组之外的尾部 PING 一并丢弃。
+            }
+        }
+    }
+    if group != GROUP_COUNT {
+        return Err(format!("template stream covered only {group} groups"));
+    }
+    // 只保留目标组：删除未选中组的 5 个写帧（保留全部 PING——心跳节奏不变）。
+    let targets: HashSet<u8> = seen;
+    let mut filtered = Vec::with_capacity(out.len());
+    let mut cur_group = 0usize;
+    let mut in_group = false;
+    for f in out {
+        if f.kind == KIND_PING {
+            filtered.push(f);
+            continue;
+        }
+        match f.kind {
+            KIND_SLOT_CONFIG => {
+                in_group = targets.contains(&(cur_group as u8));
+                if in_group {
+                    filtered.push(f);
+                }
+            }
+            KIND_SLOT_SEEK => {
+                if in_group {
+                    filtered.push(f);
+                }
+                cur_group += 1;
+                in_group = false;
+            }
+            _ => {
+                if in_group {
+                    filtered.push(f);
+                }
+            }
+        }
+    }
+    Ok(filtered)
+}
+
 /// 把帧序列按组切分：每片以前一组 `0x46` 之后的帧开始、以本组 `0x46` 结束，
 /// 片内原样保留穿插的 `PING`（重放时保持官方节奏位置）。
 /// 返回 `GROUP_COUNT` 个切片；切片内写帧不是 5 帧或顺序不对则返回 `Err`。
@@ -221,6 +311,55 @@ pub fn group_slices(frames: &[PresetRestoreFrame]) -> Result<Vec<Vec<&PresetRest
         return Err(format!("expected {GROUP_COUNT} groups, got {}", slices.len()));
     }
     Ok(slices)
+}
+
+#[cfg(test)]
+mod import_stream_tests {
+    use super::*;
+    use crate::preset43::{PresetWrite, SlotWrite};
+
+    fn ambient() -> PresetWrite {
+        PresetWrite {
+            name: "Ambient".into(),
+            chain_order: [0, 1, 2, 3, 4, 5, 6, 7],
+            preset_volume: 83,
+            amp_slot: 24,
+            ir_slot: 24,
+            slots: (0..8)
+                .map(|i| SlotWrite {
+                    effect_id: [7u8, 8, 1, 2, 5, 4, 3, 6][i],
+                    variant: 0,
+                    enabled: true,
+                    // 出厂预设的角色参数数（6/3/5/2/4/2/5/3），保证逻辑流
+                    // 越过 202 字节长帧截断点。
+                    params: vec![0.5; [6usize, 3, 5, 2, 4, 2, 5, 3][i]],
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn import_stream_keeps_only_target_group() {
+        let stream = build_import_stream(&[(5, ambient())]).expect("stream");
+        let writes: Vec<&PresetRestoreFrame> =
+            stream.iter().filter(|f| f.kind != KIND_PING).collect();
+        // 目标组恰好 5 帧。
+        assert_eq!(writes.len(), 5);
+        assert_eq!(writes[0].kind, KIND_SLOT_CONFIG);
+        assert_eq!(writes[1].kind, KIND_PRESET_WRITE);
+        assert_eq!(writes[1].payload.len(), 234);
+        assert_eq!(writes[2].kind, KIND_PRESET_WRITE);
+        assert_eq!(writes[4].kind, KIND_SLOT_SEEK);
+        assert_eq!(*writes[4].payload.last().unwrap(), 5);
+        // 长帧名字区应是 Ambient（不是模板组 5 的原名）。
+        let name = preset_name_bytes(&stream, 0).expect("name");
+        let decoded: String = name
+            .iter()
+            .filter(|&&b| b != 0)
+            .map(|&b| b as char)
+            .collect();
+        assert_eq!(decoded, "Ambient");
+    }
 }
 
 #[cfg(test)]
@@ -278,5 +417,50 @@ mod preamble_tests {
         // 0x49 在最后一帧 PING 之前
         let i49 = frames.iter().position(|f| f.kind == 0x49).unwrap();
         assert!(i49 > 40, "0x49 must come after the enumerations");
+    }
+}
+
+
+#[cfg(test)]
+mod diff_tests {
+    use super::*;
+    use crate::preset43::PresetWrite;
+
+    #[test]
+    fn diff_template_stream_vs_official() {
+        let raw = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/test/npreset_manifest_sample.json"
+        ))
+        .unwrap();
+        let m: crate::preset_bundle::Manifest = serde_json::from_slice(&raw).unwrap();
+        let pairs: Vec<(u8, PresetWrite)> = m
+            .presets
+            .iter()
+            .map(|e| (e.slot, e.preset.to_preset_write()))
+            .collect();
+        let stream = build_import_stream(&pairs).unwrap();
+        let official = frames().unwrap();
+        let mut group = 0usize;
+        let mut step = 0usize;
+        for (i, (a, b)) in stream.iter().zip(official.iter()).enumerate() {
+            if a.kind == KIND_PING {
+                continue;
+            }
+            if a.payload != b.payload {
+                eprintln!(
+                    "DIFF group {group} step {step} frame {i}: mine len={} | official len={} | first bytes mine {:02x?} official {:02x?}",
+                    a.payload.len(),
+                    b.payload.len(),
+                    &a.payload[..a.payload.len().min(12)],
+                    &b.payload[..b.payload.len().min(12)]
+                );
+            }
+            step += 1;
+            if step == FRAMES_PER_GROUP {
+                step = 0;
+                group += 1;
+            }
+        }
     }
 }

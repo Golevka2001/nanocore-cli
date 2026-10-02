@@ -711,6 +711,115 @@ impl<T: Transport> Nanocore<T> {
     ///
     /// 恰好一个活动槽才返回 `Some`；0 个或多个（含个别槽位查询失败）返回
     /// `None`，调用方应回退到显式指定。
+    pub fn read_active_amp_slot(&mut self) -> Result<Option<u8>, String> {
+        let mut active = Vec::new();
+        for idx in 0..38u8 {
+            let (k, p) = protocol::model_query(idx);
+            let reply = self
+                .transact_expect(k, p, &[crate::msg_type::MODEL_LIST])
+                .map_err(|e| e.to_string())?;
+            if let Some(m) = protocol::parse_model_name(&reply.payload) {
+                if m.active {
+                    active.push(m.index);
+                }
+            }
+        }
+        Ok(match active.as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        })
+    }
+
+    /// 导入若干预设（动态构造 0x43 写组，前置枚举 + 官方节奏重放）。
+    ///
+    /// 输入为 `(目标槽位, 预设内容)` 对；`0x42`/`0x44` 取官方 restore 数据
+    /// 同槽位帧（见 [`crate::preset_restore::build_write_group`]）。前置枚举
+    /// 实测是连续提交的前置条件（省略时设备在 ~22-24 组后拒绝提交）。
+    pub fn import_presets(
+        &mut self,
+        presets: &[(u8, crate::preset43::PresetWrite)],
+        mut on_progress: impl FnMut(&str),
+    ) -> Result<(), String> {
+        let saved = self.config;
+        self.set_config(crate::client::RetryConfig {
+            initial_timeout: Duration::from_millis(500),
+            max_timeout: Duration::from_millis(2000),
+            hard_limit: Duration::from_secs(10),
+            max_retries: 2,
+            poll_interval: Duration::from_millis(10),
+        });
+        let result = self.import_presets_inner(presets, &mut on_progress);
+        self.set_config(saved);
+        result
+    }
+
+    fn import_presets_inner(
+        &mut self,
+        presets: &[(u8, crate::preset43::PresetWrite)],
+        on_progress: &mut dyn FnMut(&str),
+    ) -> Result<(), String> {
+        use crate::preset_restore as pr;
+
+        // 前置枚举（与 restore 相同；读取事务尽力而为，0x49 进入写会话）。
+        let preamble = pr::preamble_frames()?;
+        on_progress(&format!("replaying official preamble ({} frames)", preamble.len()));
+        for f in &preamble {
+            let _ = self.transact_with_flags(f.flags, f.kind, f.payload.clone(), &[f.kind]);
+        }
+
+        // 写流：以官方 restore 流为模板（PING 位置 / flags 模式原样保留），
+        // 仅替换目标组的 0x43 载荷——合成节奏实测会让设备落表错乱。
+        let stream = pr::build_import_stream(presets)
+            .map_err(|e| format!("building import stream: {e}"))?;
+        on_progress(&format!(
+            "replaying {} write frames in {} groups",
+            stream.iter().filter(|f| f.kind != pr::KIND_PING).count(),
+            presets.len()
+        ));
+
+        // 逐组重放（组重放幂等，失败重做一次），0x46 用长等待。
+        let mut ack_log: Vec<String> = Vec::new();
+        let mut group_frames: Vec<&pr::PresetRestoreFrame> = Vec::new();
+        let mut groups: Vec<Vec<&pr::PresetRestoreFrame>> = Vec::new();
+        for f in &stream {
+            group_frames.push(f);
+            if f.kind == pr::KIND_SLOT_SEEK {
+                groups.push(std::mem::take(&mut group_frames));
+            }
+        }
+        for (gi, group) in groups.iter().enumerate() {
+            let slot = group.last().and_then(|f| f.payload.last().copied()).unwrap_or(0) as usize;
+            let mut attempt = 0usize;
+            loop {
+                attempt += 1;
+                match self.replay_group(group, slot, &mut ack_log, on_progress) {
+                    Ok(()) => break,
+                    Err(e) if attempt < 2 => {
+                        on_progress(&format!("group {gi}: {e} — redo group"));
+                    }
+                    Err(e) => {
+                        return Err(format!(
+                            "group {gi}: giving up after {attempt} attempts: {e}\n                             ack log: {ack_log:?}"
+                        ));
+                    }
+                }
+            }
+        }
+        on_progress(&format!("all {} groups replayed", groups.len()));
+        // 调试统计：0x43 应答分布（status 字节非 0 = 设备拒收该帧）。
+        let mut stats: std::collections::BTreeMap<String, usize> = Default::default();
+        for l in &ack_log {
+            if let Some((g, rest)) = l.split_once(":0x43/") {
+                let _ = g;
+                stats.entry(rest.to_string()).and_modify(|c| *c += 1).or_insert(1);
+            }
+        }
+        for (shape, count) in &stats {
+            on_progress(&format!("0x43 ack shape {shape} x{count}"));
+        }
+        Ok(())
+    }
+
     /// 重放官方"仅 DSP 恢复出厂"流程：前置枚举 + 40 组预设写（名字 + 内容，槽位 0–39）。
     ///
     /// 帧序列来自官方 App 抓包（[`crate::preset_restore`]），跨会话逐字节稳定。
