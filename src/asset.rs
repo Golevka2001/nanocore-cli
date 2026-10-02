@@ -373,9 +373,13 @@ pub const WRITE_CHUNK_BYTES: usize = 64;
 /// 15/16 个槽位与资源包清单的 crc32 一致）：
 ///
 /// ```text
-/// [00 44 00 H3 H4 CNT 00 SLOT] [3 lead bytes] [M][7 data] × 9 (last partial)
+/// [00 LEN+4 00 H3 H4 CNT 00 SLOT] [3 lead bytes] [M][7 data] × 9 (last partial)
 /// ```
 ///
+/// * `LEN+4` —— 数据帧 p[1] = 本帧携带的数据字节数 + 4。整块（64 B）恒为
+///   `0x44`；非整块尾帧由 `恢复出厂设置.mmon` 的短 IR 写入（28 B → `0x20`、
+///   52 B → `0x38`）与 amp 写（14 B → `0x12`）四点共同确证。
+///   **设备会对 p[1] 与实际载荷不符的帧回状态 `01` 拒绝**（2026-10-01 真机实测）。
 /// * 3 个前导字节的最高位存放在 `H3` 的 bit 4/5/6（`d0←bit4` 等）；
 /// * 每个 `M` 字节是其后 **7 个数据字节** 的最低位在前的最高位掩码；
 /// * `H3` bit 0、`H4` bit 6 与 `CNT` 共同携带数据块索引
@@ -390,7 +394,7 @@ pub fn encode_data_frame(chunk: &[u8], chunk_index: usize, slot: u8) -> Vec<u8> 
     let groups = (n - lead).div_ceil(7);
     let mut out = vec![0u8; 8 + n + groups];
     out[0] = 0x00;
-    out[1] = 0x44;
+    out[1] = (n as u8) + 4;
     out[2] = 0x00;
     let mut h3 = ((chunk_index >> 1) & 1) as u8;
     for (j, &byte) in chunk.iter().take(lead).enumerate() {
@@ -613,6 +617,18 @@ mod tests {
         let tail: Vec<u8> = (0..52).map(|i| (i * 37 + 129) as u8).collect();
         let enc = encode_data_frame(&tail, 58, 15);
         assert_eq!(decode_data_frame(&enc), tail);
+    }
+
+    #[test]
+    fn p1_encodes_chunk_len_plus_four() {
+        // p[1] = 数据字节数 + 4：整块 64 → 0x44；非整块尾帧由恢复出厂的短 IR
+        // （28 B → 0x20、52 B → 0x38）与 amp 写（14 B → 0x12）确证。
+        // 设备对 p[1] 与载荷不符的帧回状态 01 拒绝（2026-10-01 真机实测）。
+        for (len, p1) in [(64usize, 0x44u8), (28, 0x20), (52, 0x38), (14, 0x12), (1, 0x05)] {
+            let chunk: Vec<u8> = (0..len).map(|i| (i * 91 + 7) as u8).collect();
+            let enc = encode_data_frame(&chunk, 0, 0);
+            assert_eq!(enc[1], p1, "len {len}");
+        }
     }
 
     #[test]
