@@ -1094,10 +1094,32 @@ impl<T: Transport> Nanocore<T> {
             .join(" ")
     }
 
+    /// 读取**单个**预设槽位（0–63）的名称。
+    ///
+    /// 只需要名称时用这个，别用 [`Self::read_preset_names`]：后者为覆盖全部
+    /// 64 个槽位要发 8 轮 `0x40`，而这里 1 轮就够——设备按 8 槽一批返回，
+    /// 所以查询槽位所在的那一批（`slot / 8 * 8`）即可，`count` 仍是 8。
+    /// 代价是返回的 [`protocol::PresetEntry`] 里 `slot` 是**批次起始**槽位
+    /// 而非请求的那个，需自行按 `slot` 字段定位。
+    pub fn read_preset_name(
+        &mut self,
+        slot: u8,
+    ) -> Result<Option<protocol::PresetEntry>, String> {
+        let base = slot / 8 * 8;
+        let (k, p) = protocol::query_preset_list(base, 8);
+        let reply = self
+            .transact_expect(k, p, &[crate::msg_type::PRESET_LIST])
+            .map_err(|e| e.to_string())?;
+        let entries = protocol::parse_preset_list(&reply.payload)
+            .ok_or_else(|| format!("preset-list reply for slots {base}.. did not decode"))?;
+        Ok(entries.into_iter().find(|e| e.slot == slot))
+    }
+
     /// 读取全部预设槽位（0–63）的名称。
     ///
     /// 设备对一次 `0x40` 预设列表查询每条应答返回 8 条固定大小的记录，
-    /// 因此 8 次查询即可覆盖全部 64 个槽位。
+    /// 因此 8 次查询即可覆盖全部 64 个槽位。只需要当前预设的名称时用
+    /// [`Self::read_preset_name`]（1 次往返）。
     /// 解析器是严格的：任何错位都会返回 `None`，整个读取失败，而不是产出移位的名称。
     pub fn read_preset_names(&mut self) -> Result<Vec<protocol::PresetEntry>, String> {
         let mut out = Vec::with_capacity(64);

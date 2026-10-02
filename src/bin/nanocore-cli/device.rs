@@ -12,13 +12,25 @@ use crate::common::{Failure, open_device, send_standard, transact};
 /// `docs/protocol/snapshot.md`）：载荷从 `[3]` 起是连续 `[mask][7 data]`
 /// 打包流，数据流 = 前导 + 8 条链位记录 + 链尾。
 ///
+/// 预设名来自一次额外的 `0x40` 查询（只查当前槽位所在的那一批，1 次往返）。
 /// 渲染由 [`crate::common::render_snapshot`] 承担，`debug snapshot --decode`
 /// 复用同一份实现。
 pub fn cmd_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
+    // 名字是补充信息：查不到就让 `preset` 行只显示编号，不因此让整个命令失败。
+    let name = protocol::decode_snapshot_state(&s.payload).and_then(|st| {
+        dev.read_preset_name(st.preset_index)
+            .ok()
+            .flatten()
+            .filter(|e| e.named)
+            .map(|e| e.name)
+    });
     println!("Current device state:");
-    print!("{}", crate::common::render_snapshot(&s.payload, "  "));
+    print!(
+        "{}",
+        crate::common::render_snapshot(&s.payload, "  ", name.as_deref())
+    );
     Ok(())
 }
 

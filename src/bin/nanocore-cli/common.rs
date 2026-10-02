@@ -289,8 +289,9 @@ pub fn render_chain(order: &[u8]) -> String {
 /// 把一条 `0x63` 快照载荷渲染为多行可读文本（`show` 与 `debug snapshot --decode` 共用）。
 ///
 /// `indent` 是每行的前导空白——`show` 有两格缩进，`debug` 下的调用方用空串。
+/// `name` 是当前预设名（`None` 表示未查到或该槽位未命名），显示在编号之后。
 /// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
-pub fn render_snapshot(payload: &[u8], indent: &str) -> String {
+pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> String {
     let mut out = String::new();
     let decoded = protocol::decode_snapshot_state(payload);
     // 链序优先取数据流解码（对所有长度都成立），旧的尾部锚点只作退回。
@@ -306,7 +307,14 @@ pub fn render_snapshot(payload: &[u8], indent: &str) -> String {
     }
     match decoded {
         Some(state) => {
-            out.push_str(&format!("{indent}preset:        #{}\n", state.preset_index + 1));
+            out.push_str(&format!(
+                "{indent}preset:        #{}{}\n",
+                state.preset_index + 1,
+                match name {
+                    Some(n) => format!(" {n}"),
+                    None => String::new(),
+                }
+            ));
             out.push_str(&format!(
                 "{indent}preset volume: {}\n",
                 state.preset_volume

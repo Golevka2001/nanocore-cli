@@ -32,7 +32,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                         "no reply to decode — drop --no-wait, the snapshot needs its answer",
                     ));
                 };
-                print!("{}", render_snapshot(&reply.payload, ""));
+                // 纯协议层视角：不多发 `0x40` 去查名字。`show` 才查。
+                print!("{}", render_snapshot(&reply.payload, "", None));
             }
             Ok(())
         }
