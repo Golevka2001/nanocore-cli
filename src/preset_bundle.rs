@@ -207,8 +207,8 @@ fn app_param_count(effect_id: u8, variant: u8) -> Option<usize> {
 /// 隐藏参数），直接构造会被设备拒收。
 impl PresetSpec {
     pub fn to_preset_write(&self) -> crate::preset43::PresetWrite {
-        const ROLE_BLOCK_KEYS: [&str; 8] =
-            ["fx1", "fx2", "amp", "cab", "delay", "mod", "reverb", "eq"];
+        // 角色序 = `protocol::CHAIN_ROLES` 下标（fx1 fx2 amp cab delay mod reverb eq），
+        // `slots` 已按角色序存放，故按下标一一对应即可，无需再查名字。
         crate::preset43::PresetWrite {
             name: self.name.clone(),
             chain_order: self.chain_order,
