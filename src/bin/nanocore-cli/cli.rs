@@ -1,6 +1,6 @@
 //! CLI 定义：clap 命令树与 `Conn` 选项集合。
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 
 use nanocore::asset;
@@ -64,8 +64,6 @@ fn variant_candidates() -> Vec<CompletionCandidate> {
     version,
     about = "Control and inspect a Nanocore (TPE-S10) guitar effects processor.",
     long_about = None,
-    after_help = "Modules: fx1 fx2 amp cab mod delay reverb eq \
-                  (`delay` may be shortened to `del`, `reverb` to `rev`)"
 )]
 pub struct Cli {
     /// MIDI 输入端口号（见 `ports`，1 起）
@@ -90,22 +88,33 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "N")]
     pub retries: Option<u32>,
 
-    // 协议探测旋钮——主帮助中隐藏；仅对 `debug raw`、`debug replay`、`debug monitor`、`debug probe` 有意义。
-    /// 仅将这些应答类型视为有效应答（逗号分隔的十六进制）
-    #[arg(long, global = true, hide = true, value_name = "HH,HH")]
-    pub expect: Option<String>,
-    /// 帧标志字节（十六进制）[default: 00]
-    #[arg(long, global = true, hide = true, value_name = "HH")]
-    pub flags: Option<String>,
-    /// 即发即忘：不等待应答（仅影响 SysEx 事务；CC/PC 命令本就不等待）
-    #[arg(long, global = true, hide = true)]
-    pub no_wait: bool,
-    /// 发送时不带 F0…F7 SysEx 包装
-    #[arg(long, global = true, hide = true)]
-    pub no_sysex: bool,
-
     #[command(subcommand)]
     pub command: Command,
+}
+
+/// 协议探测旋钮：只挂在 `debug` 下（`#[command(flatten)]` 到 `Command::Debug`）。
+///
+/// 这些是裸协议层的应急手段——非 `debug` 命令一个都用不到，所以**不**是
+/// 全局参数：让 `preset list --no-sysex` 之类通过只会掩盖"此处不该有这个
+/// 开关"。挂在 `debug` 上还有个额外好处：它们不再是隐藏项，会正大光明地
+/// 出现在 `debug --help` 里。
+#[derive(Args, Debug)]
+pub struct ProtocolKnobs {
+    /// 只把这些应答类型视为有效（逗号分隔的十六进制）；空 = 接受任何应答。
+    /// 传了但解析失败会直接报错退出，不静默退化为"接受任何应答"
+    #[arg(long, value_name = "HH,HH")]
+    pub expect: Option<String>,
+    /// 帧标志字节（十六进制）[default: 00]
+    #[arg(long, value_name = "HH")]
+    pub flags: Option<String>,
+    /// 发出后不等应答。仅影响 SysEx 事务——CC/PC 命令（preset、module
+    /// on/off/model、tuner、debug cc）本来就不等待
+    #[arg(long)]
+    pub no_wait: bool,
+    /// 发送时不带 F0…F7 SysEx 包装。设备只接受带包装的帧，裸 `7D 4E 43 …`
+    /// 会被静默丢弃——仅在逐字节重放原始数据时需要关闭
+    #[arg(long)]
+    pub no_sysex: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -174,6 +183,8 @@ pub enum Command {
     // ── 协议探测（原始/未公开）───────────────────────────────
     /// 底层 MIDI/协议工具（原始帧、SysEx、调试）
     Debug {
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
         #[command(subcommand)]
         cmd: DebugCmd,
     },
@@ -417,22 +428,20 @@ pub enum AssetCmd {
 
 #[derive(Subcommand, Debug)]
 #[command(
-    arg_required_else_help = true,
-    after_help = "Hidden global knobs — accepted by every command, meaningful mainly here
-(the main help omits them on purpose):
-
-  --expect HH,HH  accept only these reply types
-  --flags HH      frame flag byte [default: 00]
-  --no-wait       send without waiting for a reply; SysEx transactions only —
-                  CC/PC commands (preset, module on/off/model, tuner, debug cc)
-                  never wait in the first place
-  --no-sysex      send without the F0...F7 SysEx wrapper"
+    arg_required_else_help = true
 )]
 pub enum DebugCmd {
     /// 对设备执行 ping
     Ping,
     /// 读取当前预设的状态快照
-    Snapshot,
+    ///
+    /// 默认只打印原始 tx/rx 帧。加 `--decode` 追加一份结构化解码结果——
+    /// 与 `show` 同一渲染（链序、活动预设、音量、8 个模块的开关/类型/参数）。
+    Snapshot {
+        /// 追加可读的结构化解码（`0x63` 掩码流 → 状态表）
+        #[arg(long)]
+        decode: bool,
+    },
     /// 打印设备发出的每一帧（ctrl-c 停止）
     Monitor,
     /// 原始 Control Change（十进制；十六进制加 0x.. 前缀）
@@ -585,7 +594,7 @@ pub struct Conn {
     pub no_sysex: bool,
 }
 
-/// 解析隐藏协议旋钮中的单字节十六进制值（`--flags`，及 `--expect` 的每一段）。
+/// 解析协议旋钮中的单字节十六进制值（`--flags`，及 `--expect` 的每一段）。
 fn parse_hex_byte(arg: &str, value: &str) -> Result<u8, String> {
     u8::from_str_radix(value.trim().trim_start_matches("0x"), 16)
         .map_err(|_| format!("--{arg}: invalid hex byte {value:?}"))
@@ -593,19 +602,6 @@ fn parse_hex_byte(arg: &str, value: &str) -> Result<u8, String> {
 
 impl Conn {
     pub fn from_cli(cli: &Cli) -> Result<Self, String> {
-        // 隐藏旋钮不静默回落：传了但解析失败就报错退出。否则错误的过滤条件
-        // 会悄悄退化为"接受任何应答"，对协议调试是最危险的失败模式。
-        let expect = match cli.expect.as_deref() {
-            None => Vec::new(),
-            Some(v) => v
-                .split(',')
-                .map(|p| parse_hex_byte("expect", p))
-                .collect::<Result<Vec<u8>, _>>()?,
-        };
-        let flags = match cli.flags.as_deref() {
-            None => 0x00,
-            Some(v) => parse_hex_byte("flags", v)?,
-        };
         Ok(Self {
             // 端口号保持用户空间的 1 起编号，打开时再减 1（见 `open_device`）。
             in_port: cli.in_port,
@@ -618,10 +614,30 @@ impl Conn {
             channel: cli.ch - 1,
             timeout_ms: cli.timeout,
             retries: cli.retries,
-            expect,
-            flags,
-            wait: !cli.no_wait,
-            no_sysex: cli.no_sysex,
+            // 协议旋钮的默认值；`debug` 下的显式取值由 `apply_knobs` 覆盖。
+            expect: Vec::new(),
+            flags: 0x00,
+            wait: true,
+            no_sysex: false,
         })
+    }
+
+    /// 用 `debug` 子命令携带的 [`ProtocolKnobs`] 覆盖协议层默认值。
+    ///
+    /// 旋钮不静默回落：传了但解析失败就报错退出。否则错误的过滤条件会悄悄
+    /// 退化为「接受任何应答」，对协议调试是最危险的失败模式。
+    pub fn apply_knobs(&mut self, knobs: &ProtocolKnobs) -> Result<(), String> {
+        if let Some(v) = knobs.expect.as_deref() {
+            self.expect = v
+                .split(',')
+                .map(|p| parse_hex_byte("expect", p))
+                .collect::<Result<Vec<u8>, _>>()?;
+        }
+        if let Some(v) = knobs.flags.as_deref() {
+            self.flags = parse_hex_byte("flags", v)?;
+        }
+        self.wait = !knobs.no_wait;
+        self.no_sysex = knobs.no_sysex;
+        Ok(())
     }
 }

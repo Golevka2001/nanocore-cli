@@ -8,7 +8,10 @@ use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd};
-use crate::common::{Failure, describe, hex, open_device, parse_hex, send_standard, transact};
+use crate::common::{
+    Failure, describe, hex, open_device, parse_hex, render_snapshot, send_standard, transact,
+    transact_reply,
+};
 use crate::probe::probe;
 
 /// 各分支都先完成自己的输入解析，再打开端口——手误不该触碰 MIDI。
@@ -19,10 +22,19 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = protocol::ping();
             transact(&mut dev, conn, k, p, &[msg_type::PING])
         }
-        DebugCmd::Snapshot => {
+        DebugCmd::Snapshot { decode } => {
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
-            transact(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])
+            let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
+            if decode {
+                let Some(reply) = reply else {
+                    return Err(Failure::error(
+                        "no reply to decode — drop --no-wait, the snapshot needs its answer",
+                    ));
+                };
+                print!("{}", render_snapshot(&reply.payload, ""));
+            }
+            Ok(())
         }
         DebugCmd::Monitor => {
             let mut dev = open_device(conn)?;

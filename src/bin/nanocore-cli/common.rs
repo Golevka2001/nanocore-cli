@@ -285,3 +285,71 @@ pub fn render_chain(order: &[u8]) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+/// 把一条 `0x63` 快照载荷渲染为多行可读文本（`show` 与 `debug snapshot --decode` 共用）。
+///
+/// `indent` 是每行的前导空白——`show` 有两格缩进，`debug` 下的调用方用空串。
+/// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
+pub fn render_snapshot(payload: &[u8], indent: &str) -> String {
+    let mut out = String::new();
+    let decoded = protocol::decode_snapshot_state(payload);
+    // 链序优先取数据流解码（对所有长度都成立），旧的尾部锚点只作退回。
+    let chain = decoded
+        .as_ref()
+        .and_then(|st| st.chain.clone())
+        .or_else(|| protocol::parse_snapshot_chain_order(payload));
+    match chain {
+        Some(order) => out.push_str(&format!("{indent}chain:         {}\n", render_chain(&order))),
+        None => out.push_str(&format!(
+            "{indent}chain:         (not decodable from this snapshot)\n"
+        )),
+    }
+    match decoded {
+        Some(state) => {
+            out.push_str(&format!("{indent}preset:        #{}\n", state.preset_index + 1));
+            out.push_str(&format!(
+                "{indent}preset volume: {}\n",
+                state.preset_volume
+            ));
+            // 记录按角色序（= b5 槽位）排列，**不是**链上的物理顺序；
+            // 链序见上面那行（它给出角色 -> 链位的映射）。
+            out.push_str(&format!(
+                "{indent}modules (record order = b5 slot = role):\n"
+            ));
+            for (i, r) in state.records.iter().enumerate() {
+                let role = protocol::CHAIN_ROLES[i].0;
+                let params = r
+                    .params
+                    .iter()
+                    .map(|p| format!("{p:.3}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let on = if r.enabled != 0 { "on " } else { "off" };
+                out.push_str(&format!(
+                    "{indent}  {role:<6} {on} type={} params=[{params}]\n",
+                    r.variant + 1
+                ));
+            }
+            out.push_str(&format!(
+                "{indent}note:          fx1(fx gate)/fx2(comp) `enabled` in the snapshot\n\
+                 {indent}                reflects live DSP state (signal-dependent);\n\
+                 {indent}                fx8 params are runtime values, not factory ones.\n"
+            ));
+        }
+        None => {
+            // 无法结构化解码时退回经验字段。
+            if payload.len() > 6 {
+                out.push_str(&format!(
+                    "{indent}preset:        #{} (empirical — payload[6])\n",
+                    payload[6] + 1
+                ));
+            }
+        }
+    }
+    out.push_str(&format!(
+        "{indent}data:          snapshot {} bytes, {} raw float candidate(s)\n",
+        payload.len(),
+        protocol::scan_snapshot_floats(payload).len()
+    ));
+    out
+}

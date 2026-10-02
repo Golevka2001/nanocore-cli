@@ -20,8 +20,9 @@
 //! 字节的参数（`b5`/`b6`、CC 号/值、裸帧）保持原始值。
 //!
 //! 所有涉及原始/未公开帧的操作都归入 `debug`；这些命令面向协议研究，
-//! 而非演奏。底层旋钮（`--expect`、`--flags`、`--no-wait`、`--no-sysex`）
-//! 为全局隐藏参数，由所有设备命令共享。
+//! 而非演奏。协议层旋钮（`--expect`、`--flags`、`--no-wait`、`--no-sysex`）
+//! 只挂在 `debug` 下——其他命令一个都用不到，让 `preset list --no-sysex`
+//! 之类通过只会掩盖「此处不该有这个开关」。
 //!
 //! 模块布局：[`cli`] 定义 clap 命令树，[`common`] 提供共享的基础辅助代码，
 //! [`device`] 汇集设备级命令（show / volume / tuner），其余模块各对应一个
@@ -75,7 +76,7 @@ fn main() {
 /// 设备由各命令族自行打开，并且都在打开之前完成参数校验——手误不该触碰
 /// MIDI，也不该为一个必然失败的调用占用端口。
 fn run(cli: Cli) -> Result<(), Failure> {
-    let conn = Conn::from_cli(&cli)?;
+    let mut conn = Conn::from_cli(&cli)?;
     match cli.command {
         // 完全不需要设备。
         Command::Ports => {
@@ -96,6 +97,11 @@ fn run(cli: Cli) -> Result<(), Failure> {
         Command::Models { table, live } => cmd_models(table, live, &conn),
         Command::Asset { cmd } => cmd_asset(cmd, &conn),
         Command::Settings { cmd } => cmd_settings(cmd, &conn),
-        Command::Debug { cmd } => cmd_debug(cmd, &conn),
+        // 协议旋钮只挂在 `debug` 下（见 `ProtocolKnobs`），在这里落到连接
+        // 选项上——解析失败即退出，不占用端口。
+        Command::Debug { knobs, cmd } => {
+            conn.apply_knobs(&knobs).map_err(Failure::error)?;
+            cmd_debug(cmd, &conn)
+        }
     }
 }
