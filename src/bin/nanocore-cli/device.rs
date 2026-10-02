@@ -35,7 +35,8 @@ pub fn cmd_show(no_name: bool, no_settings: bool, conn: &Conn) -> Result<(), Fai
                 .map(|e| e.name)
         })
     };
-    println!("Current device state:");
+    // 分节标题而非一句总起——`show` 现在有三段（快照 / 名称来源 / 设置页），
+    // 顶格说明一句反而多余。各节自带标题，读者扫一眼就知道边界在哪。
     print!(
         "{}",
         crate::common::render_snapshot(&s.payload, "  ", name.as_deref())
@@ -44,7 +45,8 @@ pub fn cmd_show(no_name: bool, no_settings: bool, conn: &Conn) -> Result<(), Fai
     if !no_settings
         && let Ok(st) = dev.read_settings()
     {
-        println!("  settings:");
+        // 空行分节：快照与设置页是两回事（0x63 vs 0x65），边界要看得出来。
+        println!("\n  settings:");
         print!("{}\n", crate::settings::render_settings(&st, "    "));
     }
     Ok(())
