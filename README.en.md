@@ -105,12 +105,8 @@ source <(COMPLETE=zsh nanocore-cli)
 
 ```sh
 cargo build --features midi
+# Without `--features midi`, cargo builds the library only and produces no executable
 ```
-
-> **`--features midi` is not optional.** The `[[bin]]` target declares
-> `required-features = ["midi"]`; without that flag cargo builds the library
-> only and produces no executable. For a release build use
-> `cargo build --release --features midi`.
 
 ```sh
 cargo test

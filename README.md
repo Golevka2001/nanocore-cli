@@ -105,11 +105,8 @@ source <(COMPLETE=zsh nanocore-cli)
 
 ```sh
 cargo build --features midi
+# 不加 `--features midi` 时 cargo 只编译库、不产出可执行文件
 ```
-
-> **注意**：`--features midi` 不能省。`[[bin]]` 声明了
-> `required-features = ["midi"]`，不加这个 flag 时 cargo 只编译库、不产出
-> 可执行文件。发布用 `cargo build --release --features midi`。
 
 ```sh
 cargo test
