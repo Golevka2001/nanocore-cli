@@ -171,11 +171,8 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
-        // 逐字节：头部 7 字节给三项，每条记录再拆成槽位 / 标记 / 名字 / 填充。
-        // 标记字节的语义尚未定论（见 PresetEntry::named），所以只印出它的
-        // 位置与字节值，不给它安一个名字。
+        // 头部 7 字节 = 5 个字段，之后每条记录一行。
         let p = &frame.payload;
-        let last = entries.last().expect("count > 0 已由解析保证").slot + 1;
         divider();
         print!("{}", field_line("header", 0, 2, "00 00", indent));
         print!(
@@ -203,45 +200,21 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
             "{}",
             field_line("count", 6, 1, &entries.len().to_string(), indent)
         );
-        println!("{indent}records (#{}-#{last}):", entries[0].slot + 1);
         for e in &entries {
-            let name_at = e.marks.1;
-            let name_end = e.filler.unwrap_or(name_at + e.name_nuls.len() + 8);
-            print!(
-                "{}",
-                field_line(
-                    &format!("#{} slot", e.slot + 1),
-                    e.offset,
-                    1,
-                    &format!("{}", p[e.offset]),
-                    indent
-                )
-            );
-            let marks = hex(&p[e.marks.0..e.marks.1]);
-            print!(
-                "{}",
-                field_line(
-                    "marks",
-                    e.marks.0,
-                    e.marks.1 - e.marks.0,
-                    &format!("{marks}  named={}", e.named),
-                    indent
-                )
-            );
             let mut shown = e.name.clone();
             if !e.named {
                 shown = "(empty)".to_string();
             }
             print!(
                 "{}",
-                field_line("name", name_at, name_end - name_at, &shown, indent)
+                field_line(
+                    &format!("#{:<3}", e.slot + 1),
+                    e.offset,
+                    1,
+                    &shown,
+                    indent
+                )
             );
-            if let Some(f) = e.filler {
-                print!(
-                    "{}",
-                    field_line("filler", f, 1, &format!("{:02x}", p[f]), indent)
-                );
-            }
         }
         divider();
     }
