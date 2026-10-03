@@ -347,7 +347,9 @@ pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> Stri
             // 链序见上面那行（它给出角色 -> 链位的映射）。
             out.push_str(&format!("{indent}modules:\n"));
             for (i, r) in state.records.iter().enumerate() {
-                let role = protocol::CHAIN_ROLES[i].0;
+                // 与上面 `chain:` 行同一套名字（设备显示名），不是 CLI 短名——
+                // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
+                let role = protocol::CHAIN_ROLES[i].1;
                 let params = r
                     .params
                     .iter()
