@@ -7,7 +7,7 @@ use nanocore::models_data;
 use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
-use crate::cli::{Conn, DebugCmd, ProtocolKnobs};
+use crate::cli::{Conn, DebugCmd, ProtocolKnobs, parse_hex_byte};
 use crate::common::{
     Bytes, Failure, describe, divider, hex, open_device, parse_hex, render_snapshot,
     send_standard, transact, transact_reply,
@@ -116,10 +116,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         }
         DebugCmd::Setparam { b5, b6, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
-            let p = |s: &str| {
-                u8::from_str_radix(s.trim_start_matches("0x"), 16)
-                    .map_err(|_| format!("{s:?} must be hex"))
-            };
+            let p = |s: &str| parse_hex_byte(s).map_err(|_| format!("{s:?} must be hex"));
             let (b5, b6) = (p(&b5)?, p(&b6)?);
             let mut dev = open_device(conn)?;
             let (k, payload) = protocol::param_write(b5, b6, value);
