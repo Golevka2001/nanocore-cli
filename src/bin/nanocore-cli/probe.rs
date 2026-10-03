@@ -34,15 +34,10 @@ pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), Failur
 
     for (label, (kind, payload), expect) in steps {
         println!("--- step {label} ---");
-        println!(
-            "tx: type=0x{kind:02x} payload[{}] {}",
-            payload.len(),
-            hex(&payload)
-        );
         match dev.transact_with_flags(conn.flags, kind, payload, &expect) {
-            Ok(f) => {
-                println!("rx:");
-                describe(&f);
+            Ok((tx, rx)) => {
+                describe(&tx);
+                describe(&rx);
             }
             Err(e) => println!("  -> {e}"),
         }

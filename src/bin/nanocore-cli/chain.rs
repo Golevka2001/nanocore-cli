@@ -122,7 +122,7 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
     let order = protocol::parse_chain_write(&payload)
         .ok_or_else(|| Failure::error("internal: device frame does not decode back to the chain"))?;
 
-    let ack = dev
+    let (tx, ack) = dev
         .transact_with_flags(0x00, kind, payload, &[])
         .map_err(|e| match e {
             Error::Timeout { attempts, elapsed } => {
@@ -130,7 +130,7 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
             }
             Error::Transport(t) => t.to_string(),
         })?;
-    println!("rx (ack):");
+    describe(&tx);
     describe(&ack);
 
     match protocol::parse_chain_ack(&ack.payload) {

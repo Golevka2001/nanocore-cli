@@ -118,6 +118,12 @@ pub fn divider_err() {
 /// 略短于它以免在窄终端里折行。
 const DIVIDER_WIDTH: usize = 60;
 
+/// 打印一帧的帧头与载荷 hexdump。
+///
+/// tx 与 rx 共用：两者的线上格式是同一个结构（magic | dir | flags | 常量 |
+/// seq | type | payload），只有方向字节不同，所以渲染也该相同。tx 帧过去是
+/// 手打的 `type=0xNN payload[..]`，`flags` 与 `seq` 从不显示——而 `seq` 正是
+/// 设备在应答里回显、用来配对的那个值。
 pub fn describe(frame: &Frame) {
     println!(
         "  dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
@@ -276,8 +282,6 @@ pub fn transact_reply(
     payload: Vec<u8>,
     expect: &[u8],
 ) -> Result<Option<Frame>, Failure> {
-    println!("tx: type=0x{kind:02x} payload[{}]", payload.len());
-    print!("{}", dump(&payload, "  "));
     if payload.iter().any(|b| b & 0x80 != 0) {
         eprintln!(
             "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
@@ -291,10 +295,12 @@ pub fn transact_reply(
         return Ok(None);
     }
     match dev.transact_with_flags(conn.flags, kind, payload, expect) {
-        Ok(reply) => {
-            println!("rx:");
-            describe(&reply);
-            Ok(Some(reply))
+        Ok((tx, rx)) => {
+            // tx 与 rx 用同一个渲染器：两行并排即可看出 seq 是否被设备回显成
+            // 同一个值（这正是配对的依据），也免去手打 tx 字符串漏掉字段。
+            describe(&tx);
+            describe(&rx);
+            Ok(Some(rx))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(
             "timeout after {attempts} attempt(s) in {elapsed:?}"
