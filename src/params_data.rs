@@ -251,32 +251,32 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ("reverb", 3, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "PreDelay", cc: 86 },
-    ParamInfo { index: 2, name: "Tone", cc: 87 },
-    ParamInfo { index: 3, name: "HF Damp", cc: 88 },
+    ParamInfo { index: 2, name: "HF Damp", cc: 87 },
+    ParamInfo { index: 3, name: "Mod", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
-// variant 5 = shimmer（无 PreDelay，含 Mod Depth / Mod Rate）
+// variant 5 = shimmer（CC47=4）
 ("reverb", 5, &[
+    ParamInfo { index: 0, name: "Decay", cc: 85 },
+    ParamInfo { index: 1, name: "PreDelay", cc: 86 },
+    ParamInfo { index: 2, name: "Tone", cc: 87 },
+    ParamInfo { index: 3, name: "Pitch", cc: 88 },
+    ParamInfo { index: 4, name: "Mix", cc: 89 },
+]),
+// variant 6 = cloud（CC47=5，无 PreDelay，含 Mod Depth / Mod Rate）
+("reverb", 6, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "Tone", cc: 86 },
     ParamInfo { index: 2, name: "Mod Depth", cc: 87 },
     ParamInfo { index: 3, name: "Mod Rate", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
-// variant 6 = cloud（含 Crossover，无 PreDelay）
-("reverb", 6, &[
-    ParamInfo { index: 0, name: "Decay", cc: 85 },
-    ParamInfo { index: 1, name: "PreDelay", cc: 86 },
-    ParamInfo { index: 2, name: "Tone", cc: 87 },
-    ParamInfo { index: 3, name: "Crossover", cc: 88 },
-    ParamInfo { index: 4, name: "Mod", cc: 89 },
-]),
-// variant 7 = spring
+// variant 7 = spring（CC47=6；手册 5-7：Decay / PreDelay / Crossover / Mod / Mix）
 ("reverb", 7, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "PreDelay", cc: 86 },
-    ParamInfo { index: 2, name: "Tone", cc: 87 },
-    ParamInfo { index: 3, name: "Pitch", cc: 88 },
+    ParamInfo { index: 2, name: "Crossover", cc: 87 },
+    ParamInfo { index: 3, name: "Mod", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
 ];
@@ -434,9 +434,18 @@ pub fn type_number(block: &str, variant: u8) -> Option<u8> {
     match block {
         "amp" | "cab" => None,
         "reverb" => {
-            // 手册产品顺序 room..cloud 的位置（1 起始）。
-            const PRODUCT_POS: [u8; 8] = [0, 1, 2, 3, 4, 6, 7, 5];
-            Some(PRODUCT_POS.get(variant as usize).copied().unwrap_or(variant + 1))
+            // 手册产品顺序 room..cloud 的位置（**1 起始**，与 `variant + 1` 同一
+            // 基准 —— 两套编号必须同基准，否则 Room 会印出 `type=0`）。
+            // index 0 恒为 0，不参与映射：variant 4 设备不用，落进来时回退到
+            // `variant + 1`，不编一个产品位出来。
+            const PRODUCT_POS: [u8; 8] = [1, 2, 3, 4, 0, 6, 7, 5];
+            Some(
+                PRODUCT_POS
+                    .get(variant as usize)
+                    .copied()
+                    .filter(|&p| p != 0)
+                    .unwrap_or(variant + 1),
+            )
         }
         _ => Some(variant + 1),
     }
@@ -627,32 +636,32 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
 ("reverb", 3, &[
     Range { name: "Decay", lo: 0.5, hi: 12.0, unit: "s" },
     Range { name: "PreDelay", lo: 0.0, hi: 80.0, unit: "ms" },
-    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "HF Damp", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
-// variant 5 = shimmer（手册 6-7：无 PreDelay，Mod Rate）
+// variant 5 = shimmer（手册 6-7：Pre Delay 5~120ms，移调音程 -24~24st）
 ("reverb", 5, &[
     Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
     Range { name: "PreDelay", lo: 5.0, hi: 120.0, unit: "ms" },
     Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
-    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
-// variant 6 = cloud（手册 7-7：超长衰减，无 PreDelay）
+// variant 6 = cloud（手册 7-7：超长衰减 1~100s，无 PreDelay）
 ("reverb", 6, &[
     Range { name: "Decay", lo: 1.0, hi: 100.0, unit: "s" },
     Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
-    Range { name: "Crossover", lo: 800.0, hi: 8000.0, unit: "Hz" },
-    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod Depth", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod Rate", lo: 0.02, hi: 0.25, unit: "Hz" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
-// variant 7 = spring（手册 5-7）
+// variant 7 = spring（手册 5-7：分频点 800Hz~8kHz）
 ("reverb", 7, &[
     Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
     Range { name: "PreDelay", lo: 5.0, hi: 80.0, unit: "ms" },
-    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
-    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
+    Range { name: "Crossover", lo: 800.0, hi: 8000.0, unit: "Hz" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
 

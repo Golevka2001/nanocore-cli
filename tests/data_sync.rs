@@ -299,6 +299,69 @@ fn reverb_effect_type_ids_are_not_contiguous() {
 ///
 /// 2026-10-03 真机实测：7 个 reverb 类型的 `param count` 全是 5（40 组出厂快照亦然）。
 /// 产品序号 4,5,6（spring/shimmer/cloud）对应的 variant 是 7,5,6。
+/// `type=` 印的编号必须恒 ≥ 1，且与 `variant + 1` 同一基准。
+///
+/// 这条守的是一次真实的回归：`type_number` 的 reverb 映射表写成
+/// `[0, 1, 2, 3, 4, 6, 7, 5]`，注释说是「1 起始」，但首项是 `0` —— 于是
+/// Room（variant 0）印出 `type=0`，一个设备上不可能存在的编号。其它块走
+/// `variant + 1`，`reverb` 走查表，两者基准必须一致。
+#[test]
+fn type_numbers_are_one_based_and_consistent() {
+    for (block, types) in params_data::EFFECT_TYPES {
+        for &(variant, name) in *types {
+            let n = params_data::type_number(block, variant)
+                .unwrap_or_else(|| panic!("{block} type {variant} ({name}) 没有类型编号"));
+            assert!(
+                n >= 1,
+                "{block} variant {variant} ({name}) 印出 type={n} —— 编号必须 ≥ 1"
+            );
+            // 非 reverb 的块 id 连续，编号就是 variant + 1；这条同时把
+            // 「reverb 之外不该有例外」钉住。
+            if *block != "reverb" {
+                assert_eq!(
+                    n,
+                    variant + 1,
+                    "{block} variant {variant} ({name}) 的编号应等于 variant + 1"
+                );
+            }
+        }
+        // amp / cab 的 variant 恒 0，型号在各自型号表里，没有可显示的编号。
+        if *block == "amp" || *block == "cab" {
+            assert_eq!(
+                params_data::type_number(block, 0),
+                None,
+                "{block} 的 variant 恒 0，不该印出编号"
+            );
+        }
+    }
+}
+
+/// reverb 的 `type=` 是手册产品顺序里的位置（1 起始），与 `variant` 错开。
+///
+/// 2026-10-03 真机实测：写 CC47 = 0..6 回读 variant 得 0,1,2,3,5,6,7；
+/// 用户在设备/App 上核对 Psych 的 REV 是 spring 而其 variant 是 7。
+/// 手册 `5-7 spring` 说明设备上显示的是产品顺序的位置。
+#[test]
+fn reverb_type_numbers_follow_the_manual_product_order() {
+    // 手册 REV 顺序：room plate hall concert spring shimmer cloud
+    let expected = [
+        (0u8, 1u8, "Room"),
+        (1, 2, "Plate"),
+        (2, 3, "Hall"),
+        (3, 4, "Concert"),
+        (7, 5, "Spring"),
+        (5, 6, "Shimmer"),
+        (6, 7, "Cloud"),
+    ];
+    for (variant, want, name) in expected {
+        assert_eq!(
+            params_data::type_number("reverb", variant),
+            Some(want),
+            "reverb variant {variant} ({name}) 应显示为 type={want}"
+        );
+    }
+}
+
 #[test]
 fn reverb_params_are_keyed_by_real_variant() {
     for (block, ty, ps) in params_data::TYPED.iter().filter(|(b, _, _)| *b == "reverb") {

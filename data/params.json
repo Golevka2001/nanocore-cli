@@ -903,12 +903,12 @@
           {
             "index": 2,
             "cc": 87,
-            "name": "Tone"
+            "name": "HF Damp"
           },
           {
             "index": 3,
             "cc": 88,
-            "name": "HF Damp"
+            "name": "Mod"
           },
           {
             "index": 4,
@@ -916,7 +916,7 @@
             "name": "Mix"
           }
         ],
-        "7": [
+        "5": [
           {
             "index": 0,
             "cc": 85,
@@ -943,7 +943,7 @@
             "name": "Mix"
           }
         ],
-        "5": [
+        "6": [
           {
             "index": 0,
             "cc": 85,
@@ -970,7 +970,7 @@
             "name": "Mix"
           }
         ],
-        "6": [
+        "7": [
           {
             "index": 0,
             "cc": 85,
@@ -984,17 +984,17 @@
           {
             "index": 2,
             "cc": 87,
-            "name": "Tone"
+            "name": "Crossover"
           },
           {
             "index": 3,
             "cc": 88,
-            "name": "Crossover"
+            "name": "Mod"
           },
           {
             "index": 4,
             "cc": 89,
-            "name": "Mod"
+            "name": "Mix"
           }
         ]
       }
@@ -1834,48 +1834,16 @@
             "unit": "ms"
           },
           {
-            "name": "Tone",
-            "lo": 0.0,
-            "hi": 100.0,
-            "unit": ""
-          },
-          {
             "name": "HF Damp",
             "lo": 0.0,
             "hi": 100.0,
             "unit": ""
           },
           {
-            "name": "Mix",
+            "name": "Mod",
             "lo": 0.0,
             "hi": 100.0,
             "unit": ""
-          }
-        ],
-        "7": [
-          {
-            "name": "Decay",
-            "lo": 0.0,
-            "hi": 12.0,
-            "unit": "s"
-          },
-          {
-            "name": "PreDelay",
-            "lo": 5.0,
-            "hi": 80.0,
-            "unit": "ms"
-          },
-          {
-            "name": "Tone",
-            "lo": 0.0,
-            "hi": 100.0,
-            "unit": ""
-          },
-          {
-            "name": "Pitch",
-            "lo": -24.0,
-            "hi": 24.0,
-            "unit": "st"
           },
           {
             "name": "Mix",
@@ -1904,10 +1872,10 @@
             "unit": ""
           },
           {
-            "name": "Mod",
-            "lo": 0.0,
-            "hi": 100.0,
-            "unit": ""
+            "name": "Pitch",
+            "lo": -24.0,
+            "hi": 24.0,
+            "unit": "st"
           },
           {
             "name": "Mix",
@@ -1928,6 +1896,38 @@
             "lo": 0.0,
             "hi": 100.0,
             "unit": ""
+          },
+          {
+            "name": "Mod Depth",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mod Rate",
+            "lo": 0.02,
+            "hi": 0.25,
+            "unit": "Hz"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "7": [
+          {
+            "name": "Decay",
+            "lo": 0.0,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 5.0,
+            "hi": 80.0,
+            "unit": "ms"
           },
           {
             "name": "Crossover",
