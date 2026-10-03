@@ -3,7 +3,7 @@
 use nanocore::midicc;
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{Failure, open_device, send_standard, transact};
+use crate::common::{Failure, open_device, progress, send_standard, transact};
 
 /// wire 槽位（0 起，`255` = unknown）→ 用户编号显示（1 起 / `unknown`）。
 fn slot_disp(v: u8) -> String {
@@ -204,9 +204,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                         )));
                     };
                     eprintln!("writing ir slot {} ({:?})…", a.slot + 1, a.name);
-                    dev.write_ir_slot(a.slot, blob, Some(&a.name), |msg| {
-                        eprint!("\r{msg}");
-                    })?;
+                    dev.write_ir_slot(a.slot, blob, Some(&a.name), progress)?;
                     eprintln!();
                 }
                 for a in &manifest.amp_slots {
@@ -221,17 +219,13 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     let ead = nanocore::amp_write::prepare_amp_input(blob)
                         .map_err(Failure::error)?;
                     eprintln!("writing amp slot {} ({:?})…", a.slot + 1, a.name);
-                    dev.write_amp_slot(a.slot, &ead, Some(&a.name), |msg| {
-                        eprint!("\r{msg}");
-                    })?;
+                    dev.write_amp_slot(a.slot, &ead, Some(&a.name), progress)?;
                     eprintln!();
                 }
             }
             let targets: Vec<(u8, String)> =
                 pairs.iter().map(|(s, pw)| (*s, pw.name.clone())).collect();
-            dev.import_presets(&pairs, |msg| {
-                eprint!("\r{msg}");
-            })?;
+            dev.import_presets(&pairs, progress)?;
             eprintln!();
             // flash 落盘异步生效（整体滞后可达数十秒），重试验证名表直到稳定。
             let mut ok = 0usize;
@@ -388,10 +382,8 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                  prints its final verdict."
             );
             let mut dev = open_device(conn)?;
-            dev.restore_factory_presets(|msg| {
-                eprint!("\r{msg}");
-            })
-            .map_err(Failure::error)?;
+            dev.restore_factory_presets(progress)
+                .map_err(Failure::error)?;
             eprintln!();
             println!("OK: official DSP restore sequence replayed.");
 

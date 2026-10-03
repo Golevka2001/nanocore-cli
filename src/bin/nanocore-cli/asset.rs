@@ -3,7 +3,7 @@
 use nanocore::asset::{self, ChunkRequest};
 
 use crate::cli::{AssetCmd, Conn, RegionArg};
-use crate::common::{Dev, Failure, open_device};
+use crate::common::{Dev, Failure, open_device, progress};
 
 pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
@@ -90,22 +90,14 @@ fn cmd_write_amp(
     use nanocore::amp_write as aw;
     use nanocore::asset;
 
-    // 用户编号 1 起 → wire 槽位 0 起。
-    if slot == 0 || slot > asset::AMP_SLOTS {
-        return Err(Failure::error(format!(
-            "amp slot must be 1-{}, got {slot}",
-            asset::AMP_SLOTS
-        )));
-    }
+    // 用户编号 1 起 → wire 槽位 0 起。槽位范围已由 `cmd_asset` 校验。
     let wire = slot - 1;
     let ead = aw::prepare_amp_input(&blob).map_err(Failure::error)?;
     println!("asset write amp slot {slot} — full .ead, {} bytes", ead.len());
     let mut dev = open_device(conn)?;
     // 成功判据在 write_amp_slot 内部：0x33 提交状态 00 + 0x35 名字被接受 +
     // 型号表（0x36）回读为新名字。回读的 DDBP 内部格式仅作信息展示。
-    let back = dev.write_amp_slot(wire, &ead, name.as_deref(), |msg| {
-        eprint!("\r{msg}");
-    })?;
+    let back = dev.write_amp_slot(wire, &ead, name.as_deref(), progress)?;
     eprintln!();
     println!(
         "OK: model committed; device reports it as a custom model (read-back \
@@ -123,13 +115,7 @@ fn cmd_write_ir(
     name: Option<String>,
     conn: &Conn,
 ) -> Result<(), Failure> {
-    // 用户编号 1 起 → wire 槽位 0 起。
-    if slot == 0 || slot > asset::IR_SLOTS {
-        return Err(Failure::error(format!(
-            "ir slot must be 1-{}, got {slot}",
-            asset::IR_SLOTS
-        )));
-    }
+    // 用户编号 1 起 → wire 槽位 0 起。槽位范围已由 `cmd_asset` 校验。
     let wire = slot - 1;
     if blob.len() as u32 != asset::IR_TOTAL {
         return Err(Failure::error(format!(
@@ -140,9 +126,7 @@ fn cmd_write_ir(
     }
     println!("asset write ir slot {slot} — {} bytes", blob.len());
     let mut dev = open_device(conn)?;
-    let back = dev.write_ir_slot(wire, &blob, name.as_deref(), |msg| {
-        eprint!("\r{msg}");
-    })?;
+    let back = dev.write_ir_slot(wire, &blob, name.as_deref(), progress)?;
     eprintln!();
     match back == blob {
         true => {

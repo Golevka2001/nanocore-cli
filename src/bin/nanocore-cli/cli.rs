@@ -648,10 +648,18 @@ pub struct Conn {
     pub no_sysex: bool,
 }
 
-/// 解析协议旋钮中的单字节十六进制值（`--flags`，及 `--expect` 的每一段）。
-fn parse_hex_byte(arg: &str, value: &str) -> Result<u8, String> {
+/// 解析单个十六进制字节：接受 `0x` 前缀与两侧空白。
+///
+/// 同一条规则同时服务协议旋钮（`--expect` / `--flags`）与 `debug raw` /
+/// `debug replay` 的位置参数（[`crate::common::parse_hex`]），放在一起以免
+/// 两处对空白和 `0x` 前缀的处理悄悄分叉。
+pub fn parse_hex_byte(value: &str) -> Result<u8, std::num::ParseIntError> {
     u8::from_str_radix(value.trim().trim_start_matches("0x"), 16)
-        .map_err(|_| format!("--{arg}: invalid hex byte {value:?}"))
+}
+
+/// 协议旋钮专用：在 [`parse_hex_byte`] 之上带上参数名，让报错指得出是哪个开关。
+fn parse_hex_arg(arg: &str, value: &str) -> Result<u8, String> {
+    parse_hex_byte(value).map_err(|_| format!("--{arg}: invalid hex byte {value:?}"))
 }
 
 impl Conn {
@@ -684,11 +692,11 @@ impl Conn {
         if let Some(v) = knobs.expect.as_deref() {
             self.expect = v
                 .split(',')
-                .map(|p| parse_hex_byte("expect", p))
+                .map(|p| parse_hex_arg("expect", p))
                 .collect::<Result<Vec<u8>, _>>()?;
         }
         if let Some(v) = knobs.flags.as_deref() {
-            self.flags = parse_hex_byte("flags", v)?;
+            self.flags = parse_hex_arg("flags", v)?;
         }
         self.wait = !knobs.no_wait;
         self.no_sysex = knobs.no_sysex;

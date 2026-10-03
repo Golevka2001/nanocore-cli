@@ -5,7 +5,7 @@ use nanocore::midi::{self, MidiTransport};
 use nanocore::protocol;
 use nanocore::{Frame, Transport};
 
-use crate::cli::Conn;
+use crate::cli::{Conn, parse_hex_byte};
 
 /// 通过真实 MIDI 传输层建立的已打开设备连接。
 pub type Dev = Nanocore<MidiTransport>;
@@ -307,14 +307,19 @@ pub fn send_standard(dev: &mut Dev, bytes: &[u8]) -> Result<(), Failure> {
         .map_err(|e| Failure::error(e.to_string()))
 }
 
+/// 写会话的进度回显：每条状态覆写同一行（stderr）。
+///
+/// `write_ir_slot` / `write_amp_slot` / `import_presets` /
+/// `restore_factory_presets` 都按 `FnMut(&str)` 报告进度，命令侧统一用它。
+pub fn progress(msg: &str) {
+    eprint!("\r{msg}");
+}
+
 /// 解析十六进制字节序列（`debug raw` / `debug replay` 的位置参数）。
 pub fn parse_hex(parts: &[String]) -> Result<Vec<u8>, Failure> {
     parts
         .iter()
-        .map(|h| {
-            u8::from_str_radix(h.trim().trim_start_matches("0x"), 16)
-                .map_err(|_| Failure::error(format!("bad hex byte {h:?}")))
-        })
+        .map(|h| parse_hex_byte(h).map_err(|_| Failure::error(format!("bad hex byte {h:?}"))))
         .collect()
 }
 
