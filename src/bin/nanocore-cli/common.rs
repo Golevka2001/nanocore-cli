@@ -467,11 +467,18 @@ pub fn render_snapshot(
                 .collect::<Vec<_>>()
                 .join(", ");
             if show_bytes {
+                // head 三字节逐个说清：enabled / variant / count。count 虽能从
+                // params 区间长度反推（4 字节一个 float），但它是这一行的第三个
+                // 字节，不写出来就等于留了一个没有解释的字节。
                 out.push_str(&field_line(
                     &format!("{role} head"),
                     at,
                     3,
-                    &format!("{on} type={}", r.variant + 1),
+                    &format!(
+                        "{on} type={} count={}",
+                        r.variant + 1,
+                        r.params.len()
+                    ),
                     indent,
                 ));
                 out.push_str(&field_line(
