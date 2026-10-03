@@ -52,7 +52,7 @@ pub fn cmd_show(no_name: bool, no_settings: bool, conn: &Conn) -> Result<(), Fai
     {
         // 空行分节：快照与设置页是两回事（0x63 vs 0x65），边界要看得出来。
         println!("\n  settings:");
-        print!("{}\n", crate::settings::render_settings(&st, "    "));
+        println!("{}", crate::settings::render_settings(&st, "    "));
     }
     Ok(())
 }
