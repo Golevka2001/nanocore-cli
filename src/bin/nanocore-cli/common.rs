@@ -81,6 +81,15 @@ pub fn hex(bytes: &[u8]) -> String {
         .join(" ")
 }
 
+/// 经典 hexdump：每行 16 字节，左侧是该行首字节的偏移。
+pub fn dump(data: &[u8], indent: &str) -> String {
+    let mut out = String::new();
+    for (row, chunk) in data.chunks(16).enumerate() {
+        out.push_str(&format!("{indent}{:>4}  {}\n", row * 16, hex(chunk)));
+    }
+    out
+}
+
 /// 一条 60 宽的横线，带换行。
 fn divider_line() -> String {
     format!("{}\n", "─".repeat(DIVIDER_WIDTH))
@@ -118,7 +127,7 @@ pub fn describe(frame: &Frame) {
         frame.kind,
         frame.payload.len()
     );
-    println!("  payload: {}", hex(&frame.payload));
+    print!("{}", dump(&frame.payload, "  "));
     if frame.kind == 0x06
         && let Some(ep) = protocol::parse_effect_data(&frame.payload)
     {
@@ -267,11 +276,8 @@ pub fn transact_reply(
     payload: Vec<u8>,
     expect: &[u8],
 ) -> Result<Option<Frame>, Failure> {
-    println!(
-        "tx: type=0x{kind:02x} payload[{}] {}",
-        payload.len(),
-        hex(&payload)
-    );
+    println!("tx: type=0x{kind:02x} payload[{}]", payload.len());
+    print!("{}", dump(&payload, "  "));
     if payload.iter().any(|b| b & 0x80 != 0) {
         eprintln!(
             "warning: payload contains bytes >= 0x80; they are illegal MIDI data \n\
@@ -306,23 +312,16 @@ pub fn render_chain(order: &[u8]) -> String {
         .join(" ")
 }
 
-/// 经典 hexdump：每行 16 字节，左侧是该行首字节的偏移。
-fn dump(data: &[u8], indent: &str) -> String {
-    let mut out = String::new();
-    for (row, chunk) in data.chunks(16).enumerate() {
-        out.push_str(&format!("{indent}{:>4}  {}\n", row * 16, hex(chunk)));
-    }
-    out
-}
-
-/// 一行字段：偏移区间 + 可读值。
+/// 一行字段：偏移区间 + 字段名 + 可读值。
 ///
 /// 偏移区间指向**解包后**数据流（偏移由 [`SnapshotRecord::stream_offset`] 等
-/// 从解码游标带出来），字节本身交给上面的 hexdump 呈现——这里再抄一遍字节
+/// 从解码游标带出来），字节本身交给上方的 hexdump 呈现——这里再抄一遍字节
 /// 只会让同一串 hex 出现两遍，改动时容易只改一处。
 ///
+/// 偏移前置：它是这一行的检索键，贴在行首比夹在字段名与数值之间好找。
+///
 /// 超过 `FIELD_WIDTH` 就把可读值折到下一行缩进对齐（而不是让它顶出右边）：
-/// 一行放不下的字段（EQ 有 9 个 float 可读值）折行后仍然读得完。
+/// 一行放不下的字段折行后仍然读得完。
 const FIELD_WIDTH: usize = 96;
 
 fn field_line(label: &str, at: usize, len: usize, readable: &str, indent: &str) -> String {
@@ -331,7 +330,7 @@ fn field_line(label: &str, at: usize, len: usize, readable: &str, indent: &str) 
     } else {
         format!("[{at}..{}]", at + len)
     };
-    let head = format!("{indent}{label:<14}{range:<12}");
+    let head = format!("{indent}{range:<12}{label:<14}");
     if head.chars().count() + readable.chars().count() <= FIELD_WIDTH {
         format!("{head}{readable}\n")
     } else {
@@ -378,13 +377,11 @@ pub fn render_snapshot(
     {
         let show_bytes = bytes == Bytes::Shown;
         if show_bytes {
-            // 两段转储的偏移基准不同：payload 是线上字节，unpacked 是解包后的。
-            // 下面 fields 的偏移一律指unpacked，故把它放在最后紧贴 fields。
-            out.push_str(&format!("{indent}payload ({} bytes)\n", payload.len()));
-            out.push_str(&dump(payload, &format!("{indent}  ")));
-            out.push_str(&format!("{indent}unpacked ({} bytes)\n", data.len()));
+            // 原始 payload 已在 rx 段 hexdump 过了，这里只给解包后的流——
+            // fields 的偏移全部指向它。
+            out.push_str(&format!("{indent}unpacked\n"));
             out.push_str(&dump(&data, &format!("{indent}  ")));
-            out.push_str(&format!("{indent}fields (offsets into unpacked)\n"));
+            out.push_str(&format!("{indent}fields\n"));
         }
         // 没开字节对照时不列偏移，只给一份紧凑摘要（`show` 的常态）。
         // 偏移由调用点显式给出，不靠 label 反查——那样换个标签就静默指错字节。
