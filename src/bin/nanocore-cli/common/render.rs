@@ -327,6 +327,16 @@ pub fn render_snapshot(
             let role = protocol::CHAIN_ROLES[i].1;
             let at = r.stream_offset;
             let on = if r.enabled != 0 { "on " } else { "off" };
+            // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
+            // 时不加括号 —— 留一个位置比印个"unknown"干净。
+            let vtype = format!(
+                "type={}{}",
+                r.variant + 1,
+                match protocol::variant_name(i as u8, r.variant) {
+                    Some(n) => format!(" {n}"),
+                    None => String::new(),
+                }
+            );
             let params = r
                 .params
                 .iter()
@@ -341,11 +351,7 @@ pub fn render_snapshot(
                     &format!("{role} head"),
                     at,
                     3,
-                    &format!(
-                        "{on} type={} count={}",
-                        r.variant + 1,
-                        r.params.len()
-                    ),
+                    &format!("{on} {vtype} count={}", r.params.len()),
                     indent,
                 ));
                 out.push_str(&field_line(
@@ -359,8 +365,7 @@ pub fn render_snapshot(
                 // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
                 // 字段，不该比字段标题更深一层。
                 out.push_str(&format!(
-                    "{indent}{role:<6} {on} type={} params=[{params}]\n",
-                    r.variant + 1
+                    "{indent}{role:<6} {on} {vtype} params=[{params}]\n"
                 ));
             }
         }

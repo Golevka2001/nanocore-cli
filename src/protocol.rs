@@ -173,6 +173,25 @@ pub fn chain_role_name(index: u8) -> Option<&'static str> {
     CHAIN_ROLES.get(index as usize).map(|(_, disp)| *disp)
 }
 
+/// 某槽位当前 `variant` 字节对应的类型名。
+///
+/// 快照每条记录的第二个字节（渲染成 `type=N`）就是这个 variant，设备用它决定该
+/// 槽位套用哪套参数表。名字来自两张表：
+///
+/// * fx1 / fx2 / mod / delay / reverb / eq —— [`crate::params_data::EFFECT_TYPES`]
+///   （压缩器、Room、8-band EQ …）
+/// * amp / cab —— [`crate::models_data`] 的 38 / 30 项型号表（BogXTC1、Bog412A …）
+///
+/// 未知 ID 返回 `None`：调用方应保留原数字，而不是印一个猜出来的名字。
+pub fn variant_name(slot: u8, variant: u8) -> Option<&'static str> {
+    let block = CHAIN_ROLES.get(slot as usize)?.0;
+    match block {
+        "amp" => crate::models_data::lookup_amp(variant).map(|m| m.name),
+        "cab" => crate::models_data::lookup_cab(variant).map(|m| m.name),
+        _ => crate::params_data::effect_type_name(block, variant),
+    }
+}
+
 /// 插入该消息布局所需的固定 `0x00` 填充字节。
 fn chain_encode(order: &[u8], insert_at: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(CHAIN_LEN + 1);

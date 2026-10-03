@@ -159,3 +159,34 @@ fn eq_band_lists_match_params_json() {
         );
     }
 }
+
+/// 效果类型名表（`params.json` 的 `effect_types`）必须与内嵌表逐项一致。
+///
+/// 这张表是 `show` / `debug snapshot` 把 `type=N` 翻译成 `Compressor`、`Room`
+/// 的唯一依据。两侧漂移不会报错，只会让输出指向错误的类型名 —— 参数表也会
+/// 跟着取错（`params(block, Some(N))` 用同一个 ID）。
+#[test]
+fn effect_type_names_match_params_json() {
+    let p: Value = serde_json::from_str(PARAMS_JSON).unwrap();
+    let et = p["effect_types"].as_object().expect("effect_types map");
+    assert_eq!(
+        et.len(),
+        params_data::EFFECT_TYPES.len(),
+        "effect_types block count drifted"
+    );
+    for (block, rs_types) in params_data::EFFECT_TYPES {
+        let j = et
+            .get(*block)
+            .unwrap_or_else(|| panic!("{block}: missing from params.json effect_types"));
+        let j_rows = j.as_array().unwrap_or_else(|| panic!("{block}: not an array"));
+        assert_eq!(
+            j_rows.len(),
+            rs_types.len(),
+            "{block}: type count drifted"
+        );
+        for (row, (id, name)) in j_rows.iter().zip(rs_types.iter()) {
+            assert_eq!(row["id"].as_u64().unwrap(), *id as u64, "{block} type id");
+            assert_eq!(row["name"], *name, "{block} type {id} name");
+        }
+    }
+}

@@ -281,6 +281,63 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ]),
 ];
 
+/// `(块键, 效果类型 ID, 显示名)`，与 `data/params.json` 的 `effect_types` 镜像。
+///
+/// 快照每条记录都带一个 `variant` 字节（渲染成 `type=N`），它就是这里表的键 ——
+/// 设备用它决定该槽位用哪套参数表。没有这张表时输出只能印一个数字。
+pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
+("fx1", &[
+    (0, "Gate"),
+    (1, "Auto Gate"),
+    (2, "Gate + Compressor"),
+    (3, "Compressor"),
+]),
+("fx2", &[
+    (0, "Drive 1"),
+    (1, "Drive 2"),
+    (2, "Drive 3"),
+    (3, "Drive 4"),
+    (4, "Drive 5"),
+    (5, "Boost 1"),
+    (6, "Boost 2"),
+    (7, "Boost 3"),
+    (8, "Pitch"),
+    (9, "Envelope Wah"),
+    (10, "Wah"),
+]),
+("mod", &[
+    (0, "Chorus"),
+    (1, "Phaser"),
+    (2, "Flanger"),
+    (3, "Tremolo"),
+    (4, "Vibrato"),
+]),
+("delay", &[
+    (0, "BBD"),
+    (1, "Digital"),
+    (2, "Duck"),
+    (3, "Ice"),
+    (4, "Reverse"),
+    (5, "LoFi"),
+    (6, "Smear"),
+    (7, "Mod Delay"),
+]),
+("reverb", &[
+    (0, "Room"),
+    (1, "Plate"),
+    (2, "Hall"),
+    (3, "Concert"),
+    (4, "Shimmer"),
+    (5, "Cloud"),
+    (6, "Spring"),
+]),
+("eq", &[
+    (0, "3-band EQ"),
+    (1, "6-band EQ"),
+    (2, "8-band EQ"),
+]),
+];
+
 /// 参数列表不依赖效果类型的块的 `(块键, b5, 参数列表)`。
 pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 ("amp", 2, &[
@@ -327,6 +384,18 @@ pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
 /// 块键（`fx1`、`fx2`、`amp`、`cab`、`delay`、`mod`、`reverb`、`eq`）对应的 `b5`。
 pub fn block_slot(key: &str) -> Option<u8> {
     BLOCKS.iter().find(|(k, _)| *k == key).map(|(_, s)| *s)
+}
+
+/// 某块某效果类型的显示名。
+///
+/// amp 与 cab 不在此表：它们的 `variant` 是 38 / 30 项型号表的槽位号，
+/// 名字在 [`crate::models_data`]。
+pub fn effect_type_name(block: &str, type_id: u8) -> Option<&'static str> {
+    EFFECT_TYPES
+        .iter()
+        .find(|(k, _)| *k == block)
+        .and_then(|(_, ts)| ts.iter().find(|(t, _)| *t == type_id))
+        .map(|(_, n)| *n)
 }
 
 /// 某 EQ 类型的频段参数。
