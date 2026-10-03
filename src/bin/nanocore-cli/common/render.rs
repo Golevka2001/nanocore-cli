@@ -133,15 +133,24 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
-        println!("{inner}presets ({}):", entries.len());
+        // 与快照同构：偏移前置，逐条对应上方 hexdump。`0x40` 的载荷是明文
+        // ASCII（无需解包），所以偏移就是线上偏移，与上面那段 hexdump 同基准。
+        divider();
+        println!("{indent}slots ({}):", entries.len());
         for e in &entries {
-            println!(
-                "{inner}  #{:<2} {:<12} {}",
-                e.slot,
-                e.name,
-                if e.named { "" } else { "(empty)" }
-            );
+            // 记录长度 = 槽位 1 字节 + 标记字节 + 8 字符（含跳过的 NUL），
+            // 由下一条的偏移反推，最后一条按载荷末尾算。
+            let len = entries
+                .iter()
+                .find(|x| x.offset > e.offset)
+                .map_or(frame.payload.len() - e.offset, |x| x.offset - e.offset);
+            let mut name = e.name.clone();
+            if !e.named {
+                name = "(empty)".to_string();
+            }
+            print!("{}", field_line("slot", e.offset, len, &name, indent));
         }
+        divider();
     }
     if let Some(order) = protocol::parse_chain_order(&frame.payload) {
         println!("{inner}chainOrder: {order:?}");

@@ -447,6 +447,12 @@ pub struct PresetEntry {
     pub slot: u8,
     pub named: bool,
     pub name: String,
+    /// 本条记录**槽位索引字节**在载荷中的偏移。
+    ///
+    /// 渲染层用它把 `slots (N):` 里的每一行与上方 hexdump 原位对齐——和
+    /// [`SnapshotRecord::stream_offset`] 同一用途。`0x40` 不需要解包，所以
+    /// 这里就是线上载荷的偏移。
+    pub offset: usize,
 }
 
 /// 存储的预设名称的字符数。名称以空格填充到此宽度，并且以在分片之间插入 `0x00` 字节的方式存储。
@@ -457,7 +463,8 @@ pub const PRESET_NAME_CHARS: usize = 8;
 /// 布局 —— **端到端验证过**，不是推断：
 ///
 /// ```text
-/// [0..7]  header: 00 00 52 00 00 BASE COUNT      (BASE = first slot, COUNT = 8)
+/// [0..7]  header: 00 00 <10*COUNT+2> 00 00 BASE COUNT
+///         （第三个字节随分组大小变化，不是常量：COUNT=1..8 实测 12/22/…/82）
 /// then COUNT records:
 ///   [slot: 1 byte, MUST equal BASE + k]
 ///   [1+ bytes < 0x20   -- the first one is 0x01 when the slot holds a name]
@@ -482,8 +489,7 @@ pub const PRESET_NAME_CHARS: usize = 8;
 /// 这 1-2 个字节的确切字节级含义尚未完全解释清楚，
 /// 因此 `named` 应当被理解为"设备将此槽位标记为持有名称"，而不是一个有文档定义的标志值。
 pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
-    // 头部恰好 7 字节，且以 `0x52` 体标记开头。
-    if payload.len() < 8 || payload[2] != 0x52 {
+    if payload.len() < 8 {
         return None;
     }
     let base = payload[5];
@@ -491,11 +497,19 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
     if count == 0 || count > 64 {
         return None;
     }
+    // `payload[2]` = `10 * count + 2` —— 头部 2 字节 + 每条 10 字节（实测
+    // count=1..8 逐一核对：12/22/32/…/82）。它不是体标记：先前这里硬编码成
+    // `0x52`，于是只有 count=8 能解析，`preset list` 因为固定请求 8 槽一组
+    // 才没暴露出来，而 `debug presets 1 4` 之类会静默地什么都不打印。
+    if payload[2] as usize != 10 * count + 2 {
+        return None;
+    }
 
     let mut out = Vec::with_capacity(count);
     let mut i = 7usize;
     for k in 0..count {
         let slot = base.wrapping_add(k as u8);
+        let offset = i;
         // 1. 槽位索引，与预期位置交叉校验。
         if i >= payload.len() || payload[i] != slot {
             return None;
@@ -528,7 +542,7 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
         if name.len() != PRESET_NAME_CHARS {
             return None;
         }
-        out.push(PresetEntry { slot, named, name: name.trim_end().to_string() });
+        out.push(PresetEntry { slot, named, name: name.trim_end().to_string(), offset });
 
         // 4. 至多一个尾随字节 < 0x20，但绝不可能是下一个槽位索引。
         //    （被标记的槽位可能持有 < 0x20 的值，所以应与预期的下一个
@@ -1117,8 +1131,38 @@ mod tests {
         bad[7] = 0x21; // 首个槽位字节不再等于 BASE
         assert!(parse_preset_list(&bad).is_none());
         assert!(parse_preset_list(&[]).is_none());
-        // 不是 `0x40` 体标记。
-        assert!(parse_preset_list(&[0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x08]).is_none());
+        // `payload[2]` 必须是 `10 * count + 2`。
+        let mut bad = PRESET_LIST_BASE32.to_vec();
+        bad[2] = 0x52; // = 10*8+2，改成别的值
+        bad[2] = 0x53;
+        assert!(parse_preset_list(&bad).is_none());
+    }
+
+    /// 分组大小不是 8 时也要能解析。
+    ///
+    /// `payload[2]` 曾被当成常量 `0x52`（恰好是 `10*8+2`），于是只有整组
+    /// 8 槽位能解；`preset list` 一直固定请求 8 槽一组把这个缺陷盖住了。
+    /// 实测 count=1..8 时 `payload[2]` 依次为 0x0c/0x16/0x20/0x2a/0x34/0x3e/
+    /// 0x48/0x52。
+    #[test]
+    fn preset_list_parses_groups_of_any_size() {
+        for count in 1..=8usize {
+            let mut p = vec![0x00, 0x00, (10 * count + 2) as u8, 0x00, 0x00, 0x00, count as u8];
+            for k in 0..count {
+                p.push(k as u8); // 槽位索引 = BASE + k
+                p.push(0x01); // 标记字节：< 0x20 且非零 -> named
+                p.extend_from_slice(format!("n{k}      ").as_bytes());
+            }
+            let got = parse_preset_list(&p).expect("grouped parse");
+            assert_eq!(got.len(), count);
+            for (k, e) in got.iter().enumerate() {
+                assert_eq!(e.slot, k as u8);
+                assert_eq!(e.name, format!("n{k}"));
+                // 每条 10 字节：槽位 1 + 标记 1 + 名字 8（含跳过的 NUL 时更长，
+                // 但上面构造的名字无 NUL，正好 10）。
+                assert_eq!(e.offset, 7 + k * 10, "第 {k} 条的偏移应逐条推进");
+            }
+        }
     }
 
     // ─── 链序 ────────────────────────
