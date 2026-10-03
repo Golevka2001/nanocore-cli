@@ -1351,6 +1351,46 @@ mod tests {
         assert_eq!(s.records.len(), CHAIN_LEN);
     }
 
+    /// `stream_offset` 必须能真的定位到字节，而不只是「看起来像个偏移」。
+    ///
+    /// 渲染层（`debug snapshot --decode`）拿这些偏移去切字节、显示每个字段的
+    /// 原始字节；一旦偏移与实际布局错位，那张表就会指着错误的字节展示，
+    /// 而且**不会报错**——所以在这里钉死。
+    #[test]
+    fn record_offsets_address_the_bytes_they_claim() {
+        for hex in [SNAP_CLNARP, SNAP_AMBIENT, SNAP_PSYCH] {
+            let p = unhex(hex);
+            let s = decode_snapshot_state(&p).expect("decode");
+            let data = unpack_snapshot_stream(&p).expect("unpack");
+            assert_eq!(s.stream_len, data.len());
+
+            // 前导 4 字节之后，8 条记录首尾相接、不重叠、不越界。
+            let mut cursor = 4;
+            for (i, r) in s.records.iter().enumerate() {
+                assert_eq!(r.stream_offset, cursor, "record {i} 起始偏移不连续");
+                // 记录头的第 3 字节就是参数个数 —— 偏移对了才会等于 params.len()。
+                assert_eq!(
+                    data[r.stream_offset + 2] as usize,
+                    r.params.len(),
+                    "record {i} 的 count 字节与参数个数不符"
+                );
+                cursor = r.stream_offset + 3 + r.params.len() * 4;
+            }
+            // 记录之后紧跟链计数，链序再之后到流尾。
+            assert_eq!(s.chain_count_offset, cursor, "链计数偏移与记录尾部不接续");
+            assert_eq!(data[s.chain_count_offset] as usize, CHAIN_LEN);
+            if let Some(order) = &s.chain {
+                let at = s.chain_count_offset + 1;
+                assert_eq!(
+                    &data[at..at + order.len()],
+                    order.as_slice(),
+                    "该偏移处的字节与解出的链序不符"
+                );
+                assert_eq!(at + order.len(), data.len(), "链序之后还有未解释的字节");
+            }
+        }
+    }
+
     #[test]
     fn chain_from_stream_rejects_bad_tails() {
         let perm = [0u8, 1, 2, 3, 4, 5, 6, 7];
