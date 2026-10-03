@@ -173,8 +173,12 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     {
         // 与快照同构：偏移前置，逐条对应上方 hexdump。`0x40` 的载荷是明文
         // ASCII（无需解包），所以偏移就是线上偏移，与上面那段 hexdump 同基准。
+        // 标题给出槽位范围——每行只印偏移和名字，槽位号在载荷里，读者要自己对
+        // 照才知道这组是第几到第几。
+        // 槽位号线上 0 起始，显示时 1 起始（与 `preset list` 一致），两端都要 +1。
+        let last = entries.last().expect("count > 0 已由解析保证").slot + 1;
         divider();
-        println!("{indent}slots ({}):", entries.len());
+        println!("{indent}slots (#{}-#{last}):", entries[0].slot + 1);
         for e in &entries {
             // 记录长度 = 槽位 1 字节 + 标记字节 + 8 字符（含跳过的 NUL），
             // 由下一条的偏移反推，最后一条按载荷末尾算。
