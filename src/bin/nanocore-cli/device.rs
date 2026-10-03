@@ -91,9 +91,12 @@ pub fn cmd_show(
     if !no_settings
         && let Ok(st) = dev.read_settings()
     {
-        // 空行分节：快照与设置页是两回事（0x63 vs 0x65），边界要看得出来。
-        // 标题与字段都顶格，与 `input`/`output` 那一列同起点。
-        println!("\nsettings:");
+        // 快照（0x63）与设置页（0x65）来自分处不同的查询，靠横线而不是空行
+        // 标出边界 —— 两节的字段名都是「名字 = 值」，空行分不开哪个是哪来的。
+        // 与端口回显之后那条线同宽同形，那条分的是「进程噪声 vs 正文」，这条
+        // 分的是「正文的两节」。
+        crate::common::divider();
+        println!("settings:");
         println!("{}", crate::settings::render_settings(&st, "  "));
     }
     Ok(())
