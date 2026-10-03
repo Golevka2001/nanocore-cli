@@ -700,10 +700,19 @@ fn chain_order_from_stream(tail: &[u8]) -> Option<Vec<u8>> {
 /// 字节因掩码吞位而整体移位。链序改由数据流尾部解出（见
 /// [`chain_order_from_stream`]），[`parse_snapshot_chain_order`] 仅作旧形态的退回。
 ///
-/// 已知语义差异（**不是**解码错误，40 组基线上与 manifest 对账得出）：
-/// * `fx1`（噪音门）/`fx2`（压缩器）的 `enabled` 在快照里是**实时 DSP 状态**
-///   （无输入信号时门/压控报告关闭），manifest 走 `0x41` 静态路径恒为 `1`；
-/// * `fx8` 的参数是运行时值，与静态出厂值系统性地不同。
+/// 已知语义差异（**不是**解码错误，40 组出厂快照与 `.npreset` manifest
+/// 逐字段对账得出，2026-10-03 复核并经真机实验修正）：
+/// * `amp`（38/40 槽位）与 `cab`（36/40）的 `enabled`：快照为 0，manifest 为 1。
+///   采集时无输入信号，这两级在快照里报告关闭。`fx1`/`fx2` 的 `enabled`
+///   实测 **40/40 全一致**——早期文档把本条差异记在这两个角色头上，属笔误。
+/// * `fx2`（压缩器）的参数：14/40 槽位与 manifest 不同，快照侧几乎恒为
+///   `[0.5, 0.5, 0.8]` / `[0.5]`，manifest 侧各槽位各异。
+///   早期归因为「快照读到运行时值而非闪存」，**已被真机实验否证**：向 `b6=1/2`
+///   写 0.456 / 0.789 后重读本快照，得 `[0.500, 0.456, 0.789]`，即快照忠实
+///   反映写入值。故差异的成因是采集时这些槽位的闪存内容本就是默认值，
+///   manifest 与快照记录的是同一事实，而非两个互相矛盾的真相。
+///
+/// 复核脚本与原始对账见 `nanocore-reverse/data/snapshots-factory40/README.md`。
 pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
     let data = unpack_snapshot_stream(payload)?;
     let mut p = 0usize;
