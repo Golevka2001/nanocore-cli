@@ -350,7 +350,7 @@ pub fn render_snapshot(
             let role = protocol::CHAIN_ROLES[i].1;
             let block = protocol::CHAIN_ROLES[i].0;
             let at = r.stream_offset;
-            // `on` / `off` 都不带尾随空格，与紧随其后的 `type=` / `count=` 之间
+            // `on` / `off` 都不带尾随空格，与紧随其后的 `[N]` / `count=` 之间
             // 由各自那段自己补 —— 这样 amp / cab 没有 type 段时不会留下多余空格。
             let on = if r.enabled != 0 { "on" } else { "off" };
             // 字节对照模式只印数字：这一节讲的是线上那一个字节叫什么，型号名
@@ -375,12 +375,14 @@ pub fn render_snapshot(
             // hexdump 原位找到，而型号名与 `variant` 都不是这帧的字节。
             let vtype = match (num, model) {
                 (None, m) => m.map_or(String::new(), |m| format!(" {m}")),
+                // 字节对照模式保留 `type=N`：这一节的方括号已经被字节偏移占满了
+                // （行首 `[4..7]`、参数行 `[7..15]`），再塞一个 `[1]` 进去没法区分。
                 (Some(n), _) if show_bytes => format!(" type={n}"),
                 (Some(n), _) => {
                     // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字
                     // 查不到时不加括号 —— 留一个位置比印个"unknown"干净。
                     format!(
-                        " type={n}{}",
+                        " [{n}]{}",
                         match protocol::variant_name(i as u8, r.variant) {
                             Some(t) => format!(" {t}"),
                             None => String::new(),
