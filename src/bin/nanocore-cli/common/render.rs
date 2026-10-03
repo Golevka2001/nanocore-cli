@@ -154,11 +154,11 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         println!("{indent}settings:");
         for (at, label, value) in [
             (6usize, "wireless", if s.wireless { "on" } else { "off" }.to_string()),
-            (7, "playback", if s.playback { "on" } else { "off" }.to_string()),
+            (7, "loopback", if s.loopback { "on" } else { "off" }.to_string()),
             (8, "input gain", format!("{} dB", s.input_gain_db)),
-            (9, "usb volume", s.usb_volume.to_string()),
-            (10, "bt volume", s.bt_volume.to_string()),
-            (12, "input channel", s.input_channel.to_string()),
+            (9, "usb volume", format!("{}%", s.usb_volume)),
+            (10, "bt volume", format!("{}%", s.bt_volume)),
+            (12, "midi channel", protocol::midi_channel_label(s.midi_channel)),
         ] {
             print!("{}", field_line(label, at, 1, &value, indent));
         }

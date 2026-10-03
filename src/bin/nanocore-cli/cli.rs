@@ -360,12 +360,29 @@ pub enum ChainCmd {
     Show,
 }
 
-/// 变体声明顺序 = `--help` 显示顺序：先总览，再按「音量 → 开关 → 增益 →
-/// 通道」——音量是最常调的，所以排在最前。
+/// 变体声明顺序 = 官方手册「全局设置界面」的菜单顺序，`settings show` 的输出
+/// 与之一致 —— 两处顺序不同会让「输出的第 N 行」对不上「--help 的第 N 项」。
 #[derive(Subcommand, Debug)]
 pub enum SettingsCmd {
     /// Show all settings items (0x65 snapshot)
     Show,
+    /// Turn wireless on or off
+    Wireless {
+        /// `on` or `off`
+        #[arg(value_name = "on|off")]
+        state: String,
+    },
+    /// Turn loopback on or off (mix external audio into the recorded output)
+    Loopback {
+        /// `on` or `off`
+        #[arg(value_name = "on|off")]
+        state: String,
+    },
+    /// Set the input gain (-20 to +20 dB)
+    InputGain {
+        /// Gain value, e.g. `-3` or `0`
+        db: i8,
+    },
     /// Set the USB output volume (0–100)
     UsbVolume {
         #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
@@ -376,27 +393,10 @@ pub enum SettingsCmd {
         #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
         percent: u8,
     },
-    /// Turn wireless on or off
-    Wireless {
-        /// `on` or `off`
-        #[arg(value_name = "on|off")]
-        state: String,
-    },
-    /// Turn playback on or off
-    Playback {
-        /// `on` or `off`
-        #[arg(value_name = "on|off")]
-        state: String,
-    },
-    /// Set the input gain (dB, may be negative; the positive path is untested on hardware)
-    InputGain {
-        /// Gain value, e.g. `-3` or `0`
-        db: i8,
-    },
-    /// Set the input channel (all = every channel, or 1-16)
-    InputChannel {
-        /// `all` or 1-16
-        #[arg(value_name = "all|1-16")]
+    /// Set the MIDI channel (omni = all channels, or 1-16)
+    MidiChannel {
+        /// `omni` or 1-16
+        #[arg(value_name = "omni|1-16")]
         channel: String,
     },
 }

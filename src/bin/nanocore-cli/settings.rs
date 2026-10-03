@@ -37,10 +37,10 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
                 format!("wireless: {} -> {}", s.wireless, value != 0)
             })
         }
-        SettingsCmd::Playback { state } => {
+        SettingsCmd::Loopback { state } => {
             let value = parse_on_off(&state)?;
             set_and_verify(conn, setting::PLAYBACK, value, |s| {
-                format!("playback: {} -> {}", s.playback, value != 0)
+                format!("loopback: {} -> {}", s.loopback, value != 0)
             })
         }
         SettingsCmd::InputGain { db } => {
@@ -61,22 +61,23 @@ pub fn cmd_settings(cmd: SettingsCmd, conn: &Conn) -> Result<(), Failure> {
                 )))
             }
         }
-        SettingsCmd::InputChannel { channel } => {
+        SettingsCmd::MidiChannel { channel } => {
             let value = parse_channel(&channel)?;
             set_and_verify(conn, setting::INPUT_CHANNEL, value, |s| {
                 format!(
-                    "input channel: {} -> {}",
-                    channel_label(s.input_channel),
-                    channel_label(value)
+                    "midi channel: {} -> {}",
+                    nanocore::protocol::midi_channel_label(s.midi_channel),
+                    nanocore::protocol::midi_channel_label(value)
                 )
             })
         }
     }
 }
 
-/// 打印顺序与 `SettingsCmd` 的变体顺序一致：音量 → 开关 → 增益 → 通道。
+/// 打印顺序 = 官方手册「全局设置界面」的菜单顺序。
 fn print_settings(s: &nanocore::protocol::DeviceSettings) {
-    print!("{}", render_settings(s, ""));
+    // 末行也要换行：否则紧跟其后的 shell 提示符会粘在值后面。
+    println!("{}", render_settings(s, "").trim_end_matches('\n'));
 }
 
 /// 把 `0x65` 设置快照渲染为多行可读文本。
@@ -85,18 +86,18 @@ fn print_settings(s: &nanocore::protocol::DeviceSettings) {
 /// 那一段用两格缩进以与 `chain` / `preset` 等行对齐。
 pub fn render_settings(s: &nanocore::protocol::DeviceSettings, indent: &str) -> String {
     format!(
-        "{indent}usb volume:      {}\n\
-         {indent}bt volume:       {}\n\
-         {indent}wireless:        {}\n\
-         {indent}playback:        {}\n\
+        "{indent}wireless:        {}\n\
+         {indent}loopback:        {}\n\
          {indent}input gain:      {} dB\n\
-         {indent}input channel:   {}",
+         {indent}usb volume:      {}%\n\
+         {indent}bt volume:       {}%\n\
+         {indent}midi channel:    {}",
+        on_off(s.wireless),
+        on_off(s.loopback),
+        s.input_gain_db,
         s.usb_volume,
         s.bt_volume,
-        on_off(s.wireless),
-        on_off(s.playback),
-        s.input_gain_db,
-        channel_label(s.input_channel),
+        nanocore::protocol::midi_channel_label(s.midi_channel),
     )
 }
 
@@ -126,10 +127,10 @@ fn set_and_verify(
 fn setting_value(field: u8, s: &nanocore::protocol::DeviceSettings) -> u8 {
     match field {
         setting::WIRELESS => s.wireless as u8,
-        setting::PLAYBACK => s.playback as u8,
+        setting::PLAYBACK => s.loopback as u8,
         setting::USB_VOLUME => s.usb_volume,
         setting::BT_VOLUME => s.bt_volume,
-        setting::INPUT_CHANNEL => s.input_channel,
+        setting::INPUT_CHANNEL => s.midi_channel,
         _ => 0,
     }
 }
@@ -143,12 +144,12 @@ fn parse_on_off(s: &str) -> Result<u8, Failure> {
 }
 
 fn parse_channel(s: &str) -> Result<u8, Failure> {
-    if s == "all" {
+    if s == "omni" {
         return Ok(0);
     }
     match s.parse::<u8>() {
         Ok(v @ 1..=16) => Ok(v),
-        _ => Err(Failure::error(format!("expected all|1-16, got {s:?}"))),
+        _ => Err(Failure::error(format!("expected omni|1-16, got {s:?}"))),
     }
 }
 
@@ -157,13 +158,5 @@ fn on_off(v: bool) -> &'static str {
         "on"
     } else {
         "off"
-    }
-}
-
-fn channel_label(v: u8) -> String {
-    if v == 0 {
-        "all".into()
-    } else {
-        format!("ch{v}")
     }
 }

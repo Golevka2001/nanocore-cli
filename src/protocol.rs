@@ -852,16 +852,24 @@ pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
 pub struct DeviceSettings {
     /// 无线开关。
     pub wireless: bool,
-    /// 回放开关。
-    pub playback: bool,
+    /// 回放（loopback）开关：外部音频与吉他信号混合回录。
+    pub loopback: bool,
     /// 输入增益（dB，可为负）。
     pub input_gain_db: i8,
     /// USB 音量（0-100）。
     pub usb_volume: u8,
     /// 蓝牙音量（0-100）。
     pub bt_volume: u8,
-    /// 输入通道（Ch1-Ch16 = 1-16；0 = 全通道。抓包只覆盖过 1-5，全量由作者确认）。
-    pub input_channel: u8,
+    /// MIDI 通道（0-16；0 = 全通道。写入 17 会被设备钳到 16 —— 与手册的
+    /// `MIDI Channel 0~16` 一致）。抓包只覆盖过 1-5，全量由手册确认。
+    pub midi_channel: u8,
+}
+
+/// MIDI 通道值的显示标签。
+///
+/// 0 = 全通道（手册：`通道设为 0 时，开启全通道模式`），1-16 = 对应通道。
+pub fn midi_channel_label(v: u8) -> String {
+    if v == 0 { "omni".into() } else { format!("ch {v}") }
 }
 
 /// 解码 `0x65` 设置快照载荷（13 B）。
@@ -869,8 +877,7 @@ pub struct DeviceSettings {
 /// 字段映射由"设置-*.mmon"系列抓包逐一确证（2026-10-01，每项设置调整前后
 /// 的快照 diff 逐下标对账）：`[3]` = 增益符号标志（负 = `0x10`）、`[6]` = 无线、
 /// `[7]` = 回放、`[8]` = 输入增益（7-bit 补码，负数 ≥ `0x40`）、`[9]` = USB 音量、
-/// `[10]` = 蓝牙音量、`[12]` = 输入通道。`[1][4][5][11]` 含义未定（[5] 恒 `01`，
-/// 疑为 MIDI 通道）。
+/// `[10]` = 蓝牙音量、`[12]` = MIDI 通道。`[1][4][5][11]` 含义未定。
 pub fn decode_settings(payload: &[u8]) -> Option<DeviceSettings> {
     if payload.len() < 13 || payload[0] != 0x00 || payload[2] != 0x07 {
         return None;
@@ -884,11 +891,11 @@ pub fn decode_settings(payload: &[u8]) -> Option<DeviceSettings> {
     };
     Some(DeviceSettings {
         wireless: payload[6] != 0x00,
-        playback: payload[7] != 0x00,
+        loopback: payload[7] != 0x00,
         input_gain_db,
         usb_volume: payload[9],
         bt_volume: payload[10],
-        input_channel: payload[12],
+        midi_channel: payload[12],
     })
 }
 
@@ -1075,11 +1082,11 @@ mod tests {
             s,
             DeviceSettings {
                 wireless: true,
-                playback: true,
+                loopback: true,
                 input_gain_db: -1,
                 usb_volume: 85,
                 bt_volume: 100,
-                input_channel: 0
+                midi_channel: 0
             }
         );
         // 关闭无线后：[6] 00。
@@ -1094,7 +1101,7 @@ mod tests {
             0x00, 0x00, 0x07, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x55, 0x64, 0x00, 0x05,
         ])
         .expect("decode");
-        assert_eq!(s.input_channel, 5);
+        assert_eq!(s.midi_channel, 5);
     }
 
     #[test]
