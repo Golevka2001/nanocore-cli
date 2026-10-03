@@ -322,14 +322,16 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
     (6, "Smear"),
     (7, "Mod Delay"),
 ]),
+// reverb 的 id 不连续：设备在 variant 4 上不使用该槽位，7 个类型落在
+// 0,1,2,3,5,6,7。实测见 `EFFECT_TYPES` 的 data_sync 守卫注释。
 ("reverb", &[
     (0, "Room"),
     (1, "Plate"),
     (2, "Hall"),
     (3, "Concert"),
-    (4, "Shimmer"),
-    (5, "Cloud"),
-    (6, "Spring"),
+    (5, "Spring"),
+    (6, "Shimmer"),
+    (7, "Cloud"),
 ]),
 ("eq", &[
     (0, "3-band EQ"),

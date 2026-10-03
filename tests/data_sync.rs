@@ -258,3 +258,34 @@ fn parameter_ranges_match_params_json() {
     assert_eq!(r["eq_band"]["hi"].as_f64(), Some(params_data::EQ_RANGE.hi as f64));
     assert_eq!(r["eq_band"]["unit"], params_data::EQ_RANGE.unit);
 }
+
+/// reverb 的 7 个类型落在**不连续**的 id 上：0,1,2,3,5,6,7，variant 4 不使用。
+///
+/// 2026-10-03 真机实测：逐个写 CC47（reverb 的类型 CC）值 0..6，每次回读
+/// `0x63` 快照确认 `variant` 字节，`type` 依次为
+/// Room/Plate/Hall/Concert/Spring/Shimmer/Cloud。写 4 时设备落在 variant 5，
+/// 写 >=7 被钳在 variant 7（该块只有 7 个类型）。
+///
+/// 这条断言挡的是「按手册的产品顺序（room..cloud）填 0..6」——手册那栏是
+/// 产品编号（第几款），不是存储槽位。照抄会让 4 个类型名错位，且不会报错。
+#[test]
+fn reverb_effect_type_ids_are_not_contiguous() {
+    let reverb: Vec<(u8, &str)> = params_data::EFFECT_TYPES
+        .iter()
+        .find(|(k, _)| *k == "reverb")
+        .map(|(_, ts)| ts.iter().map(|(id, n)| (*id, *n)).collect())
+        .expect("reverb in EFFECT_TYPES");
+    assert_eq!(
+        reverb,
+        vec![
+            (0, "Room"),
+            (1, "Plate"),
+            (2, "Hall"),
+            (3, "Concert"),
+            (5, "Spring"),
+            (6, "Shimmer"),
+            (7, "Cloud"),
+        ],
+        "reverb 类型 id / 名称已变——先真机重测 CC47 逐值回读，别照手册顺序改"
+    );
+}
