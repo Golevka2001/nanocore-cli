@@ -437,3 +437,44 @@ fn amp_and_cab_have_no_variant_name() {
         );
     }
 }
+
+/// fx1 与 eq 的类型名用**手册效果列表的原名**，不是自创的展开写法。
+///
+/// 此前 CLI 写的是 `Gate` / `Auto Gate` / `Gate + Compressor` / `Compressor` 与
+/// `3-band EQ` / `6-band EQ` / `8-band EQ` —— 全是自创的。手册「效果列表」节
+/// 写的是 `1-4 gate` / `2-4 auto gate` / `3-4 NG-Comp` / `4-4 compressor` 与
+/// `1-3 eq3` / `2-3 eq6` / `3-3 eq8`；用户核对设备与 App 上也是 `EQ3` 与
+/// `Threshold` 这种写法（2026-10-03）。
+///
+/// 参数名同理：`fx1` 两个类型的首参在手册与设备上都叫 `Threshold`，此前 CLI
+/// 给它加了块名前缀（`Gate Threshold`），用户按设备上看到的名字找不到。
+///
+/// 这条断言的用意是给「名字从哪来」留依据 —— 此前那两条只比字符串列表，
+/// 名字被改回自创写法时测试照样绿。
+#[test]
+fn effect_type_names_come_from_the_manual() {
+    let names = |block: &str| -> Vec<(u8, &str)> {
+        params_data::EFFECT_TYPES
+            .iter()
+            .find(|(k, _)| *k == block)
+            .map(|(_, ts)| ts.iter().map(|(id, n)| (*id, *n)).collect())
+            .unwrap_or_else(|| panic!("{block} in EFFECT_TYPES"))
+    };
+    assert_eq!(
+        names("fx1"),
+        vec![(0, "gate"), (1, "auto gate"), (2, "NG-Comp"), (3, "compressor")],
+        "fx1 类型名应取手册「1-4 gate / 2-4 auto gate / 3-4 NG-Comp / 4-4 compressor」"
+    );
+    assert_eq!(
+        names("eq"),
+        vec![(0, "EQ3"), (1, "EQ6"), (2, "EQ8")],
+        "eq 类型名应取手册「1-3 eq3 / 2-3 eq6 / 3-3 eq8」，与设备/App 显示一致"
+    );
+    // 参数名不带块名前缀。
+    let fx1_gate = params_data::params("fx1", Some(0)).expect("fx1 gate");
+    assert_eq!(
+        fx1_gate.first().map(|p| p.name),
+        Some("Threshold"),
+        "fx1 gate 首参在手册与设备上都叫 Threshold"
+    );
+}

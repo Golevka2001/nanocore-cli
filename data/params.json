@@ -17,19 +17,19 @@
     "fx1": [
       {
         "id": 0,
-        "name": "Gate"
+        "name": "gate"
       },
       {
         "id": 1,
-        "name": "Auto Gate"
+        "name": "auto gate"
       },
       {
         "id": 2,
-        "name": "Gate + Compressor"
+        "name": "NG-Comp"
       },
       {
         "id": 3,
-        "name": "Compressor"
+        "name": "compressor"
       }
     ],
     "fx2": [
@@ -167,15 +167,15 @@
     "eq": [
       {
         "id": 0,
-        "name": "3-band EQ"
+        "name": "EQ3"
       },
       {
         "id": 1,
-        "name": "6-band EQ"
+        "name": "EQ6"
       },
       {
         "id": 2,
-        "name": "8-band EQ"
+        "name": "EQ8"
       }
     ]
   },

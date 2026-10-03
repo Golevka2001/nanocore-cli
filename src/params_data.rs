@@ -287,10 +287,10 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 /// 设备用它决定该槽位用哪套参数表。没有这张表时输出只能印一个数字。
 pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
 ("fx1", &[
-    (0, "Gate"),
-    (1, "Auto Gate"),
-    (2, "Gate + Compressor"),
-    (3, "Compressor"),
+    (0, "gate"),
+    (1, "auto gate"),
+    (2, "NG-Comp"),
+    (3, "compressor"),
 ]),
 // fx2 的名字是设备/App 的 pedal 名；`Drive 1-5` / `Boost 1-3` 是 CC 指南的合并
 // 命名，设备上不显示。id 与手册 `N-11` 的产品编号一致（0 起始）。
@@ -347,9 +347,9 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
     (7, "Spring"),
 ]),
 ("eq", &[
-    (0, "3-band EQ"),
-    (1, "6-band EQ"),
-    (2, "8-band EQ"),
+    (0, "EQ3"),
+    (1, "EQ6"),
+    (2, "EQ8"),
 ]),
 ];
 
@@ -873,7 +873,7 @@ mod tests {
         assert_eq!(
             eq_bands(0).unwrap().last().unwrap().name,
             "Level",
-            "3 段 EQ 的第 4 个参数是 Level（写 b6=3 会被接受）"
+            "EQ3 的第 4 个参数是 Level（写 b6=3 会被接受）"
         );
         assert!(eq_bands(9).is_none());
     }

@@ -177,7 +177,7 @@ pub fn chain_role_name(index: u8) -> Option<&'static str> {
 ///
 /// 快照每条记录的第二个字节（渲染成 `type=N`）就是这个 variant，设备用它决定该
 /// 槽位套用哪套参数表。名字来自 [`crate::params_data::EFFECT_TYPES`]
-/// （压缩器、Room、8-band EQ …）。
+/// （压缩器、Room、EQ8 …）。
 ///
 /// **amp / cab 不在此列**：它们的 `variant` 恒为 0 —— 40 个出厂预设无一例外，
 /// 写 `model 1 / 5 / 25 / 34` 快照也不变。amp / cab 的型号存在别处（`0x36` 应答
