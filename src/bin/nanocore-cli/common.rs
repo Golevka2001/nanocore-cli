@@ -255,6 +255,9 @@ pub fn open_device(conn: &Conn) -> Result<Dev, Failure> {
             o + 1,
             outs.get(o).map(|p| p.1.as_str()).unwrap_or("?")
         );
+        // 端口回显与随后的正文是两件事，这里划开——放在 open_device 是因为
+        // 每个命令都要经过它，无需逐个分支重复。走 stderr 与回显同流。
+        divider_err();
     }
     let transport = MidiTransport::open(i, o).map_err(|e| e.to_string())?;
     let mut dev = Nanocore::with_config(transport, retry_config(conn));

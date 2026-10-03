@@ -9,7 +9,7 @@ use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, ProtocolKnobs};
 use crate::common::{
-    Bytes, Failure, describe, divider, divider_err, hex, open_device, parse_hex, render_snapshot,
+    Bytes, Failure, describe, divider, hex, open_device, parse_hex, render_snapshot,
     send_standard, transact, transact_reply,
 };
 use crate::probe::probe;
@@ -36,9 +36,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         }
         DebugCmd::Snapshot { decode, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
+            // 端口回显后的分节线由 open_device 统一打（见 common.rs）。
             let mut dev = open_device(conn)?;
-            // 端口回显走 stderr，分节线也走 stderr：两者同流，先后才有保证。
-            divider_err();
             let (k, p) = protocol::request_snapshot();
             let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
             if decode {
