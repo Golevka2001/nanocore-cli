@@ -340,23 +340,32 @@ pub fn render_snapshot(
             let role = protocol::CHAIN_ROLES[i].1;
             let block = protocol::CHAIN_ROLES[i].0;
             let at = r.stream_offset;
-            let on = if r.enabled != 0 { "on " } else { "off" };
+            // `on` / `off` 都不带尾随空格，与紧随其后的 `type=` / `count=` 之间
+            // 由各自那段自己补 —— 这样 amp / cab 没有 type 段时不会留下多余空格。
+            let on = if r.enabled != 0 { "on" } else { "off" };
             // 字节对照模式只印数字：这一节讲的是线上那一个字节叫什么，型号名
             // 是查表结论，交给 `show`。名字在 debug 段是噪音 —— 它不在这份 hexdump
             // 里，也不是解码出来的。
-            let vtype = if show_bytes {
-                format!("type={}", protocol::type_number(i as u8, r.variant))
-            } else {
-                // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
-                // 时不加括号 —— 留一个位置比印个"unknown"干净。
-                format!(
-                    "type={}{}",
-                    protocol::type_number(i as u8, r.variant),
-                    match protocol::variant_name(i as u8, r.variant) {
-                        Some(n) => format!(" {n}"),
-                        None => String::new(),
-                    }
-                )
+            //
+            // `type_number` 对 amp / cab 返回 None：那两个块的 variant 恒 0，
+            // 印 `type=1` 是凭空编号。此时整段留空 —— head 行只剩开关与 count。
+            let num = protocol::type_number(i as u8, r.variant);
+            // `type=N 名字` 整段；amp / cab 没有可显示的编号（见 `type_number`），
+            // 此时整段为空串。两段之间各补一个空格，段为空时就不补。
+            let vtype = match num {
+                None => String::new(),
+                Some(n) if show_bytes => format!(" type={n}"),
+                Some(n) => {
+                    // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字
+                    // 查不到时不加括号 —— 留一个位置比印个"unknown"干净。
+                    format!(
+                        " type={n}{}",
+                        match protocol::variant_name(i as u8, r.variant) {
+                            Some(t) => format!(" {t}"),
+                            None => String::new(),
+                        }
+                    )
+                }
             };
             // 归一化值是线上真正的字节；带量程的那个是设备/App 上显示的数字。
             // 手册没给量程的参数只印归一化值，不猜。
@@ -430,7 +439,7 @@ pub fn render_snapshot(
                     &format!("{role} head"),
                     at,
                     3,
-                    &format!("{on} {vtype} count={}", r.params.len()),
+                    &format!("{on}{vtype} count={}", r.params.len()),
                     indent,
                 ));
                 // 字节模式的值必须与偏移同行 —— 那一段的用途是对照上面转储里的
@@ -451,7 +460,7 @@ pub fn render_snapshot(
             } else {
                 // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
                 // 字段，不该比字段标题更深一层。
-                out.push_str(&format!("{indent}{role:<6} {on} {vtype}{params}\n"));
+                out.push_str(&format!("{indent}{role:<6} {on}{vtype}{params}\n"));
             }
         }
         if show_bytes {

@@ -427,14 +427,18 @@ pub fn effect_type_name(block: &str, type_id: u8) -> Option<&'static str> {
 /// `variant` 是另一套编号，两者对末三项错开 —— variant 7 = spring，在设备上
 /// 是第 5 个类型（`e6d0ddc` 记录了这次实测）。
 ///
-/// 所以不能一律 `variant + 1`，也不能反过来一律查表：只有 reverb 需要单独映射。
-pub fn type_number(block: &str, variant: u8) -> u8 {
-    if block == "reverb" {
-        // 手册产品顺序 room..cloud 的位置（1 起始）。
-        const PRODUCT_POS: [u8; 8] = [0, 1, 2, 3, 4, 6, 7, 5];
-        PRODUCT_POS.get(variant as usize).copied().unwrap_or(variant + 1)
-    } else {
-        variant + 1
+/// **amp / cab 返回 `None`**：它们的 `variant` 恒为 0（40 组出厂快照与
+/// 40 组预设 manifest 皆然），型号存在各自 30 项的表里、当前值不在 `0x63`
+/// 快照中。`variant + 1` 会印出 `type=1` 这个凭空编号。
+pub fn type_number(block: &str, variant: u8) -> Option<u8> {
+    match block {
+        "amp" | "cab" => None,
+        "reverb" => {
+            // 手册产品顺序 room..cloud 的位置（1 起始）。
+            const PRODUCT_POS: [u8; 8] = [0, 1, 2, 3, 4, 6, 7, 5];
+            Some(PRODUCT_POS.get(variant as usize).copied().unwrap_or(variant + 1))
+        }
+        _ => Some(variant + 1),
     }
 }
 

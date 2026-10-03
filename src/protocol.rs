@@ -195,11 +195,15 @@ pub fn variant_name(slot: u8, variant: u8) -> Option<&'static str> {
 /// 多数块它就是 `variant + 1`；**reverb 不同** —— 手册 REV 那栏是产品顺序，
 /// 与存储用的 `variant` 对末三项错开（variant 7 = spring，是设备上的第 5 个
 /// 类型）。委托给 [`crate::params_data::type_number`]，不在渲染层写死 `+1`。
-pub fn type_number(slot: u8, variant: u8) -> u8 {
-    match CHAIN_ROLES.get(slot as usize) {
-        Some((block, _)) => crate::params_data::type_number(block, variant),
-        None => variant + 1,
-    }
+///
+/// **amp / cab 返回 `None`**：它们的 `variant` 恒为 0，`variant + 1` 得到的
+/// `type=1` 是个凭空来的编号 —— 设备上 AMP 走的是 30 项 amp 型号表、CAB 走
+/// 30 项 IR 表，两者的当前型号都不在 `0x63` 快照里（2026-10-03 实测：写
+/// `CC44` 在两个 cab 型号间切换，快照无任何字节变化）。宁可整段不印，也不
+/// 印一个会让人以为「AMP 型号 1」的数字。
+pub fn type_number(slot: u8, variant: u8) -> Option<u8> {
+    let (block, _) = CHAIN_ROLES.get(slot as usize)?;
+    crate::params_data::type_number(block, variant)
 }
 
 /// 插入该消息布局所需的固定 `0x00` 填充字节。
