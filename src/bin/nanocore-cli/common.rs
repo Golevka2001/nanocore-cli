@@ -306,6 +306,52 @@ pub fn render_chain(order: &[u8]) -> String {
         .join(" ")
 }
 
+/// 每行 16 字节的十六进制转储，左侧标出该行首字节在流内的偏移。
+///
+/// 转储的是**解包后**的数据流（[`protocol::unpack_snapshot_stream`]），不是线上
+/// 载荷：线上每 8 字节有一个掩码字节被吞，同一个字段的字节会被掩码位劈开、
+/// 跨组不连续（187 字节的载荷里 66 个字段有 13 个跨组）。解包后这些都变回连续，
+/// 可读字段才能与字节逐段对齐。
+fn dump_stream(data: &[u8], indent: &str) -> String {
+    let mut out = String::new();
+    for (row, chunk) in data.chunks(16).enumerate() {
+        out.push_str(&format!("{indent}{:>4}  {}\n", row * 16, hex(chunk)));
+    }
+    out
+}
+
+/// 一行里同时给出「字段名 + 原始字节 + 可读值」，用于逐字段对照。
+///
+/// 字节取自解包后的流（`slice` 由调用方按 [`SnapshotRecord::stream_offset`] 等
+/// 偏移切出），所以每个数字都能在上面的转储里原位找到。
+///
+/// 超过 `WIDTH` 就把可读值折到下一行缩进对齐（而不是让它顶出右边）——
+/// 7 个参数的记录光字节就 28 字符，跟在后面会把这个字段的可读值挤出屏幕。
+const FIELD_WIDTH: usize = 96;
+
+fn field_line(label: &str, bytes: &[u8], readable: &str, indent: &str) -> String {
+    let pad = " ".repeat(14);
+    let head = format!("{indent}{label:<14}{}", hex(bytes));
+    if head.chars().count() + readable.chars().count() <= FIELD_WIDTH {
+        format!("{head} {readable}\n")
+    } else {
+        format!("{head}\n{indent}{pad}{readable}\n")
+    }
+}
+
+/// 快照的呈现粒度。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bytes {
+    /// 只给可读字段（`show` 用；日常看状态，不必带字节）。
+    None,
+    /// 额外给解包后的字节流转储 + 每字段的原始字节（`debug snapshot --decode` 用）。
+    ///
+    /// 转储的是**解包后**的流：线上载荷每 8 字节有一个掩码字节被吞，同一个
+    /// float 的 4 个字节会被掩码位劈开、跨组不连续（187 字节载荷的 66 个字段里
+    /// 13 个跨组）。解包后字段恢复连续，才谈得上「按偏移逐字段核对」。
+    Shown,
+}
+
 /// 把一条 `0x63` 快照载荷渲染为多行可读文本（`show` 与 `debug snapshot --decode` 共用）。
 ///
 /// 输出**只写字节本身能支撑的内容**：每个字段都是从载荷里某个确定偏移解出来的，
@@ -315,7 +361,12 @@ pub fn render_chain(order: &[u8]) -> String {
 /// `indent` 是每行的前导空白——`show` 有两格缩进，`debug` 下的调用方用空串。
 /// `name` 是当前预设名（`None` 表示未查到或该槽位未命名），显示在编号之后。
 /// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
-pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> String {
+pub fn render_snapshot(
+    payload: &[u8],
+    indent: &str,
+    name: Option<&str>,
+    bytes: Bytes,
+) -> String {
     let mut out = String::new();
     let decoded = protocol::decode_snapshot_state(payload);
     // 链序优先取数据流解码（对所有长度都成立），旧的尾部锚点只作退回。
@@ -323,55 +374,122 @@ pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> Stri
         .as_ref()
         .and_then(|st| st.chain.clone())
         .or_else(|| protocol::parse_snapshot_chain_order(payload));
+    // 字段一律按**载荷里的真实顺序**输出（preset → volume → 8 条记录 → 链），
+    // 不按「链序更适合先说」重排：开了字节对照后，这一节的价值就是每个字段都能
+    // 在上面的转储里原位找到，重排会让对照失效。
+    if let Some(state) = &decoded
+        && let Some(data) = protocol::unpack_snapshot_stream(payload)
+    {
+        let show_bytes = bytes == Bytes::Shown;
+        if show_bytes {
+            out.push_str(&format!(
+                "{indent}unpacked stream ({} bytes, mask bytes dropped):\n",
+                data.len()
+            ));
+            out.push_str(&dump_stream(&data, &format!("{indent}  ")));
+            out.push('\n');
+            out.push_str(&format!("{indent}fields (same order as the stream above):\n"));
+        }
+        // 没开字节对照时不逐字段列偏移，只给一份紧凑摘要（`show` 的常态）。
+        // 偏移由调用点显式给出，不靠 label 反查——那样换个标签就静默指错字节。
+        let head = |label: &str, at: usize, readable: String| {
+            if show_bytes {
+                field_line(label, &data[at..at + 1], &readable, indent)
+            } else {
+                format!("{indent}{label}: {readable}\n")
+            }
+        };
+        out.push_str(&head(
+            "preset index",
+            state.preset_index_offset,
+            format!(
+                "#{}{}",
+                state.preset_index + 1,
+                match name {
+                    Some(n) => format!(" {n}"),
+                    None => String::new(),
+                }
+            ),
+        ));
+        out.push_str(&head(
+            "preset volume",
+            state.preset_volume_offset,
+            state.preset_volume.to_string(),
+        ));
+        for (i, r) in state.records.iter().enumerate() {
+            // 与 `chain:` 行同一套名字（设备显示名），不是 CLI 短名——
+            // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
+            let role = protocol::CHAIN_ROLES[i].1;
+            let at = r.stream_offset;
+            let body = &data[at + 3..at + 3 + r.params.len() * 4];
+            let on = if r.enabled != 0 { "on " } else { "off" };
+            let params = r
+                .params
+                .iter()
+                .map(|p| format!("{p:.3}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if show_bytes {
+                out.push_str(&field_line(
+                    &format!("{role} head"),
+                    &data[at..at + 3],
+                    &format!("{on} type={} ({} params)", r.variant + 1, r.params.len()),
+                    indent,
+                ));
+                out.push_str(&field_line(
+                    &format!("{role} params"),
+                    body,
+                    &format!("[{params}]"),
+                    indent,
+                ));
+            } else {
+                out.push_str(&format!(
+                    "{indent}  {role:<5} {on} type={} params=[{params}]\n",
+                    r.variant + 1
+                ));
+            }
+        }
+        if show_bytes {
+            let at = state.chain_count_offset;
+            out.push_str(&field_line(
+                "chain count",
+                &data[at..at + 1],
+                &format!("{} slots", protocol::CHAIN_LEN),
+                indent,
+            ));
+        }
+        if let Some(order) = &chain {
+            if show_bytes {
+                let at = state.chain_count_offset + 1;
+                out.push_str(&field_line(
+                    "chain order",
+                    &data[at..at + order.len()],
+                    &render_chain(order),
+                    indent,
+                ));
+            } else {
+                out.push_str(&format!("{indent}chain:         {}\n", render_chain(order)));
+            }
+        }
+        return out;
+    }
+
+    // ── 无法结构化解码：退回经验字段（BLE 抓包形态）──
     match chain {
         Some(order) => out.push_str(&format!("{indent}chain:         {}\n", render_chain(&order))),
         None => out.push_str(&format!(
             "{indent}chain:         (not decodable from this snapshot)\n"
         )),
     }
-    match decoded {
-        Some(state) => {
-            out.push_str(&format!(
-                "{indent}preset:        #{}{}\n",
-                state.preset_index + 1,
-                match name {
-                    Some(n) => format!(" {n}"),
-                    None => String::new(),
-                }
-            ));
-            out.push_str(&format!(
-                "{indent}preset volume: {}\n",
-                state.preset_volume
-            ));
-            // 记录按角色序（= b5 槽位）排列，**不是**链上的物理顺序；
-            // 链序见上面那行（它给出角色 -> 链位的映射）。
-            out.push_str(&format!("{indent}modules:\n"));
-            for (i, r) in state.records.iter().enumerate() {
-                // 与上面 `chain:` 行同一套名字（设备显示名），不是 CLI 短名——
-                // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
-                let role = protocol::CHAIN_ROLES[i].1;
-                let params = r
-                    .params
-                    .iter()
-                    .map(|p| format!("{p:.3}"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let on = if r.enabled != 0 { "on " } else { "off" };
-                out.push_str(&format!(
-                    "{indent}  {role:<6} {on} type={} params=[{params}]\n",
-                    r.variant + 1
-                ));
-            }
-        }
-        None => {
-            // 无法结构化解码时退回经验字段。
-            if payload.len() > 6 {
-                out.push_str(&format!(
-                    "{indent}preset:        #{} (empirical — payload[6])\n",
-                    payload[6] + 1
-                ));
-            }
-        }
+    if payload.len() > 6 {
+        out.push_str(&format!(
+            "{indent}preset:        #{} (empirical — payload[6])\n",
+            payload[6] + 1
+        ));
     }
+    out.push_str(&format!(
+        "{indent}(no structural decode for this payload; {} bytes, layout unknown)\n",
+        payload.len()
+    ));
     out
 }

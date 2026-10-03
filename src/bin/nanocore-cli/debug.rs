@@ -9,7 +9,7 @@ use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, ProtocolKnobs};
 use crate::common::{
-    Failure, describe, divider, divider_err, hex, open_device, parse_hex, render_snapshot,
+    Bytes, Failure, describe, divider, divider_err, hex, open_device, parse_hex, render_snapshot,
     send_standard, transact, transact_reply,
 };
 use crate::probe::probe;
@@ -50,7 +50,10 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 // 纯协议层视角：不多发 `0x40` 去查名字。`show` 才查。
                 // 解码是独立于收发帧的另一层含义，同样划开。
                 divider();
-                print!("{}", render_snapshot(&reply.payload, "", None));
+                print!(
+                    "{}",
+                    render_snapshot(&reply.payload, "", None, Bytes::Shown)
+                );
             }
             Ok(())
         }

@@ -39,7 +39,12 @@ pub fn cmd_show(no_name: bool, no_settings: bool, conn: &Conn) -> Result<(), Fai
     // 顶格说明一句反而多余。各节自带标题，读者扫一眼就知道边界在哪。
     print!(
         "{}",
-        crate::common::render_snapshot(&s.payload, "  ", name.as_deref())
+        crate::common::render_snapshot(
+            &s.payload,
+            "  ",
+            name.as_deref(),
+            crate::common::Bytes::None
+        )
     );
     // 同理：设置页读不到就整段略过，不让 `show` 因此失败。
     if !no_settings
