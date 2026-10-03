@@ -81,7 +81,7 @@ pub fn cmd_show(
         "{}",
         crate::common::render_snapshot(
             &s.payload,
-            "  ",
+            "",
             name.as_deref(),
             (amp.as_deref(), cab.as_deref()),
             crate::common::Bytes::None
@@ -92,8 +92,9 @@ pub fn cmd_show(
         && let Ok(st) = dev.read_settings()
     {
         // 空行分节：快照与设置页是两回事（0x63 vs 0x65），边界要看得出来。
-        println!("\n  settings:");
-        println!("{}", crate::settings::render_settings(&st, "    "));
+        // 标题与字段都顶格，与 `input`/`output` 那一列同起点。
+        println!("\nsettings:");
+        println!("{}", crate::settings::render_settings(&st, "  "));
     }
     Ok(())
 }
