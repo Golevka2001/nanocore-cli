@@ -57,6 +57,22 @@ pub const BLOCKS: &[(&str, u8)] = &[
     ("eq", 7),
 ];
 
+/// `1=fx1 2=fx2 … 8=eq` 这样一份槽位说明，由 [`BLOCKS`] 生成。
+///
+/// 帮助文本里这份映射出现过两次手写副本，彼此可能漂移；`module` 的
+/// `BlockArg` 是第三份。从常量生成让它们不可能不一致——新增或改名只需
+/// 改 `BLOCKS` 一处。
+pub fn slot_legend() -> String {
+    let mut s = String::new();
+    for (i, (key, _)) in BLOCKS.iter().enumerate() {
+        if i > 0 {
+            s.push(' ');
+        }
+        s.push_str(&format!("{}={key}", i + 1));
+    }
+    s
+}
+
 /// `(块键, 效果类型 ID, 参数列表)`。仅包含参数列表已知的类型；
 /// 缺失的类型即文档记载的空白。
 pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
@@ -450,5 +466,25 @@ mod tests {
         assert_eq!(params("amp", None).unwrap().len(), 5);
         assert_eq!(params("amp", Some(7)).unwrap().len(), 5); // 类型被忽略
         assert_eq!(params("cab", Some(3)).unwrap().len(), 3);
+    }
+}
+
+#[cfg(test)]
+mod slot_legend_tests {
+    use super::*;
+
+    /// 帮助文本与 `module list` 都从这里取值，故槽位顺序只有一份定义。
+    /// `debug enable <SLOT>` 按位置号取 b5（`slot - 1`），若 BLOCKS 顺序变了，
+    /// 那个映射会静默指向别的模块——所以钉死 1 起的位置号。
+    #[test]
+    fn positions_are_one_based_and_follow_block_order() {
+        assert_eq!(BLOCKS.len(), 8);
+        for (i, (key, b5)) in BLOCKS.iter().enumerate() {
+            assert_eq!(*b5, i as u8, "{key} 的 b5 应等于其下标");
+        }
+        assert_eq!(
+            slot_legend(),
+            "1=fx1 2=fx2 3=amp 4=cab 5=delay 6=mod 7=reverb 8=eq"
+        );
     }
 }

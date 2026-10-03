@@ -378,7 +378,7 @@ pub enum ModuleAction {
 pub enum ChainCmd {
     /// Write the chain order (exactly 8 roles/numbers, each module once)
     Set {
-        /// 8 positions, each module exactly once (role names, or numbers 1-8: 1=fx1 … 8=eq)
+        /// 8 positions, each module exactly once (role names, or numbers 1-8; see `module list`)
         #[arg(add = ArgValueCandidates::new(chain_position_candidates))]
         positions: Vec<String>,
     },
@@ -513,7 +513,7 @@ pub enum DebugCmd {
     },
     /// Raw slot enable (SysEx; for module on/off prefer `module <m> on/off`)
     Enable {
-        /// Slot number 1–8 (1=fx1 2=fx2 3=amp 4=cab 5=delay 6=mod 7=reverb 8=eq, i.e. b5+1)
+        /// Slot number 1–8 (role order = b5+1; see `module list`)
         #[arg(value_parser = clap::value_parser!(u8).range(1..=8))]
         slot: u8,
         /// Must be given explicitly: commands with side effects carry no default state

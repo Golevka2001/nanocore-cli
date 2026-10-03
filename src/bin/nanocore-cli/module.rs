@@ -73,6 +73,9 @@ fn cmd_module_list() -> Result<(), Failure> {
         println!("  {key:<7} b5={slot}  {summary}");
     }
     println!();
+    // 命令行里用 1 起的位置号（如 `debug enable 3`）指代槽位，这里给出对照。
+    println!("positions: {}", params_data::slot_legend());
+    println!();
     println!("usage: nanocore-cli module <module> <action>");
     println!("       module <module> on | off");
     println!("       module <module> model <N>");
