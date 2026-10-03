@@ -404,7 +404,7 @@ fn cmd_param(
         info.cc
     );
     let (k, p) = protocol::param_write(slot, info.index, value);
-    let reply = transact_reply(dev, conn, k, p, &[], false)?;
+    let reply = transact_reply(dev, conn, k, p, &[])?;
     if let Some(reply) = reply
         && reply.kind == msg_type::DATA
         && reply.payload.as_slice() == protocol::PARAM_WRITE_REJECTED

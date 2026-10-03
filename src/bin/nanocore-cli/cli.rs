@@ -464,23 +464,18 @@ pub enum DebugCmd {
     },
     /// Read the current preset's state snapshot
     ///
-    /// Prints the raw tx/rx frames; `--decode` appends the same structured decoding
-    /// as `show`.
+    /// Prints the tx/rx frames, the unpacked stream and a field table with the
+    /// offset of every field in that stream.
     Snapshot {
-        /// Append a readable structured decoding (same as `show`)
-        #[arg(long)]
-        decode: bool,
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },
     /// Print every frame the device emits (ctrl-c to stop)
     ///
-    /// Read-only: it never transmits, so an idle device only produces a heartbeat.
+    /// Passive: it never transmits, so an idle device produces nothing and the
+    /// command prints a heartbeat instead. Frames the device originates on its
+    /// own are what shows up here.
     Monitor {
-        /// Also expand 0x63 snapshots into a field table (with a hexdump of the
-        /// masked stream)
-        #[arg(long)]
-        decode: bool,
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },

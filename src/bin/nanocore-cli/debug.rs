@@ -33,23 +33,22 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = protocol::ping();
             transact(&mut dev, conn, k, p, &[msg_type::PING])
         }
-        DebugCmd::Snapshot { decode, knobs } => {
+        DebugCmd::Snapshot { knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             // 端口回显后的分节线由 open_device 统一打（见 common.rs）。
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
-            // decode 交给 transact_reply → describe：紧跟 rx 帧就是快照的完整
-            // 展开（含 unpacked 流与字段表）。这里不能再打一份紧凑版——那会让
-            // 同一帧的解码出现两次，之间还夹着两条重复的分割线。
-            let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT], decode)?;
-            if decode && reply.is_none() {
+            // describe 收到快照帧就渲染完整展开版（unpacked 流 + 字段表），
+            // 所以这里不再另行输出。
+            let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
+            if reply.is_none() {
                 return Err(Failure::error(
-                    "no reply to decode — drop --no-wait, the snapshot needs its answer",
+                    "no reply — drop --no-wait, the snapshot needs its answer",
                 ));
             }
             Ok(())
         }
-        DebugCmd::Monitor { decode, knobs } => {
+        DebugCmd::Monitor { knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             // 它只被动打印设备**主动发出**的帧（Event / 别人的请求的回包），
@@ -66,7 +65,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     println!("raw[{}]: {}", raw.len(), hex(&raw));
                     for f in Frame::split_stream(&raw) {
-                        describe(&f, "", decode);
+                        describe(&f, "");
                     }
                     frames += 1;
                 }
@@ -112,13 +111,13 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             // 槽位号线上 0 起始。
             let (k, p) = protocol::query_preset_list(start - 1, count);
-            transact_reply(&mut dev, conn, k, p, &[msg_type::PRESET_LIST], false).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::PRESET_LIST]).map(|_| ())
         }
         DebugCmd::Settings { knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::query_settings();
-            transact_reply(&mut dev, conn, k, p, &[msg_type::SETTINGS], false).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::SETTINGS]).map(|_| ())
         }
         DebugCmd::Setfield { field, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
@@ -131,7 +130,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::model_query(index);
-            transact_reply(&mut dev, conn, k, p, &[msg_type::MODEL_LIST], false).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::MODEL_LIST]).map(|_| ())
         }
         DebugCmd::Setfield6d { field, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
@@ -150,13 +149,13 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (tx, rx) = dev
                 .transact_with_flags(conn.flags, k, p, &[])
                 .map_err(|e| Failure::error(e.to_string()))?;
-            describe(&tx, "", false);
-            describe(&rx, "", false);
+            describe(&tx, "");
+            describe(&rx, "");
             // 切槽事件是设备的**附带**通知，不是写名字的前置条件：槽位已是
             // 当前预设时它不会发。因此等不到就继续——`preset rename` 需要它
             // 只因为后面还要读回校验，这里不需要。
             if let Ok(f) = dev.wait_for_preset_switch_event(wire, 2_000) {
-                describe(&f, "", false);
+                describe(&f, "");
             }
             let (k, p) = protocol::set_name_field(&encoded);
             transact(&mut dev, conn, k, p, &[])
@@ -209,7 +208,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     for f in Frame::split_stream(&raw) {
                         println!("rx:");
-                        describe(&f, "", false);
+                        describe(&f, "");
                         got += 1;
                     }
                 }

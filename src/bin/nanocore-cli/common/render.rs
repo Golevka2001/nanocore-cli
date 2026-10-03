@@ -95,10 +95,7 @@ const DIVIDER_WIDTH: usize = 60;
 ///
 /// `indent` 逐层传递：帧头、hexdump、解析出的条目都按它缩进，否则同一个
 /// `describe` 在不同调用点会印出不同深度的块。
-///
-/// `decode` 控制 `0x63` 快照是否展开成字段表。快照是唯一需要几十行才说得清的
-/// 类型，把它塞进每一条被监听的帧里会淹掉其余输出，所以做成开关而非默认。
-pub fn describe(frame: &Frame, indent: &str, decode: bool) {
+pub fn describe(frame: &Frame, indent: &str) {
     let inner = format!("{indent}  ");
     println!(
         "{indent}dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
@@ -115,18 +112,11 @@ pub fn describe(frame: &Frame, indent: &str, decode: bool) {
         // 解码成功才渲染：tx 那种 3 字节请求帧也是 0x63，渲染它的 fallback
         // 只会得到「no structural decode」——对着一帧本就没有内容的载荷说它
         // 解不出来，是噪音而不是信息。
-        // 快照解码自成一块，先与上面的 hexdump 划开。`Bytes::Shown` 会连
-        // unpacked 流一起打（monitor 里一帧就是几十行），故只在 decode 时用。
+        // 快照自成一块，前后划开。缩进传 `indent`（与帧头同级）而不是
+        // `inner`：render_snapshot 内部会自己给转储和字段各加一级，传入已
+        // 缩进的量会让两层叠加。
         divider();
-        print!(
-            "{}",
-            render_snapshot(
-                &frame.payload,
-                &inner,
-                None,
-                if decode { Bytes::Shown } else { Bytes::None }
-            )
-        );
+        print!("{}", render_snapshot(&frame.payload, indent, None, Bytes::Shown));
         divider();
     }
     if frame.kind == 0x06
@@ -413,16 +403,13 @@ mod describe_decode_tests {
     /// monitor 会收到设备主动发出的 0x63（`preset set` 的应答就是这种），
     /// 故 describe 必须能把它解出来，而不只是打印 hexdump。
     #[test]
-    fn snapshot_frame_is_decoded_when_asked() {
+    fn snapshot_frame_renders_without_panicking() {
         let f = frame63(bytes());
         assert_eq!(f.kind, 0x63);
         // 渲染路径不能 panic，且解码应给出 8 条记录。
         let st = protocol::decode_snapshot_state(&f.payload).expect("0x63 must decode");
         assert_eq!(st.records.len(), 8);
-        // decode=true 走 Bytes::Shown（含 unpacked 流），false 走紧凑摘要。
-        // 两者都必须跑通：monitor 会持续调用，panic 会打断整个监听。
-        for decode in [true, false] {
-            describe(&f, "", decode);
-        }
+        // monitor 会持续调用 describe，panic 会打断整个抓包。
+        describe(&f, "");
     }
 }
