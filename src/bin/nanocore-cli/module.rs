@@ -143,11 +143,19 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>, conn: &Conn) -> Result<(), Fa
         .and_then(|mut dev| module_record(&mut dev, block).ok());
     let ty = r#type.or_else(|| rec.as_ref().map(|r| r.variant));
     let head_ty = match ty {
-        Some(t) => format!(
-            ", effect type {}{}",
-            t + 1,
-            if r#type.is_none() { " (from device)" } else { "" }
-        ),
+        Some(t) => {
+            // 设备报的类型（省略 `--type` 时）走 `type_number` —— reverb 的编号是
+            // 手册产品顺序，不等于 `variant + 1`。显式 `--type` 是用户给的 1 起始
+            // 编号，原样显示。两条路都在这里汇合，印出来的数必须是同一个。
+            let shown = match r#type {
+                Some(_) => t + 1,
+                None => protocol::type_number(slot, t).unwrap_or(t + 1),
+            };
+            format!(
+                ", effect type {shown}{}",
+                if r#type.is_none() { " (from device)" } else { "" }
+            )
+        }
         None => String::new(),
     };
     let Some(ps) = params_data::params(key, ty) else {
@@ -211,9 +219,12 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>, conn: &Conn) -> Result<(), Fa
                 println!("  b6={:<2} {:<24} CC{}", p.index, p.name, p.cc);
             }
             if let Some(rec) = &rec {
+                // 设备当前类型用 `type_number` —— reverb 的编号不是 `variant + 1`
+                // （手册产品顺序，variant 7 = 第 5 个类型）。这里报的是设备侧
+                // 的编号，必须与 `show` 印的一致。
                 println!(
                     "  (values omitted: --type does not match the device's current type {})",
-                    rec.variant + 1
+                    protocol::type_number(slot, rec.variant).unwrap_or(0)
                 );
             }
         }
