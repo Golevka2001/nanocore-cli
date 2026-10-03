@@ -125,6 +125,43 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         print!("{}", render_snapshot(&frame.payload, indent, None, Bytes::Shown));
         divider();
     }
+    if frame.kind == 0x36
+        && let Some(mn) = protocol::parse_model_name(&frame.payload)
+    {
+        // 与 0x40 同构：偏移指向名称字段，可与上方 hexdump 原位核对。
+        divider();
+        println!("{indent}model ({}):", mn.index);
+        print!(
+            "{}",
+            field_line(
+                "name",
+                mn.name_offset,
+                frame.payload.len() - mn.name_offset,
+                &mn.name,
+                indent,
+            )
+        );
+        divider();
+    }
+    if frame.kind == 0x65
+        && let Some(s) = protocol::decode_settings(&frame.payload)
+    {
+        // 与其余类型同构。字段偏移取自 `decode_settings` 实际读取的位置，
+        // 顺序按载荷里的字节先后排列。
+        divider();
+        println!("{indent}settings:");
+        for (at, label, value) in [
+            (6usize, "wireless", if s.wireless { "on" } else { "off" }.to_string()),
+            (7, "playback", if s.playback { "on" } else { "off" }.to_string()),
+            (8, "input gain", format!("{} dB", s.input_gain_db)),
+            (9, "usb volume", s.usb_volume.to_string()),
+            (10, "bt volume", s.bt_volume.to_string()),
+            (12, "input channel", s.input_channel.to_string()),
+        ] {
+            print!("{}", field_line(label, at, 1, &value, indent));
+        }
+        divider();
+    }
     if frame.kind == 0x06
         && let Some(ep) = protocol::parse_effect_data(&frame.payload)
     {

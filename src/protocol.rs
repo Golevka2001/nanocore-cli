@@ -896,6 +896,11 @@ pub struct ModelName {
     ///
     /// 要识别用户/自定义模型，请改为将 [`ModelName::name`] 与 [`crate::models_data`] 中的出厂表比较 —— 这与标志无关。
     pub active: bool,
+    /// 名称标记 `1a 1a 00 00` 在载荷中的偏移，名称紧随其后。
+    ///
+    /// 渲染层用它把名字与上方 hexdump 原位对齐（同 [`PresetEntry::offset`]），
+    /// 这样 `0x36` 与 `0x40` 的显示方式一致。
+    pub name_offset: usize,
 }
 
 /// 解析 `0x36` 模型列表应答载荷。
@@ -941,7 +946,7 @@ pub fn parse_model_name(payload: &[u8]) -> Option<ModelName> {
     if name.is_empty() {
         return None;
     }
-    Some(ModelName { index, name, active })
+    Some(ModelName { index, name, active, name_offset: m + 4 })
 }
 
 #[cfg(test)]
@@ -1052,6 +1057,24 @@ mod tests {
         assert_eq!(b.index, 29);
         assert_eq!(b.name, "NDSP Archetype:");
         assert!(b.active);
+    }
+
+    /// `name_offset` 必须落在名称标记之后、真正的名字首字节上。
+    ///
+    /// 渲染层拿它把名字与上方 hexdump 原位对齐；标记本身是 `1a 1a 00 00`，
+    /// 不该被算进名字区间。
+    #[test]
+    fn model_name_offset_points_past_the_marker() {
+        for payload in [SLOT0, SLOT29] {
+            let mn = parse_model_name(payload).expect("parse");
+            assert_eq!(
+                &payload[mn.name_offset..mn.name_offset + 4],
+                &mn.name.as_bytes()[..4],
+                "偏移应指向名字本身"
+            );
+            // 标记紧挨在偏移之前。
+            assert_eq!(&payload[mn.name_offset - 4..mn.name_offset - 2], &[0x1A, 0x1A]);
+        }
     }
 
     /// 针对修正后的第 7 字节语义的回归守卫：*出厂*模型也会置位该标志，
