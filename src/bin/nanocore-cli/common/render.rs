@@ -393,7 +393,9 @@ pub fn render_snapshot(
             // 表比参数列表短时（EQ 3 段却给了 4 个 float）不补名字 —— 印 `?`
             // 等于承认我们知道那个参数是什么而其实不知道。多出来的按归一化值印。
             let listed = params_data::params(block, Some(r.variant)).map_or(0, |ps| ps.len());
-            let shown: Vec<String> = r
+            // 收集 `(名字, 值)` 而不是拼好的字符串：名字里含空格（`Gate Threshold`、
+            // `Amp Gain`），先拼成 `"名 = 值"` 再拆回来只能靠 `split_once` 猜分隔符。
+            let shown: Vec<(Option<&str>, String)> = r
                 .params
                 .iter()
                 .enumerate()
@@ -408,40 +410,38 @@ pub fn render_snapshot(
                         named.and_then(|_| params_data::ranges(block, Some(r.variant)))
                             .and_then(|rs| rs.get(i))
                     };
-                    match (named, range) {
-                        (Some(pi), Some(rg)) => {
-                            format!("{} = {}", pi.name, params_data::denormalize(rg, *p))
+                    let name = named.map(|pi| pi.name);
+                    match (name, range) {
+                        // 有名字也有量程：印设备/App 上显示的那个数字。
+                        (Some(n), Some(rg)) => {
+                            (Some(n), params_data::denormalize(rg, *p).to_string())
                         }
                         // 有名字但手册没给量程：印归一化值，名字保留 —— 读者至少
                         // 知道这是哪个旋钮，量程的事不能编。
-                        (Some(pi), None) => format!("{} = {p:.3}", pi.name),
-                        _ => format!("{p:.3}"),
+                        (Some(n), None) => (Some(n), format!("{p:.3}")),
+                        (None, _) => (None, format!("{p:.3}")),
                     }
                 })
                 .collect();
-            // 参数名列宽取本块最长名 + 2，`=` 与值就在同一条竖线上。
+            // 参数名列宽按**块行里 `off` / `on ` 的起始列**算（`role` 占 6 字符），
+            // 于是参数名与开关左边对齐，一眼看得出谁属于哪个块。名字与值之间用空格
+            // 分隔、不加 `=` —— 缩进已经表达了从属关系，`=` 是多余的。
+            const SWITCH_COL: usize = 6;
             let namew = shown
                 .iter()
-                .filter_map(|s| s.split_once(" = "))
-                .map(|(n, _)| n.chars().count())
+                .filter_map(|(n, _)| *n)
+                .map(str::chars)
+                .map(|c| c.count())
                 .max()
                 .unwrap_or(0);
-            let pad = " ".repeat(indent.len() + 3);
-            // 参数一律按 `名 = 值` 排，列宽取本块最长名 + 2 —— `=` 与值在同一
-            // 条竖线上。
-            //
-            // 此前分了两个分支：有 `variant_name` 的块走对齐（`split_once(" = ")`
-            // 把 `=` 吃掉，输出 `名  值`），没有的块（amp / cab）走原样输出
-            // `名 = 值`。于是同一份输出里 `Gain 0.50` 与 `Amp Gain = 0.60` 混排，
-            // 差别只取决于「这个块有没有型号名」—— 与缩进无关，是分支的副作用。
-            // 现在两条路都产 `名 = 值`，对齐只做一次。
+            let pad = " ".repeat(indent.len() + SWITCH_COL);
+            // 值列对齐：名宽取本块最长名，同一块内各行的值落在同一条竖线上。
             let body = shown
                 .iter()
-                .map(|s| match s.split_once(" = ") {
-                    Some((n, v)) => format!("{pad}{n:<namew$} = {v}"),
-                    // 没有量程时 `shown` 已经是 `{name} = {normalized}`，上面
-                    // 那支会处理；走不到这里的是没有名字的裸值。
-                    None => format!("{pad}{s}"),
+                .map(|(n, v)| match n {
+                    Some(n) => format!("{pad}{n:<namew$} {v}"),
+                    // 没有名字的裸值（表比参数列表短时多出来的）：右移一格，不参与名宽。
+                    None => format!("{pad} {v}"),
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
