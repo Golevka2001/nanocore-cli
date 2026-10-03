@@ -634,6 +634,12 @@ pub struct SnapshotRecord {
     pub variant: u8,
     /// 全精度 float32 参数（bit7 已由掩码还原）。
     pub params: Vec<f32>,
+    /// 本记录**记录头**（`[enabled][variant][count]`）在解包后数据流中的起始偏移。
+    ///
+    /// 参数区紧跟其后，故参数占 `[stream_offset+3 .. +3+4*count)`。
+    /// 渲染层用它把可读值与字节流逐字段对齐——偏移必须与解码同源，
+    /// 否则解码顺序一改，展示就会静默指错字节。
+    pub stream_offset: usize,
 }
 
 /// `0x63` 快照的完整结构化解码。
@@ -643,6 +649,14 @@ pub struct SnapshotState {
     pub preset_index: u8,
     /// 预设音量（0–100）。
     pub preset_volume: u8,
+    /// `presetIndex` 在解包后数据流中的偏移（恒为 2，前两个字节是标记）。
+    pub preset_index_offset: usize,
+    /// `presetVolume` 在解包后数据流中的偏移（恒为 3）。
+    pub preset_volume_offset: usize,
+    /// 链计数 `0x08` 在解包后数据流中的偏移。
+    pub chain_count_offset: usize,
+    /// 解包后数据流的总长度。
+    pub stream_len: usize,
     /// 恰 8 条记录（**按角色序**：下标 i 就是 `CHAIN_ROLES[i]`，即 `b5` 槽位）。
     pub records: Vec<SnapshotRecord>,
     /// 链序（`chainOrder`）：8 个角色索引的排列，按从左到右的链位排列。
@@ -715,20 +729,28 @@ fn chain_order_from_stream(tail: &[u8]) -> Option<Vec<u8>> {
 /// 复核脚本与原始对账见 `nanocore-reverse/data/snapshots-factory40/README.md`。
 pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
     let data = unpack_snapshot_stream(payload)?;
-    let mut p = 0usize;
-    let mut take = |k: usize| -> Option<&[u8]> {
-        let r = data.get(p..p + k)?;
-        p += k;
+    // 游标放进 `Cell`：闭包 `take` 要用它推进位置，而调用方也要读同一个值来
+    // 记录字段偏移。用 `Cell` 共享，比从切片指针反推偏移（`ptr` 相减）干净，
+    // 后者在空切片或优化重排下都不该出现。
+    let p = std::cell::Cell::new(0usize);
+    let take = |k: usize| -> Option<&[u8]> {
+        let at = p.get();
+        let r = data.get(at..at + k)?;
+        p.set(at + k);
         Some(r)
     };
     let hdr = take(4)?;
     if hdr[0] != 0x00 || hdr[1] != 0x03 {
         return None;
     }
+    // 偏移取自同一个游标：解码读了多少字节，偏移就是多少，不会漂。
+    let preset_index_offset = 2;
+    let preset_volume_offset = 3;
     let preset_index = hdr[2];
     let preset_volume = hdr[3];
     let mut records = Vec::with_capacity(CHAIN_LEN);
     for _ in 0..CHAIN_LEN {
+        let stream_offset = p.get();
         let h = take(3)?;
         let (enabled, variant, count) = (h[0], h[1], h[2]);
         if count > 16 {
@@ -744,15 +766,30 @@ pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
             }
             params.push(f32::from_bits(bits));
         }
-        records.push(SnapshotRecord { enabled, variant, params });
+        records.push(SnapshotRecord {
+            enabled,
+            variant,
+            params,
+            stream_offset,
+        });
     }
     // 链计数标记（sep/填充可能被吞，但计数 0x08 始终在数据流内）。
+    let chain_count_offset = p.get();
     if take(1)?[0] != CHAIN_LEN as u8 {
         return None;
     }
     // 其余就是链序本身（不强求：解不出只影响展示，不影响记录解码）。
-    let chain = chain_order_from_stream(&data[p..]);
-    Some(SnapshotState { preset_index, preset_volume, records, chain })
+    let chain = chain_order_from_stream(&data[p.get()..]);
+    Some(SnapshotState {
+        preset_index,
+        preset_volume,
+        preset_index_offset,
+        preset_volume_offset,
+        chain_count_offset,
+        stream_len: data.len(),
+        records,
+        chain,
+    })
 }
 
 /// 设备设置页快照（`0x65`，13 B 载荷）。
