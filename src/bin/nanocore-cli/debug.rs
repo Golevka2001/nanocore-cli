@@ -58,7 +58,15 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         }
         DebugCmd::Monitor => {
             let mut dev = open_device(conn)?;
+            // 它只被动打印设备**主动发出**的帧（Event / 别人的请求的回包），
+            // 自己不发任何请求——所以设备空闲时这里本来就该是安静的。
+            // receive() 是非阻塞的 drain，队列空即返回空 Vec，因此循环体每秒
+            // 跑 50 次却可能长时间无一行输出；没有心跳的话，使用者无法区分
+            // 「设备没发东西」和「端口错了 / 程序卡住」。故按秒打一行状态。
             println!("monitoring... (ctrl-c to stop)");
+            let started = std::time::Instant::now();
+            let mut frames = 0usize;
+            let mut last_report = started;
             loop {
                 let raw = dev.transport().receive().map_err(|e| e.to_string())?;
                 if !raw.is_empty() {
@@ -66,8 +74,16 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                     for f in Frame::split_stream(&raw) {
                         describe(&f, "");
                     }
+                    frames += 1;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
+                if last_report.elapsed() >= std::time::Duration::from_secs(10) {
+                    println!(
+                        "[{:>4}s] {frames} frame(s) so far",
+                        started.elapsed().as_secs()
+                    );
+                    last_report = std::time::Instant::now();
+                }
                 let _ = std::io::stdout().flush();
             }
         }
