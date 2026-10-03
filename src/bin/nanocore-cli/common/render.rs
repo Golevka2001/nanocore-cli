@@ -322,7 +322,19 @@ pub fn render_snapshot(
             state.preset_volume_offset,
             state.preset_volume.to_string(),
         ));
-        for (i, r) in state.records.iter().enumerate() {
+        // 紧凑摘要按**链序**输出：链序就是信号经过的顺序，按它排读下来即是
+        // 一次从输入到输出的路径，不再需要单独一行把序再述一遍。字节对照模式
+        // 仍按载荷顺序（那里的价值是每个字段都能在上面的转储里原位找到）。
+        let walk: Vec<usize> = if show_bytes {
+            (0..state.records.len()).collect()
+        } else {
+            chain
+                .as_ref()
+                .map(|o| o.iter().map(|&i| i as usize).collect())
+                .unwrap_or_else(|| (0..state.records.len()).collect())
+        };
+        for i in walk {
+            let Some(r) = state.records.get(i) else { continue };
             // 与 `chain:` 行同一套名字（设备显示名），不是 CLI 短名——
             // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
             let role = protocol::CHAIN_ROLES[i].1;
@@ -368,12 +380,38 @@ pub fn render_snapshot(
                     }
                 })
                 .collect();
-            let params = if shown.iter().any(|s| s.contains(' ')) {
-                // 有量程时逐个列成 `名字 = 实际值`，一行放不下就换行缩进。
-                let pad = " ".repeat(indent.len() + 2);
-                format!("\n{pad}   {}", shown.join(&format!("\n{pad}   ")))
+            // 参数名列宽取本块最长名 + 2，`=` 与值就在同一条竖线上。
+            let namew = shown
+                .iter()
+                .filter_map(|s| s.split_once(" = "))
+                .map(|(n, _)| n.chars().count())
+                .max()
+                .unwrap_or(0);
+            let pad = " ".repeat(indent.len() + 3);
+            // 类型名查不到时必须换行：留在同一行时第一个参数会被当成类型名读
+            // （`type=8 0.087 0.200 …` 看着就像一个叫 "0.087 0.200 …" 的效果）。
+            let params = if namew == 0 {
+                format!("\n{}", shown.iter().map(|x| format!("{pad}{x}")).collect::<Vec<_>>().join("\n"))
+            } else if protocol::variant_name(i as u8, r.variant).is_none() {
+                let body = shown
+                    .iter()
+                    .map(|x| format!("{pad}{x}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("\n{body}")
             } else {
-                format!("[{}]", shown.join(", "))
+                // 每行都带 pad：join 只在行间插换行，不会自动续缩进。
+                let body = shown
+                    .iter()
+                    .map(|s| match s.split_once(" = ") {
+                        Some((n, v)) => format!("{pad}{n:<namew$}  {v}"),
+                        None => format!("{pad}{s:<namew$}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                // 块之间不留空行：模块名自己就是分隔，8 个模块各 1-6 行参数，
+                // 空行会让 `show` 变成 40 行。靠缩进分组已经够了。
+                format!("\n{body}")
             };
             if show_bytes {
                 // head 三字节逐个说清：enabled / variant / count。count 虽能从
@@ -386,19 +424,25 @@ pub fn render_snapshot(
                     &format!("{on} {vtype} count={}", r.params.len()),
                     indent,
                 ));
+                // 字节模式的值必须与偏移同行 —— 那一段的用途是对照上面转储里的
+                // 字节，拆成多行就断开了。紧凑的单行形式由 `compact` 给出。
+                let compact = r
+                    .params
+                    .iter()
+                    .map(|p| format!("{p:.3}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 out.push_str(&field_line(
                     &format!("{role} params"),
                     at + 3,
                     r.params.len() * 4,
-                    &format!("[{params}]"),
+                    &format!("[{compact}]"),
                     indent,
                 ));
             } else {
                 // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
                 // 字段，不该比字段标题更深一层。
-                out.push_str(&format!(
-                    "{indent}{role:<6} {on} {vtype} params={params}\n"
-                ));
+                out.push_str(&format!("{indent}{role:<6} {on} {vtype}{params}\n"));
             }
         }
         if show_bytes {
@@ -410,18 +454,16 @@ pub fn render_snapshot(
                 indent,
             ));
         }
-        if let Some(order) = &chain {
-            if show_bytes {
-                out.push_str(&field_line(
-                    "chain order",
-                    state.chain_count_offset + 1,
-                    order.len(),
-                    &render_chain(order),
-                    indent,
-                ));
-            } else {
-                out.push_str(&format!("{indent}chain:         {}\n", render_chain(order)));
-            }
+        // 紧凑模式不再单列 chain 行 —— 模块已按链序排列，那一行是同一句话的
+        // 重复。字节对照模式仍要列：那里的字段必须按载荷顺序，链序得写出来。
+        if show_bytes && let Some(order) = &chain {
+            out.push_str(&field_line(
+                "chain order",
+                state.chain_count_offset + 1,
+                order.len(),
+                &render_chain(order),
+                indent,
+            ));
         }
         return out;
     }
