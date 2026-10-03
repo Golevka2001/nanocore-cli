@@ -223,13 +223,16 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 4, name: "Mix", cc: 78 },
     ParamInfo { index: 5, name: "Level", cc: 79 },
 ]),
+// reverb 的键是**真实 variant**，不是手册的产品序号 —— 两者对 0..3 一致，
+// 但末三项错位（产品序号 4,5,6 = spring/shimmer/cloud 对应 variant 7,5,6）。
+// 依据是 2026-10-03 真机实测：写 CC47=0..6 回读 variant 得 0,1,2,3,5,6,7。
+// 每类只有 5 个参数 —— CC 指南那 6 个里的第 6 项（CC90）设备并不暴露。
 ("reverb", 0, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "PreDelay", cc: 86 },
     ParamInfo { index: 2, name: "Tone", cc: 87 },
     ParamInfo { index: 3, name: "Mod", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
 ]),
 ("reverb", 1, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
@@ -237,7 +240,6 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Tone", cc: 87 },
     ParamInfo { index: 3, name: "Mod", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
 ]),
 ("reverb", 2, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
@@ -245,7 +247,6 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Tone", cc: 87 },
     ParamInfo { index: 3, name: "LF Damp", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
 ]),
 ("reverb", 3, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
@@ -253,31 +254,30 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Tone", cc: 87 },
     ParamInfo { index: 3, name: "HF Damp", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
 ]),
-("reverb", 4, &[
-    ParamInfo { index: 0, name: "Decay", cc: 85 },
-    ParamInfo { index: 1, name: "PreDelay", cc: 86 },
-    ParamInfo { index: 2, name: "Tone", cc: 87 },
-    ParamInfo { index: 3, name: "Pitch", cc: 88 },
-    ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
-]),
+// variant 5 = shimmer（无 PreDelay，含 Mod Depth / Mod Rate）
 ("reverb", 5, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "Tone", cc: 86 },
     ParamInfo { index: 2, name: "Mod Depth", cc: 87 },
     ParamInfo { index: 3, name: "Mod Rate", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
-    ParamInfo { index: 5, name: "Level", cc: 90 },
 ]),
+// variant 6 = cloud（含 Crossover，无 PreDelay）
 ("reverb", 6, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "PreDelay", cc: 86 },
     ParamInfo { index: 2, name: "Tone", cc: 87 },
     ParamInfo { index: 3, name: "Crossover", cc: 88 },
     ParamInfo { index: 4, name: "Mod", cc: 89 },
-    ParamInfo { index: 5, name: "Mix", cc: 90 },
+]),
+// variant 7 = spring
+("reverb", 7, &[
+    ParamInfo { index: 0, name: "Decay", cc: 85 },
+    ParamInfo { index: 1, name: "PreDelay", cc: 86 },
+    ParamInfo { index: 2, name: "Tone", cc: 87 },
+    ParamInfo { index: 3, name: "Pitch", cc: 88 },
+    ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
 ];
 
@@ -324,16 +324,27 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
     (6, "Smear"),
     (7, "Mod Delay"),
 ]),
-// reverb 的 id 不连续：设备在 variant 4 上不使用该槽位，7 个类型落在
-// 0,1,2,3,5,6,7。实测见 `EFFECT_TYPES` 的 data_sync 守卫注释。
+// reverb 的 id 不连续，且**名称顺序与 id 顺序不一致**——这是本表最容易踩的坑。
+//
+// 2026-10-03 真机实测（写 CC47 = 0..6，逐次回读 0x63 快照的 variant 字节）：
+//
+//     CC47 = 0,1,2,3,4,5,6,7  ->  variant = 0,1,2,3,5,6,7,7
+//
+// variant 4 空缺，>=7 钳在 7。名字则由两条独立证据交叉确定：
+//   * CC 指南 `CC47 / ID` 表：4=闪烁(shimmer) 5=云雾(cloud) 6=弹簧(spring)
+//   * 用户在设备/App 上核对：预设 #14 Psych 的 REV 是 spring，其 variant = 7
+//
+// 两者一致给出下表。注意**设备显示的类型编号不是 variant+1**：variant 7 是
+// 设备上的第 5 个类型（手册 `5-7 spring`），因为手册那栏是产品顺序，与存储
+// 槽位不同 —— 见 `type_number`。
 ("reverb", &[
     (0, "Room"),
     (1, "Plate"),
     (2, "Hall"),
     (3, "Concert"),
-    (5, "Spring"),
-    (6, "Shimmer"),
-    (7, "Cloud"),
+    (5, "Shimmer"),
+    (6, "Cloud"),
+    (7, "Spring"),
 ]),
 ("eq", &[
     (0, "3-band EQ"),
@@ -598,13 +609,7 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "HF Damp", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
-("reverb", 4, &[
-    Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
-    Range { name: "PreDelay", lo: 5.0, hi: 80.0, unit: "ms" },
-    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
-    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
-    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
-]),
+// variant 5 = shimmer（手册 6-7：无 PreDelay，Mod Rate）
 ("reverb", 5, &[
     Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
     Range { name: "PreDelay", lo: 5.0, hi: 120.0, unit: "ms" },
@@ -612,11 +617,20 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
+// variant 6 = cloud（手册 7-7：超长衰减，无 PreDelay）
 ("reverb", 6, &[
     Range { name: "Decay", lo: 1.0, hi: 100.0, unit: "s" },
     Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Crossover", lo: 800.0, hi: 8000.0, unit: "Hz" },
     Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+// variant 7 = spring（手册 5-7）
+("reverb", 7, &[
+    Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 5.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
 

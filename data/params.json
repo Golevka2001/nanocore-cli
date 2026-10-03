@@ -153,15 +153,15 @@
       },
       {
         "id": 5,
-        "name": "Spring"
-      },
-      {
-        "id": 6,
         "name": "Shimmer"
       },
       {
-        "id": 7,
+        "id": 6,
         "name": "Cloud"
+      },
+      {
+        "id": 7,
+        "name": "Spring"
       }
     ],
     "eq": [
@@ -833,11 +833,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
         "1": [
@@ -865,11 +860,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
         "2": [
@@ -897,11 +887,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
         "3": [
@@ -929,14 +914,9 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
-        "4": [
+        "7": [
           {
             "index": 0,
             "cc": 85,
@@ -961,11 +941,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
         "5": [
@@ -993,11 +968,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Level"
           }
         ],
         "6": [
@@ -1025,11 +995,6 @@
             "index": 4,
             "cc": 89,
             "name": "Mod"
-          },
-          {
-            "index": 5,
-            "cc": 90,
-            "name": "Mix"
           }
         ]
       }
@@ -1149,7 +1114,7 @@
   "notes": [
     "cc = standard MIDI CC (7-bit, one-way, documented). name = device/display name.",
     "b3 in the SysEx write is NOT addressing: it only takes 0x00,0x08..0x38 and varies independently of block/param/value. Meaning undetermined; 0x00 was used in every capture.",
-    "reverb 的 effect_types id 不是连续的：设备在 variant 4 上不使用该槽位，7 个类型分别落在 id 0,1,2,3,5,6,7。依据：CC47 逐值写入 0..6 并回读 0x63 快照，type 依次为 Room/Plate/Hall/Concert/Spring/Shimmer/Cloud，写入 4 落在 id 5 上，写入 >=7 被钳在 id 7。按手册的产品顺序（room..cloud）顺序填 0..6 会整体错位。",
+    "reverb 的 effect_types id 不连续，且名称顺序与 id 顺序不一致：7 个类型落在 id 0,1,2,3,5,6,7（variant 4 不使用）。2026-10-03 真机实测：写 CC47=0..6 逐次回读 0x63 快照，variant 依次为 0,1,2,3,5,6,7，写 >=7 钳在 7。名称依据 CC 指南 『CC47/ID』表（4=闪烁 5=云雾 6=弹簧）并与用户在设备/App 上核对『预设 #14 Psych 的 REV 是 spring，其 variant=7』交叉确认。注意设备显示的类型编号不是 variant+1：variant 7 是设备上的第 5 个类型（手册 5-7 spring），因为手册那栏是产品顺序。",
     "fx2 的 11 个类型名取设备/App 的 pedal 名（Scream/Klone/OCD/DS2/PiFUZZ/Range/XAC/Fiman/Pitch/Envelope Wah/Wah），不是 OEM CC 指南的 Drive 1-5 / Boost 1-3 —— 后者是 CC 侧的合并命名，设备上不显示。id 与手册 `N-11` 的产品编号一致（0 起始），真机 CC41 写 0..10 回读 type=1..11 连续无空洞。",
     "eq 每个类型的参数个数 = 频段数 + 1，末位是 Level（真机实测：3 段 -> 4、6 段 -> 7、8 段 -> 9；写 b6=3 在 3 段下被接受且只改第 4 个值）。手册的 EQ 表只列频段，Level 未给量程。",
     "fx2 第一个参数名按 pedal 分：Scream/Klone/OCD/DS2/PiFUZZ 是 `Gain`，Range/XAC/Fiman 是 `Boost`（手册 6-11/7-11/8-11 各只列一个 Boost）。此前的 `Drive Gain / Boost` 是把两类合并成一个名字，设备上不显示。"
@@ -1887,7 +1852,7 @@
             "unit": ""
           }
         ],
-        "4": [
+        "7": [
           {
             "name": "Decay",
             "lo": 0.0,

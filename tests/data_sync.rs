@@ -260,15 +260,18 @@ fn parameter_ranges_match_params_json() {
     assert_eq!(r["eq_band"]["unit"], params_data::EQ_RANGE.unit);
 }
 
-/// reverb 的 7 个类型落在**不连续**的 id 上：0,1,2,3,5,6,7，variant 4 不使用。
+/// reverb 的 7 个类型落在**不连续**的 id 上：0,1,2,3,5,6,7，variant 4 不使用；
+/// 且**名称顺序与 id 顺序不一致**——这是本表最容易照手册抄错的地方。
 ///
-/// 2026-10-03 真机实测：逐个写 CC47（reverb 的类型 CC）值 0..6，每次回读
-/// `0x63` 快照确认 `variant` 字节，`type` 依次为
-/// Room/Plate/Hall/Concert/Spring/Shimmer/Cloud。写 4 时设备落在 variant 5，
-/// 写 >=7 被钳在 variant 7（该块只有 7 个类型）。
+/// 2026-10-03 真机实测：逐个写 CC47（reverb 的类型 CC）值 0..6，回读 `0x63` 快照的
+/// `variant` 字节，得 `0,1,2,3,5,6,7`；写 >=7 被钳在 7。名称由两条独立证据交叉确定：
 ///
-/// 这条断言挡的是「按手册的产品顺序（room..cloud）填 0..6」——手册那栏是
-/// 产品编号（第几款），不是存储槽位。照抄会让 4 个类型名错位，且不会报错。
+/// * CC 指南「CC47 / ID」表：`4=闪烁(shimmer) 5=云雾(cloud) 6=弹簧(spring)`
+/// * 用户在设备/App 上核对：预设 #14 Psych 的 REV 是 `spring`，而它的 `variant` 是 7
+///
+/// 手册 REV 那栏是**产品顺序**（`5-7 spring`），与存储槽位不同：variant 7 是设备上的
+/// 第 5 个类型。`e6b6c19` 曾把产品顺序直接填到按 CC 测出的 id 上，末三项整体错位，
+/// 于是 Psych 印成 `Cloud`。本断言挡的就是这个。
 #[test]
 fn reverb_effect_type_ids_are_not_contiguous() {
     let reverb: Vec<(u8, &str)> = params_data::EFFECT_TYPES
@@ -283,11 +286,44 @@ fn reverb_effect_type_ids_are_not_contiguous() {
             (1, "Plate"),
             (2, "Hall"),
             (3, "Concert"),
-            (5, "Spring"),
-            (6, "Shimmer"),
-            (7, "Cloud"),
+            (5, "Shimmer"),
+            (6, "Cloud"),
+            (7, "Spring"),
         ],
-        "reverb 类型 id / 名称已变——先真机重测 CC47 逐值回读，别照手册顺序改"
+        "reverb 类型 id / 名称已变——先真机重测 CC47 逐值回读，别照手册产品顺序改"
+    );
+}
+
+/// reverb 的参数表键同样是**真实 variant**（0,1,2,3,5,6,7），不是手册产品序号 0..6；
+/// 且每类只有 5 个参数，CC 指南那 6 个里的第 6 项（CC90）设备并不暴露。
+///
+/// 2026-10-03 真机实测：7 个 reverb 类型的 `param count` 全是 5（40 组出厂快照亦然）。
+/// 产品序号 4,5,6（spring/shimmer/cloud）对应的 variant 是 7,5,6。
+#[test]
+fn reverb_params_are_keyed_by_real_variant() {
+    for (block, ty, ps) in params_data::TYPED.iter().filter(|(b, _, _)| *b == "reverb") {
+        let expected: &[u8] = match *ty {
+            0 | 1 | 2 | 3 | 5 | 6 | 7 => &[0, 1, 2, 3, 4],
+            other => panic!("reverb 出现未实测的 variant {other}（只应有 0,1,2,3,5,6,7）"),
+        };
+        assert_eq!(
+            ps.len(),
+            expected.len(),
+            "{block} type {ty} 的参数个数变了——设备实测每类 5 个"
+        );
+        for (p, &idx) in ps.iter().zip(expected) {
+            assert_eq!(p.index, idx, "{block} type {ty} 的参数 index 应连续 0..4");
+        }
+    }
+    let keys: Vec<u8> = params_data::TYPED
+        .iter()
+        .filter(|(b, _, _)| *b == "reverb")
+        .map(|(_, t, _)| *t)
+        .collect();
+    assert_eq!(
+        keys,
+        vec![0, 1, 2, 3, 5, 6, 7],
+        "reverb 参数表的键应是真实 variant（0,1,2,3,5,6,7），不是手册产品序号 0..6"
     );
 }
 
