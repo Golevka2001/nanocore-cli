@@ -62,11 +62,11 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let mut last_report = started;
             loop {
                 let raw = dev.transport().receive().map_err(|e| e.to_string())?;
-                if !raw.is_empty() {
-                    println!("raw[{}]: {}", raw.len(), hex(&raw));
-                    for f in Frame::split_stream(&raw) {
-                        describe(&f, "");
-                    }
+                for f in Frame::split_stream(&raw) {
+                    // 一次 receive 可能带回几十帧（如 0x36 型号表），一次 dump
+                    // 一行单帧字节；那行 `raw[..]` 装的正是同一批字节，重复一遍
+                    // 只会让边界更难找，故不打印。
+                    describe(&f, "", Some(frames + 1));
                     frames += 1;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -149,13 +149,13 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (tx, rx) = dev
                 .transact_with_flags(conn.flags, k, p, &[])
                 .map_err(|e| Failure::error(e.to_string()))?;
-            describe(&tx, "");
-            describe(&rx, "");
+            describe(&tx, "", None);
+            describe(&rx, "", None);
             // 切槽事件是设备的**附带**通知，不是写名字的前置条件：槽位已是
             // 当前预设时它不会发。因此等不到就继续——`preset rename` 需要它
             // 只因为后面还要读回校验，这里不需要。
             if let Ok(f) = dev.wait_for_preset_switch_event(wire, 2_000) {
-                describe(&f, "");
+                describe(&f, "", None);
             }
             let (k, p) = protocol::set_name_field(&encoded);
             transact(&mut dev, conn, k, p, &[])
@@ -208,7 +208,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     for f in Frame::split_stream(&raw) {
                         println!("rx:");
-                        describe(&f, "");
+                        describe(&f, "", None);
                         got += 1;
                     }
                 }

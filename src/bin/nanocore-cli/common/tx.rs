@@ -74,8 +74,8 @@ pub fn transact_reply(
         Ok((tx, rx)) => {
             // tx 与 rx 用同一个渲染器：两行并排即可看出 seq 是否被设备回显成
             // 同一个值（这正是配对的依据），也免去手打 tx 字符串漏掉字段。
-            describe(&tx, "");
-            describe(&rx, "");
+            describe(&tx, "", None);
+            describe(&rx, "", None);
             Ok(Some(rx))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(

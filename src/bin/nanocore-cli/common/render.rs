@@ -95,16 +95,22 @@ const DIVIDER_WIDTH: usize = 60;
 ///
 /// `indent` 逐层传递：帧头、hexdump、解析出的条目都按它缩进，否则同一个
 /// `describe` 在不同调用点会印出不同深度的块。
-pub fn describe(frame: &Frame, indent: &str) {
+///
+/// `index` 是本帧在所属流里的序号，`monitor` 用它标出帧与帧的边界——一次
+/// 抓取会连着来几十帧，每帧都以 `dir=` 开头，编号是唯一能一眼数出「这是第
+/// 几帧」的办法。单帧的命令不需要，传 `None`。
+pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     let inner = format!("{indent}  ");
-    println!(
-        "{indent}dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
-        frame.direction,
-        frame.flags,
-        frame.seq,
-        frame.kind,
-        frame.payload.len()
-    );
+    match index {
+        Some(n) => println!(
+            "{indent}[{n:>4}] dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
+            frame.direction, frame.flags, frame.seq, frame.kind, frame.payload.len()
+        ),
+        None => println!(
+            "{indent}dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
+            frame.direction, frame.flags, frame.seq, frame.kind, frame.payload.len()
+        ),
+    }
     print!("{}", dump(&frame.payload, &inner));
     if frame.kind == 0x63
         && protocol::decode_snapshot_state(&frame.payload).is_some()
@@ -410,6 +416,6 @@ mod describe_decode_tests {
         let st = protocol::decode_snapshot_state(&f.payload).expect("0x63 must decode");
         assert_eq!(st.records.len(), 8);
         // monitor 会持续调用 describe，panic 会打断整个抓包。
-        describe(&f, "");
+        describe(&f, "", None);
     }
 }
