@@ -65,7 +65,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     println!("raw[{}]: {}", raw.len(), hex(&raw));
                     for f in Frame::split_stream(&raw) {
-                        describe(&f);
+                        describe(&f, "");
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -149,7 +149,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     for f in Frame::split_stream(&raw) {
                         println!("rx:");
-                        describe(&f);
+                        describe(&f, "");
                         got += 1;
                     }
                 }

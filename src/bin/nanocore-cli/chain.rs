@@ -130,8 +130,8 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
             }
             Error::Transport(t) => t.to_string(),
         })?;
-    describe(&tx);
-    describe(&ack);
+    describe(&tx, "");
+    describe(&ack, "");
 
     match protocol::parse_chain_ack(&ack.payload) {
         Some(echoed) if echoed == order => {

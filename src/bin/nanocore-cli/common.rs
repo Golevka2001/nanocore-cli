@@ -81,11 +81,46 @@ pub fn hex(bytes: &[u8]) -> String {
         .join(" ")
 }
 
-/// 经典 hexdump：每行 16 字节，左侧是该行首字节的偏移。
+/// 一行 hexdump 内部的固定宽度（不含两侧的 `|`，也不含分隔用的两个空格）。
+///
+/// 16 个字节各占 `xx ` 3 字符 = 48，末字节后那个空格由 `pop()` 去掉，
+/// 但第 8 字节后还有一个分组空隙，所以净值仍是 48。末行不足 16 字节时
+/// 按同一宽度右补空格，ASCII 列才不会左移。
+const HEX_COL: usize = 16 * 3;
+
+/// 每行 16 字节的 hexdump：偏移、中间 8+8 分组的 hex、右侧 ASCII。
+///
+/// 形如：
+/// ```text
+///    0  00 03 00 54 01 03 06  b6 f3 1d 3f 00 00 00 00  |.. ...T......|
+/// ```
+///
+/// 8 字节处的空隙让一行的两半在视觉上分开（8 字节正好是快照的打包组边界）；
+/// ASCII 列让可打印字符直接可读，抓包时省去逐字节换算。不可打印字节一律
+/// 打成 `.`，因此 ASCII 列宽度恒等于 16，末行也无需特殊处理。
 pub fn dump(data: &[u8], indent: &str) -> String {
     let mut out = String::new();
     for (row, chunk) in data.chunks(16).enumerate() {
-        out.push_str(&format!("{indent}{:>4}  {}\n", row * 16, hex(chunk)));
+        let mut mid = String::new();
+        for (i, b) in chunk.iter().enumerate() {
+            if i == 8 {
+                mid.push(' ');
+            }
+            mid.push_str(&format!("{b:02x} "));
+        }
+        // 去掉末尾那个分隔空格再右补，末行同样对齐。
+        mid.pop();
+        let pad = " ".repeat(HEX_COL.saturating_sub(mid.chars().count()));
+        let ascii: String = chunk
+            .iter()
+            .map(|&b| if (0x20..0x7F).contains(&b) { b as char } else { '.' })
+            .collect();
+        out.push_str(&format!(
+            "{indent}{:>4}  {}{}  |{ascii}|\n",
+            row * 16,
+            mid,
+            pad
+        ));
     }
     out
 }
@@ -118,34 +153,38 @@ pub fn divider_err() {
 /// 略短于它以免在窄终端里折行。
 const DIVIDER_WIDTH: usize = 60;
 
-/// 打印一帧的帧头与载荷 hexdump。
+/// 打印一帧的帧头、载荷 hexdump，以及能结构化解析出的内容。
 ///
 /// tx 与 rx 共用：两者的线上格式是同一个结构（magic | dir | flags | 常量 |
 /// seq | type | payload），只有方向字节不同，所以渲染也该相同。tx 帧过去是
 /// 手打的 `type=0xNN payload[..]`，`flags` 与 `seq` 从不显示——而 `seq` 正是
 /// 设备在应答里回显、用来配对的那个值。
-pub fn describe(frame: &Frame) {
+///
+/// `indent` 逐层传递：帧头、hexdump、解析出的条目都按它缩进，否则同一个
+/// `describe` 在不同调用点会印出不同深度的块。
+pub fn describe(frame: &Frame, indent: &str) {
+    let inner = format!("{indent}  ");
     println!(
-        "  dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
+        "{indent}dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
         frame.direction,
         frame.flags,
         frame.seq,
         frame.kind,
         frame.payload.len()
     );
-    print!("{}", dump(&frame.payload, "  "));
+    print!("{}", dump(&frame.payload, &inner));
     if frame.kind == 0x06
         && let Some(ep) = protocol::parse_effect_data(&frame.payload)
     {
-        println!("  effect data: slot {} params {:?}", ep.slot, ep.params);
+        println!("{inner}effect data: slot {} params {:?}", ep.slot, ep.params);
     }
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
-        println!("  presets ({}):", entries.len());
+        println!("{inner}presets ({}):", entries.len());
         for e in &entries {
             println!(
-                "    #{:<2} {:<12} {}",
+                "{inner}  #{:<2} {:<12} {}",
                 e.slot,
                 e.name,
                 if e.named { "" } else { "(empty)" }
@@ -153,7 +192,7 @@ pub fn describe(frame: &Frame) {
         }
     }
     if let Some(order) = protocol::parse_chain_order(&frame.payload) {
-        println!("  chainOrder: {order:?}");
+        println!("{inner}chainOrder: {order:?}");
     }
 }
 
@@ -298,8 +337,8 @@ pub fn transact_reply(
         Ok((tx, rx)) => {
             // tx 与 rx 用同一个渲染器：两行并排即可看出 seq 是否被设备回显成
             // 同一个值（这正是配对的依据），也免去手打 tx 字符串漏掉字段。
-            describe(&tx);
-            describe(&rx);
+            describe(&tx, "");
+            describe(&rx, "");
             Ok(Some(rx))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(
@@ -492,4 +531,39 @@ pub fn render_snapshot(
         payload.len()
     ));
     out
+}
+
+#[cfg(test)]
+mod hexdump_tests {
+    use super::*;
+
+    #[test]
+    fn groups_at_eight_bytes_and_pads_short_rows() {
+        // 20 字节：首行 16（满），次行 4（短，须右补到同宽）。
+        let data: Vec<u8> = (0u8..20).collect();
+        let out = dump(&data, "");
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 2);
+        // 分组空隙在第 8 字节后：hex 串为 "00010203 04050607 ..."。
+        assert!(lines[0].starts_with("   0  00 01 02 03 04 05 06 07 "), "{}", lines[0]);
+        // 短行的 ASCII 列必须与首行同列。
+        let col = |l: &str| l.find('|').expect("ascii column");
+        assert_eq!(col(lines[0]), col(lines[1]), "短行 ASCII 列左移了:\n{out}");
+    }
+
+    #[test]
+    fn ascii_column_renders_printable_and_dot() {
+        let data = b"ab\x00\x7f\x80z";
+        let out = dump(data, "");
+        // 0x20..=0x7E 为可打印；0x7f (DEL)、0x80 与 0x00 一样打成 '.'。
+        assert!(out.contains("|ab...z|"), "{out}");
+    }
+
+    #[test]
+    fn indent_applies_to_every_row() {
+        let out = dump(&[0u8; 20], ">>");
+        for l in out.lines() {
+            assert!(l.starts_with(">>"), "{l}");
+        }
+    }
 }
