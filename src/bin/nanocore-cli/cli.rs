@@ -78,10 +78,7 @@ pub struct Cli {
     /// MIDI channel for CC/PC commands (1–16, wire = N-1; a cabled 0 device is treated as omni)
     #[arg(long, global = true, help_heading = "Global options", value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     pub ch: u8,
-    /// Initial reply timeout in milliseconds (doubles on each retry, hard cap 8x)
-    ///
-    /// Capped at 60000: a larger initial value is meaningless for a MIDI transaction
-    /// and would overflow `Duration` in the retry multipliers (`retry_config`'s x4/x8).
+    /// Initial reply timeout in milliseconds (doubles per retry, hard cap 8x; max 60000)
     #[arg(long, global = true, help_heading = "Global options", value_name = "MS", value_parser = clap::value_parser!(u64).range(1..=60000))]
     pub timeout: Option<u64>,
     /// Maximum retries per transaction [default: 3]
@@ -114,12 +111,12 @@ pub struct ProtocolKnobs {
     /// Frame flag byte (hex) [default: 00]
     #[arg(long, value_name = "HH")]
     pub flags: Option<String>,
-    /// Send without waiting for a reply. SysEx transactions only — CC/PC commands
-    /// (preset, module on/off/model, tuner, debug cc) never wait in the first place
+    /// Send without waiting for a reply (SysEx transactions only; CC/PC commands
+    /// never wait)
     #[arg(long)]
     pub no_wait: bool,
-    /// Send without the F0...F7 SysEx wrapper. The device only accepts wrapped frames;
-    ///  bare `7D 4E 43 ...` is silently discarded — only needed for byte-exact replays
+    /// Send without the F0...F7 wrapper. The device discards unwrapped frames, so
+    /// this is only useful for byte-exact replays
     #[arg(long)]
     pub no_sysex: bool,
 }
@@ -144,18 +141,15 @@ pub enum Command {
 
     /// Show the current device state snapshot in readable form
     ///
-    /// Structurally decoded (validated against 40 factory baselines): chain order, active
-    /// preset, volume, plus the 8 modules' on/off state, effect type and parameters.
-    /// Modules print in record order, which is the `b5` slot = role; the physical
-    /// order along the chain is the `chain` line above.
+    /// Chain order, active preset, volume, and every module's on/off state, effect
+    /// type and parameters. Modules are listed by slot (= role); the `chain` line
+    /// gives their physical order.
     Show {
-        /// Skip the preset-name lookup (one extra 0x40 round trip). The `preset`
-        /// line then shows the slot number only. Use it when polling from a script
-        /// or when the name is irrelevant to the check.
+        /// Skip the preset-name lookup (one extra round trip); the `preset` line
+        /// then shows the slot number only
         #[arg(long)]
         no_name: bool,
-        /// Skip the settings-page block (one extra 0x65 round trip). Use it when
-        /// polling from a script or when only the preset state matters.
+        /// Skip the settings-page block (one extra round trip)
         #[arg(long)]
         no_settings: bool,
     },
@@ -177,9 +171,6 @@ pub enum Command {
     },
 
     /// Toggle the tuner (its state cannot be read; invoked bare it explains and errors)
-    ///
-    /// Verified on hardware: CC80 is write-only, and both `0x65` and `0x63` are
-    /// byte-identical before and after `tuner on/off` — no path can read the state back.
     Tuner { state: Option<Power> },
 
     /// Show or modify the device settings-page items
@@ -204,8 +195,7 @@ pub enum Command {
 
     /// Set the USB output volume (0–100)
     ///
-    /// Deprecated alias for `settings usb-volume` — the same `0x66` field 0x08.
-    /// Kept working so existing scripts don't break; hidden from `--help`.
+    /// Deprecated alias for `settings usb-volume`.
     #[command(hide = true)]
     Volume {
         #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
@@ -232,7 +222,7 @@ pub enum PresetCmd {
     Prev,
     /// List the names of all 64 preset slots (read-only)
     List,
-    /// Rename a preset slot (1-8 printable ASCII characters, written to the device's name area)
+    /// Rename a preset slot
     Rename {
         /// Preset slot (1–64)
         #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
@@ -253,7 +243,7 @@ pub enum PresetCmd {
         /// Override the amp model slot reference (1–38, 0 = unknown; defaults to the device-reported active model)
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=38))]
         amp_slot: Option<u8>,
-        /// Override the IR slot reference (1–30, 0 = unknown; default 0 = unknown, limited App compatibility)
+        /// Override the IR slot reference (1–30, 0 = unknown; default: 0, limited App compatibility)
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=30))]
         ir_slot: Option<u8>,
     },
@@ -264,8 +254,8 @@ pub enum PresetCmd {
         /// Redirect to a target slot (1–40; defaults to the slot recorded in the bundle)
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(1..=40))]
         slot: Option<u8>,
-        /// Also write the IR/amp assets embedded in the bundle (assets before preset; an IR write
-        /// clears the preset table, so assets always go first)
+        /// Also write the IR/amp assets embedded in the bundle (always before the
+        /// preset: an IR write clears the preset table)
         #[arg(long)]
         with_assets: bool,
         /// Only print a summary of the frames that would be sent; do not touch the device
@@ -337,18 +327,16 @@ pub enum ModuleAction {
     Off,
     /// Choose the model / effect type
     ///
-    /// `amp` and `cab` take a model number 1–30 (CC43 / CC44); the other modules take
-    /// their own effect type number (CC40-CC48). Amp-table numbers 31–38 are FX2 drive
-    /// pedals, not reachable here — use `debug variant`.
+    /// `amp` and `cab` take 1–30; the other modules take their own effect type
+    /// number. 31–38 (FX2 drive pedals) are not reachable here — use `debug variant`.
     Model {
         #[arg(add = ArgValueCandidates::new(model_id_candidates), value_parser = clap::value_parser!(u8).range(1..=255))]
         id: u8,
     },
     /// List the module's parameter table
     ///
-    /// For type-dependent modules without `--type`, the current effect type is read from
-    /// the device; with no device, the listing falls back to `--type` alone (or to the
-    /// fixed type-independent table).
+    /// For type-dependent modules `--type` defaults to the device's current effect
+    /// type; without a device only `--type` (or the fixed table) can be used.
     Params {
         /// Effect type number required by type-dependent modules (1-based, wire = N-1;
         /// e.g. `delay --type 2` = Digital)
@@ -357,12 +345,9 @@ pub enum ModuleAction {
     },
     /// Set or read a named module parameter (0.0–1.0, normalised by the device)
     ///
-    /// Omitting VALUE reads it: the value comes from the current preset snapshot, where
-    /// `b6` indexes the device array directly (hardware-calibrated to match bit for
-    /// bit). For type-dependent modules without `--type`, the current type is read from
-    /// the snapshot. Writes check the device's reply: when `b6` is outside the module's
-    /// storage the device rejects the frame and **leaves the old value unchanged**, so
-    /// this errors out rather than pretending the write succeeded.
+    /// Omitting VALUE reads it from the current preset snapshot. A rejected write
+    /// (index outside the module's storage) leaves the old value unchanged and is
+    /// reported as an error rather than a success.
     Param {
         /// Parameter name (e.g. `threshold`) or its b6 index (raw wire byte, 0-based)
         key: String,
@@ -453,10 +438,9 @@ pub enum AssetCmd {
     },
     /// Write a blob to a slot and verify by read-back (IR only)
     ///
-    /// Warning (experimental): an interrupted write session may leave the device's
-    /// preset-name table cleared (every slot shows the placeholder name "preset"); root
-    /// cause under investigation. Keep the session alive until this command prints its
-    /// final OK/MISMATCH line.
+    /// Warning (experimental): an interrupted write may clear the device's preset-name
+    /// table (every slot shows the placeholder name "preset"). Keep the session alive
+    /// until this command prints its final OK/MISMATCH line.
     Write {
         region: RegionArg,
         slot: u8,
@@ -480,11 +464,10 @@ pub enum DebugCmd {
     },
     /// Read the current preset's state snapshot
     ///
-    /// By default only the raw tx/rx frames are printed. `--decode` appends a structured
-    /// decoding — the same rendering as `show` (chain order, active preset, volume, and
-    /// the 8 modules' on/off state, effect type and parameters).
+    /// Prints the raw tx/rx frames; `--decode` appends the same structured decoding
+    /// as `show`.
     Snapshot {
-        /// Append a readable structured decoding (0x63 masked stream -> state table)
+        /// Append a readable structured decoding (same as `show`)
         #[arg(long)]
         decode: bool,
         #[command(flatten)]
@@ -492,12 +475,10 @@ pub enum DebugCmd {
     },
     /// Print every frame the device emits (ctrl-c to stop)
     ///
-    /// Passive: it never transmits, so an idle device produces nothing and the
-    /// command prints a heartbeat instead. Frames the device originates on its
-    /// own are what shows up here.
+    /// Read-only: it never transmits, so an idle device only produces a heartbeat.
     Monitor {
-        /// Also expand 0x63 snapshots into a field table (each one prints a
-        /// hexdump of the masked stream alongside)
+        /// Also expand 0x63 snapshots into a field table (with a hexdump of the
+        /// masked stream)
         #[arg(long)]
         decode: bool,
         #[command(flatten)]
@@ -516,7 +497,6 @@ pub enum DebugCmd {
         /// Slot number 1–8 (role order = b5+1; see `module list`)
         #[arg(value_parser = clap::value_parser!(u8).range(1..=8))]
         slot: u8,
-        /// Must be given explicitly: commands with side effects carry no default state
         state: Power,
         #[command(flatten)]
         knobs: ProtocolKnobs,
@@ -530,9 +510,9 @@ pub enum DebugCmd {
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },
-    /// Select an amp model via SysEx (the same table as `module amp model`)
+    /// Select an amp model via SysEx
     ///
-    /// Unlike the CC path, this command reaches numbers 31–38 (FX2 drive pedals).
+    /// Same table as `module amp model`, but also reaches 31–38 (FX2 drive pedals).
     Variant {
         /// Amp/pedal slot 1–38 (30 amp sims + 8 FX2 drive pedals)
         #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(1..=38))]
