@@ -163,21 +163,29 @@ impl<T: Transport> Nanocore<T> {
         payload: Vec<u8>,
         expect: &[u8],
     ) -> Result<Frame, Error<T::Error>> {
+        // 只需应答；要看 tx 帧头请用 [`Nanocore::transact_with_flags`]。
         self.transact_with_flags(0x00, kind, payload, expect)
+            .map(|(_tx, rx)| rx)
     }
 
     /// 与 [`Nanocore::transact_expect`] 相同，但显式指定 flags 字节。
     ///
     /// 观察到的 flags 值：`0x00` 普通，`0x02` 实时，`0x22` 预设写入。
+    ///
+    /// 连同实际发出的 [`Frame`] 一起返回：调用方要打印 tx，而线上帧头里的
+    /// `flags` 与 `seq` 只有在这里才确定（`seq` 由本方法分配，`client` 侧递增，
+    /// 调用方无从预知）。此前 tx 只能打成 `type=0xNN payload[..]`，那两个字节
+    /// 在输出里是看不见的。
     pub fn transact_with_flags(
         &mut self,
         flags: u8,
         kind: u8,
         payload: Vec<u8>,
         expect: &[u8],
-    ) -> Result<Frame, Error<T::Error>> {
+    ) -> Result<(Frame, Frame), Error<T::Error>> {
         let seq = self.next_seq();
-        let wire = Frame::new(Direction::Tx, flags, seq, kind, payload).encode();
+        let tx = Frame::new(Direction::Tx, flags, seq, kind, payload);
+        let wire = tx.encode();
 
         let started = Instant::now();
         let mut timeout = self.config.initial_timeout;
@@ -190,7 +198,7 @@ impl<T: Transport> Nanocore<T> {
 
             loop {
                 if let Some(f) = self.take_matching(seq, expect) {
-                    return Ok(f);
+                    return Ok((tx, f));
                 }
                 if started.elapsed() >= self.config.hard_limit {
                     break;
@@ -976,7 +984,7 @@ impl<T: Transport> Nanocore<T> {
                 continue;
             }
 
-            let ack = self
+            let (_tx, ack) = self
                 .transact_with_flags(f.flags, f.kind, f.payload.clone(), &[f.kind])
                 .map_err(|e| format!("kind 0x{:02x}: {e}", f.kind))?;
             let hex: String = ack
