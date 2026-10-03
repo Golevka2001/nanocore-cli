@@ -449,29 +449,56 @@ pub fn model_query(index: u8) -> (u8, Vec<u8>) {
 
 // ─── 解析器 ───────────────────────────
 
-/// 来自 `0x06` 消息的一组效果参数。
-#[derive(Debug, Clone, PartialEq)]
-pub struct EffectParams {
-    pub slot: u8,
-    pub params: Vec<f32>,
-}
+/// `0x06`「effect data」实测记录（2026-10-03）——**语义未定，不提供解析器**。
+///
+/// 设备在切换预设时主动发 3 帧（`dir=Event`，`seq` 恒为 `0x0062`，与设备对
+/// 事务的 `seq` 回显无关，也不是心跳 `0x68`）：
+///
+/// ```text
+/// [9]  00 01 00 00 00 00 00 3f
+/// [10] 00 01 01 00 00 00 00 3f
+/// [11] 00 01 02 03 4d 4c 4c 3f
+/// ```
+///
+/// 载荷恒为 8 字节。**在 preset 14 / 15 / 20 下抓取，三帧字节完全相同**；来回
+/// 切预设也不变。所以它不是预设数据。
+///
+/// 由此也能确定一件曾被弄错的事：**设备在 MIDI 上不报当前 amp / cab 型号**。
+/// 型号存在 App 侧的预设 manifest 里（`ampSlot` / `irSlot`），App 走 USB
+/// 私有协议读取，与 MIDI 无关。
+///
+/// 能确定的：`00 01` 前缀；`[2]` 递增 0/1/2（像一个索引）；末尾 4 字节是
+/// f32（`0.5` / `0.5` / `0.798`）。
+///
+/// **不能确定的**：`[3]`。此前解析器把它当「参数个数」，于是前两帧被算成
+/// `params []`（0 个参数）、第三帧因 `3 × 4 > 剩余 4 字节` 被整帧丢弃 —— 两处
+/// 都在丢数据。既然连它是什么都不知道，就不给它编一个名字：渲染层只保留
+/// hexdump，语义定下来之前不加字段解释。
+pub const EFFECT_DATA_NOTE: &str = "0x06 effect data: 8 bytes, constant across presets; [3] unknown";
 
-/// 解析 `0x06` 效果数据载荷：
-/// `00 01 [slot] [count] <float32 * count>`。
-pub fn parse_effect_data(payload: &[u8]) -> Option<EffectParams> {
-    if payload.len() < 4 || payload[0] != 0x00 || payload[1] != 0x01 {
-        return None;
+#[cfg(test)]
+mod effect_data_tests {
+    /// 三帧实测字节 —— 留作回归基准，防止有人再把 `[3]` 当成参数个数。
+    #[test]
+    fn effect_data_is_eight_bytes_with_unknown_third_byte() {
+        let frames: [&[u8]; 3] = [
+            &[0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f],
+            &[0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x3f],
+            &[0x00, 0x01, 0x02, 0x03, 0x4d, 0x4c, 0x4c, 0x3f],
+        ];
+        // 三帧都是 8 字节，`00 01` 前缀，`[2]` 递增 0/1/2。
+        for (i, f) in frames.iter().enumerate() {
+            assert_eq!(f.len(), 8, "帧 {i} 长度应为 8");
+            assert_eq!(&f[..2], &[0x00, 0x01], "帧 {i} 前缀");
+            assert_eq!(f[2], i as u8, "帧 {i} 的 [2]");
+        }
+        // 旧解析器把 `[3]` 当参数个数：帧 3 要 12 字节 body，实际只剩 4 ——
+        // 装不下就是它不是 count 的直接反证。帧 1/2 的 `[3]=0` 会被算成 0 个
+        // 参数，于是末尾那 4 字节（0.5 / 0.5）被无声丢弃。
+        assert_eq!(frames[2][3] as usize * 4, 12);
+        assert!(frames[2].len() - 4 < 12, "[3]=3 按 count 解释装不下");
+        assert_eq!(frames[0][3], 0, "[3]=0 会把那 4 字节算成 0 个参数而丢弃");
     }
-    let slot = payload[2];
-    let count = payload[3] as usize;
-    let body = &payload[4..];
-    if body.len() < count * 4 {
-        return None;
-    }
-    let params = (0..count)
-        .map(|i| decode_param_float(&body[i * 4..]).unwrap())
-        .collect();
-    Some(EffectParams { slot, params })
 }
 
 /// 来自 `0x40` 应答的带名称预设列表条目。

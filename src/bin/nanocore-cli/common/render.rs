@@ -164,11 +164,11 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         }
         divider();
     }
-    if frame.kind == 0x06
-        && let Some(ep) = protocol::parse_effect_data(&frame.payload)
-    {
-        println!("{inner}effect data: slot {} params {:?}", ep.slot, ep.params);
-    }
+    // `0x06` 不再逐字段解释。实测（见 `protocol::EFFECT_DATA_NOTE`）：设备在切
+    // 预设时主动发 3 帧，`seq` 恒为 `0x0062`，且在 preset 14/15/20 下**字节完全
+    // 相同** —— 与预设内容无关，也不含 amp / cab 型号。`[3]` 此前被当成「参数
+    // 个数」，于是前两帧印成 `params []`、第三帧因长度不够被整帧丢弃，两处都在
+    // 丢数据或编含义。语义定下来之前只保留上面那段 hexdump。
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
