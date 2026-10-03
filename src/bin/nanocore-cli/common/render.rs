@@ -124,7 +124,12 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         // `inner`：render_snapshot 内部会自己给转储和字段各加一级，传入已
         // 缩进的量会让两层叠加。
         divider();
-        print!("{}", render_snapshot(&frame.payload, indent, None, Bytes::Shown));
+        // 型号不在 `0x63` 里，而这一节只讲这帧的字节 —— 查它就超出了本节的
+        // 范围（那 38+30 次往返属于 `show`）。传 `(None, None)`。
+        print!(
+            "{}",
+            render_snapshot(&frame.payload, indent, None, (None, None), Bytes::Shown)
+        );
         divider();
     }
     if frame.kind == 0x36
@@ -268,11 +273,14 @@ pub enum Bytes {
 ///
 /// `indent` 是每行的前导空白——`show` 有两格缩进，`debug` 下的调用方用空串。
 /// `name` 是当前预设名（`None` 表示未查到或该槽位未命名），显示在编号之后。
+/// `models` 是 `(amp, cab)` 的型号名（各 `Option`）—— 两者都**不在** `0x63`
+/// 快照里，靠 `0x36` / `0x56` 另查，查不到就传 `None`，行内不印型号。
 /// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
 pub fn render_snapshot(
     payload: &[u8],
     indent: &str,
     name: Option<&str>,
+    models: (Option<&str>, Option<&str>),
     bytes: Bytes,
 ) -> String {
     let mut out = String::new();
@@ -350,12 +358,23 @@ pub fn render_snapshot(
             // `type_number` 对 amp / cab 返回 None：那两个块的 variant 恒 0，
             // 印 `type=1` 是凭空编号。此时整段留空 —— head 行只剩开关与 count。
             let num = protocol::type_number(i as u8, r.variant);
-            // `type=N 名字` 整段；amp / cab 没有可显示的编号（见 `type_number`），
-            // 此时整段为空串。两段之间各补一个空格，段为空时就不补。
-            let vtype = match num {
-                None => String::new(),
-                Some(n) if show_bytes => format!(" type={n}"),
-                Some(n) => {
+            // amp / cab 的型号**不在 `0x63` 里**（variant 恒 0），由调用方另查
+            // `0x36` / `0x56` 得到。查不到就不印 —— `type_number` 对这两个块
+            // 返回 `None`，所以这里补的是型号名而不是编号。
+            let model = match block {
+                "amp" => models.0,
+                "cab" => models.1,
+                _ => None,
+            };
+            // 每段自带前导空格，`on` / `off` 之后直接拼接 —— 这样任一段为空时
+            // 都不会留下多余空格（amp / cab 无 `type=` 段时曾印出 `onENGP1`）。
+            //
+            // 字节对照模式下 amp / cab 同样不印 `type=`：那一节的值要能在上方
+            // hexdump 原位找到，而型号名与 `variant` 都不是这帧的字节。
+            let vtype = match (num, model) {
+                (None, m) => m.map_or(String::new(), |m| format!(" {m}")),
+                (Some(n), _) if show_bytes => format!(" type={n}"),
+                (Some(n), _) => {
                     // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字
                     // 查不到时不加括号 —— 留一个位置比印个"unknown"干净。
                     format!(

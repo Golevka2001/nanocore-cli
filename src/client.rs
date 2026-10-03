@@ -735,6 +735,51 @@ impl<T: Transport> Nanocore<T> {
         })
     }
 
+    /// 查询全部 30 个 IR 槽（= CAB 型号），返回被标记为「活动」的那个。
+    ///
+    /// 2026-10-03 真机实测：走 [`crate::preset_restore::preamble_frames`] 的
+    /// 前置序列时，其中第 43–72 帧恰好就是 `0x56` 逐槽查询（槽 0..29），每条
+    /// 都返回 39 字节，第 7 字节**恰好一个为 `0x01`** —— 那个就是当前预设引用的
+    /// CAB 型号。所以这里**复用那 30 条应答，不再发第二轮查询**：第二轮会让
+    /// 设备连续吃 60 条 `0x56`，实测随后自己的查询全部落空。
+    ///
+    /// 与 [`Self::read_active_amp_slot`] 对称：amp 走 `0x36`（38 项，含 FX2
+    /// 踏板），cab 走 `0x56`（30 项 IR）。两者都在第 7 字节给出 active 标志。
+    pub fn read_active_ir_slot(&mut self) -> Result<Option<crate::asset::IrSlot>, String> {
+        let mut active = Vec::new();
+        for f in crate::preset_restore::preamble_frames()
+            .map_err(|e| e.to_string())?
+            .iter()
+            // 只重放定位 / 同步这几帧，加上那 30 条 `0x56` 查询；中间的 38 条
+            // `0x36`（amp 型号）与 8 条 `0x40`（预设名表）跳过 —— 它们不参与
+            // CAB 读取，各省下几十次往返。
+            .filter(|f| matches!(f.kind, 0x46 | 0x68 | 0x30 | 0x50))
+        {
+            // 定位 / 同步帧的应答内容无意义，但设备仍会回；发完即弃。
+            let _ = self.transact(f.kind, f.payload.clone());
+        }
+        for idx in 0..30u8 {
+            let reply = self
+                .transact_expect(
+                    crate::asset::SLOT_QUERY,
+                    crate::asset::slot_query(idx),
+                    &[crate::asset::SLOT_QUERY],
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(s) = crate::asset::parse_ir_slot(&reply.payload)
+                && s.active
+            {
+                active.push(s);
+            }
+        }
+        Ok(match active.as_slice() {
+            [only] => Some(only.clone()),
+            // 0 个或多个：设备状态异常或前置没生效。调用方应回退到「不显示」，
+            // 不能猜一个 —— 上一版把恒 0 的 `variant` 印成 `type=1` 就是这么错的。
+            _ => None,
+        })
+    }
+
     /// 导入若干预设（动态构造 0x43 写组，前置枚举 + 官方节奏重放）。
     ///
     /// 输入为 `(目标槽位, 预设内容)` 对；`0x42`/`0x44` 取官方 restore 数据

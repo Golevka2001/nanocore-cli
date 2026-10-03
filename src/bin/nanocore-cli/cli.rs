@@ -141,6 +141,11 @@ pub enum Command {
         /// Skip the settings-page block (one extra round trip)
         #[arg(long)]
         no_settings: bool,
+        /// Skip the amp / cab model lookup (about 40 extra round trips — the amp
+        /// table has 38 slots and the cab table 30, each answered only after the
+        /// factory-restore preamble). The `AMP` / `CAB` rows then show no model.
+        #[arg(long)]
+        no_model: bool,
     },
 
     /// Manage presets
