@@ -341,16 +341,23 @@ pub fn render_snapshot(
             let block = protocol::CHAIN_ROLES[i].0;
             let at = r.stream_offset;
             let on = if r.enabled != 0 { "on " } else { "off" };
-            // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
-            // 时不加括号 —— 留一个位置比印个"unknown"干净。
-            let vtype = format!(
-                "type={}{}",
-                r.variant + 1,
-                match protocol::variant_name(i as u8, r.variant) {
-                    Some(n) => format!(" {n}"),
-                    None => String::new(),
-                }
-            );
+            // 字节对照模式只印数字：这一节讲的是线上那一个字节叫什么，型号名
+            // 是查表结论，交给 `show`。名字在 debug 段是噪音 —— 它不在这份 hexdump
+            // 里，也不是解码出来的。
+            let vtype = if show_bytes {
+                format!("type={}", r.variant + 1)
+            } else {
+                // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
+                // 时不加括号 —— 留一个位置比印个"unknown"干净。
+                format!(
+                    "type={}{}",
+                    r.variant + 1,
+                    match protocol::variant_name(i as u8, r.variant) {
+                        Some(n) => format!(" {n}"),
+                        None => String::new(),
+                    }
+                )
+            };
             // 归一化值是线上真正的字节；带量程的那个是设备/App 上显示的数字。
             // 手册没给量程的参数只印归一化值，不猜。
             // 表比参数列表短时（EQ 3 段却给了 4 个 float）不补名字 —— 印 `?`
