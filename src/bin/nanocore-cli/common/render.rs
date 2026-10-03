@@ -196,7 +196,8 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
                     &format!("#{:<3}", e.slot + 1),
                     e.offset,
                     len,
-                    &format!("{shown}  named={}", e.named),
+                    // 名字定宽，`named=` 那一列才能对齐（名字本身最多 8 字符）。
+                    &format!("{shown:<8}  named={}", e.named),
                     indent
                 )
             );
