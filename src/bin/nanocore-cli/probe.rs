@@ -36,8 +36,8 @@ pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), Failur
         println!("--- step {label} ---");
         match dev.transact_with_flags(conn.flags, kind, payload, &expect) {
             Ok((tx, rx)) => {
-                describe(&tx, "");
-                describe(&rx, "");
+                describe(&tx, "", false);
+                describe(&rx, "", false);
             }
             Err(e) => println!("  -> {e}"),
         }
@@ -50,7 +50,7 @@ pub fn probe(dev: &mut Dev, conn: &Conn, index: Option<u8>) -> Result<(), Failur
         if !raw.is_empty() {
             println!("raw[{}]: {}", raw.len(), hex(&raw));
             for f in Frame::split_stream(&raw) {
-                describe(&f, "");
+                describe(&f, "", false);
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(20));

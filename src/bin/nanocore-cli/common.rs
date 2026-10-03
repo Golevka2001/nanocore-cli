@@ -162,7 +162,10 @@ const DIVIDER_WIDTH: usize = 60;
 ///
 /// `indent` 逐层传递：帧头、hexdump、解析出的条目都按它缩进，否则同一个
 /// `describe` 在不同调用点会印出不同深度的块。
-pub fn describe(frame: &Frame, indent: &str) {
+///
+/// `decode` 控制 `0x63` 快照是否展开成字段表。快照是唯一需要几十行才说得清的
+/// 类型，把它塞进每一条被监听的帧里会淹掉其余输出，所以做成开关而非默认。
+pub fn describe(frame: &Frame, indent: &str, decode: bool) {
     let inner = format!("{indent}  ");
     println!(
         "{indent}dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
@@ -173,6 +176,21 @@ pub fn describe(frame: &Frame, indent: &str) {
         frame.payload.len()
     );
     print!("{}", dump(&frame.payload, &inner));
+    if frame.kind == 0x63 {
+        // 快照解码自成一块，先与上面的 hexdump 划开。`Bytes::Shown` 会连
+        // unpacked 流一起打（monitor 里一帧就是几十行），故只在 decode 时用。
+        divider();
+        print!(
+            "{}",
+            render_snapshot(
+                &frame.payload,
+                &inner,
+                None,
+                if decode { Bytes::Shown } else { Bytes::None }
+            )
+        );
+        divider();
+    }
     if frame.kind == 0x06
         && let Some(ep) = protocol::parse_effect_data(&frame.payload)
     {
@@ -340,8 +358,8 @@ pub fn transact_reply(
         Ok((tx, rx)) => {
             // tx 与 rx 用同一个渲染器：两行并排即可看出 seq 是否被设备回显成
             // 同一个值（这正是配对的依据），也免去手打 tx 字符串漏掉字段。
-            describe(&tx, "");
-            describe(&rx, "");
+            describe(&tx, "", false);
+            describe(&rx, "", false);
             Ok(Some(rx))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(
@@ -575,5 +593,64 @@ mod hexdump_tests {
         for l in out.lines() {
             assert!(l.starts_with(">>"), "{l}");
         }
+    }
+}
+
+#[cfg(test)]
+mod describe_decode_tests {
+    use super::*;
+    use nanocore::frame::MAGIC;
+
+    fn frame63(payload: Vec<u8>) -> Frame {
+        let mut wire = Vec::new();
+        wire.extend_from_slice(&MAGIC);
+        wire.push(0x71);
+        wire.push(0x40);
+        wire.push(0x02);
+        wire.push(0x00);
+        wire.push(0x00);
+        wire.push(0x63);
+        wire.extend_from_slice(&payload);
+        Frame::decode(&wire).expect("decode").0
+    }
+
+    const SNAP: &str = "00002000000300540103060336731d3f00000002006c51383e295c050f3d381e053e5201381e3f000003000000003f0000003f034d4c4c3f010005031a19193f000000443f1f052b3f0a570c633f4d4c4c3f010c00024d4c0c3f334033333f0000041a1919193e414a213f300000003f1a1919603f0100025c0f420e3e4d4c4c3e010120057b142e3e6c5140383e713d4a3f4d014c4c3e7b142e3e000000040000003f000000003f000000003f0000003f08000001020304050607";
+
+    fn bytes() -> Vec<u8> {
+        SNAP.as_bytes().chunks(2)
+            .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    /// monitor 会收到设备主动发出的 0x63（`preset set` 的应答就是这种），
+    /// 故 describe 必须能把它解出来，而不只是打印 hexdump。
+    #[test]
+    fn snapshot_frame_is_decoded_when_asked() {
+        let f = frame63(bytes());
+        assert_eq!(f.kind, 0x63);
+        // 渲染路径不能 panic，且解码应给出 8 条记录。
+        let st = protocol::decode_snapshot_state(&f.payload).expect("0x63 must decode");
+        assert_eq!(st.records.len(), 8);
+        // decode=true 走 Bytes::Shown（含 unpacked 流），false 走紧凑摘要。
+        // 两者都必须跑通：monitor 会持续调用，panic 会打断整个监听。
+        for decode in [true, false] {
+            describe(&f, "", decode);
+        }
+    }
+
+    /// 非快照帧不受 decode 影响：0x40 预设列表照旧解析。
+    #[test]
+    fn non_snapshot_frames_keep_their_own_parsing() {
+        let mut wire = Vec::new();
+        wire.extend_from_slice(&MAGIC);
+        wire.push(0x71);
+        wire.push(0x00);
+        wire.push(0x02);
+        wire.push(0x00);
+        wire.push(0x00);
+        wire.push(0x40);
+        wire.extend_from_slice(&[0x00, 0x01, 0x41, 0x42]);
+        let f = Frame::decode(&wire).expect("decode").0;
+        assert_eq!(f.kind, 0x40);
     }
 }

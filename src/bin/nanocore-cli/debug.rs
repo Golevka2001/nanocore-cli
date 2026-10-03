@@ -56,7 +56,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             }
             Ok(())
         }
-        DebugCmd::Monitor => {
+        DebugCmd::Monitor { decode, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             // 它只被动打印设备**主动发出**的帧（Event / 别人的请求的回包），
             // 自己不发任何请求——所以设备空闲时这里本来就该是安静的。
@@ -72,7 +73,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     println!("raw[{}]: {}", raw.len(), hex(&raw));
                     for f in Frame::split_stream(&raw) {
-                        describe(&f, "");
+                        describe(&f, "", decode);
                     }
                     frames += 1;
                 }
@@ -164,7 +165,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                 if !raw.is_empty() {
                     for f in Frame::split_stream(&raw) {
                         println!("rx:");
-                        describe(&f, "");
+                        describe(&f, "", false);
                         got += 1;
                     }
                 }

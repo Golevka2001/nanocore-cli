@@ -491,7 +491,18 @@ pub enum DebugCmd {
         knobs: ProtocolKnobs,
     },
     /// Print every frame the device emits (ctrl-c to stop)
-    Monitor,
+    ///
+    /// Passive: it never transmits, so an idle device produces nothing and the
+    /// command prints a heartbeat instead. Frames the device originates on its
+    /// own are what shows up here.
+    Monitor {
+        /// Also expand 0x63 snapshots into a field table (each one prints a
+        /// hexdump of the masked stream alongside)
+        #[arg(long)]
+        decode: bool,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
     /// Raw Control Change (decimal; prefix 0x.. for hex)
     Cc {
         /// CC number 0–127
