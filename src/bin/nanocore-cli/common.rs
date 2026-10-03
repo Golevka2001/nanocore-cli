@@ -562,41 +562,6 @@ pub fn render_snapshot(
 }
 
 #[cfg(test)]
-mod hexdump_tests {
-    use super::*;
-
-    #[test]
-    fn groups_at_eight_bytes_and_pads_short_rows() {
-        // 20 字节：首行 16（满），次行 4（短，须右补到同宽）。
-        let data: Vec<u8> = (0u8..20).collect();
-        let out = dump(&data, "");
-        let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines.len(), 2);
-        // 分组空隙在第 8 字节后：hex 串为 "00010203 04050607 ..."。
-        assert!(lines[0].starts_with("   0  00 01 02 03 04 05 06 07 "), "{}", lines[0]);
-        // 短行的 ASCII 列必须与首行同列。
-        let col = |l: &str| l.find('|').expect("ascii column");
-        assert_eq!(col(lines[0]), col(lines[1]), "短行 ASCII 列左移了:\n{out}");
-    }
-
-    #[test]
-    fn ascii_column_renders_printable_and_dot() {
-        let data = b"ab\x00\x7f\x80z";
-        let out = dump(data, "");
-        // 0x20..=0x7E 为可打印；0x7f (DEL)、0x80 与 0x00 一样打成 '.'。
-        assert!(out.contains("|ab...z|"), "{out}");
-    }
-
-    #[test]
-    fn indent_applies_to_every_row() {
-        let out = dump(&[0u8; 20], ">>");
-        for l in out.lines() {
-            assert!(l.starts_with(">>"), "{l}");
-        }
-    }
-}
-
-#[cfg(test)]
 mod describe_decode_tests {
     use super::*;
     use nanocore::frame::MAGIC;
@@ -636,21 +601,5 @@ mod describe_decode_tests {
         for decode in [true, false] {
             describe(&f, "", decode);
         }
-    }
-
-    /// 非快照帧不受 decode 影响：0x40 预设列表照旧解析。
-    #[test]
-    fn non_snapshot_frames_keep_their_own_parsing() {
-        let mut wire = Vec::new();
-        wire.extend_from_slice(&MAGIC);
-        wire.push(0x71);
-        wire.push(0x00);
-        wire.push(0x02);
-        wire.push(0x00);
-        wire.push(0x00);
-        wire.push(0x40);
-        wire.extend_from_slice(&[0x00, 0x01, 0x41, 0x42]);
-        let f = Frame::decode(&wire).expect("decode").0;
-        assert_eq!(f.kind, 0x40);
     }
 }

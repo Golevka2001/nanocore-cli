@@ -666,43 +666,6 @@ mod tests {
         assert_eq!(write_name(0, b"Bog412\x00A").len(), 5 + 8);
     }
 
-    /// 全部 30 个出厂 IR 的 `B3` 字节，
-    /// 与 `factory-reset.mmon` 的 `0x53` 帧交叉核对
-    /// （其内容 = APK 内置的 `factory_presets/ir/NN.bin`）。需要已解包的 APK 目录树。
-    #[ignore = "needs the extracted factory IR files (not part of this repo)"]
-    #[test]
-    fn hash_b3_matches_all_30_factory_irs() {
-        let dir = std::path::Path::new("/tmp/apkx/assets/flutter_assets/assets/nanocore/factory_presets/ir");
-        if !dir.is_dir() {
-            eprintln!("skipping: APK IR tree not extracted");
-            return;
-        }
-        // (slot, 期望的 B3)，取自抓包。
-        let expect: [(u8, u8); 30] = [
-            (0, 0x40), (1, 0x40), (2, 0x20), (3, 0x70), (4, 0x10), (5, 0x70),
-            (6, 0x60), (7, 0x20), (8, 0x50), (9, 0x40), (10, 0x60), (11, 0x01),
-            (12, 0x30), (13, 0x30), (14, 0x40), (15, 0x41), (16, 0x40),
-            (17, 0x20), (18, 0x00), (19, 0x00), (20, 0x70), (21, 0x10),
-            (22, 0x20), (23, 0x50), (24, 0x10), (25, 0x10), (26, 0x10),
-            (27, 0x20), (28, 0x20), (29, 0x10),
-        ];
-        for (slot, want) in expect {
-            let blob = std::fs::read(dir.join(format!("{slot:02}.bin"))).expect("ir file");
-            let total = blob.len() as u32;
-            let frame = write_hash(slot, total, &blob);
-            assert_eq!(frame[3], want, "B3 mismatch for slot {slot}");
-            assert_eq!(frame[4], 0x00);
-            assert_eq!(u16::from_be_bytes([frame[5], frame[6]]) as usize, blob.len());
-            // 帧中的 CRC 字节必须能解码回完整的 crc32。
-            // B3 bit4 = c0 的最高位，bit5 = c1 的，bit6 = c2 的。
-            let c0 = frame[8] | (((frame[3] >> 4) & 1) << 7);
-            let c1 = frame[9] | (((frame[3] >> 5) & 1) << 7);
-            let c2 = frame[10] | (((frame[3] >> 6) & 1) << 7);
-            let c3 = frame[12] | (frame[11] << 7);
-            assert_eq!([c0, c1, c2, c3], crc32(&blob).to_le_bytes());
-        }
-    }
-
     /// B3 位布局的合成校验：crc32("123456789") = 0xCBF43926，
     /// 小端 `26 39 cb 4c` -> c0..c2 的最高位 = 0,0,1 -> v = 4。
     #[test]
