@@ -453,6 +453,14 @@ pub struct PresetEntry {
     /// [`SnapshotRecord::stream_offset`] 同一用途。`0x40` 不需要解包，所以
     /// 这里就是线上载荷的偏移。
     pub offset: usize,
+    /// 标记字节（全部 `< 0x20`）所在区间 `[offset+1, marks_end)`。
+    pub marks: (usize, usize),
+    /// 内嵌 `0x00` 在名字区内的位置——它们不计入 8 个字符。
+    ///
+    /// ASCII 列里的 `.` 因此有两种可能：真正的不可打印字符，或这里的一颗 NUL。
+    pub name_nuls: Vec<usize>,
+    /// 记录尾部的填充字节位置（若有），位于名字之后。
+    pub filler: Option<usize>,
 }
 
 /// 存储的预设名称的字符数。名称以空格填充到此宽度，并且以在分片之间插入 `0x00` 字节的方式存储。
@@ -520,17 +528,21 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
         if i >= payload.len() || payload[i] >= 0x20 {
             return None;
         }
+        let marks_at = i;
         let mut named = false;
         while i < payload.len() && payload[i] < 0x20 {
             named |= payload[i] != 0x00;
             i += 1;
         }
+        let marks = (marks_at, i);
 
         // 3. 恰好 PRESET_NAME_CHARS 个可打印字符，跳过 NUL。
         let mut name = String::with_capacity(PRESET_NAME_CHARS);
+        let mut name_nuls = Vec::new();
         while i < payload.len() && name.len() < PRESET_NAME_CHARS {
             let b = payload[i];
             if b == 0x00 {
+                name_nuls.push(i);
                 i += 1;
             } else if (0x20..=0x7E).contains(&b) {
                 name.push(b as char);
@@ -542,15 +554,25 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
         if name.len() != PRESET_NAME_CHARS {
             return None;
         }
-        out.push(PresetEntry { slot, named, name: name.trim_end().to_string(), offset });
 
         // 4. 至多一个尾随字节 < 0x20，但绝不可能是下一个槽位索引。
         //    （被标记的槽位可能持有 < 0x20 的值，所以应与预期的下一个
         //    索引比较，而不是与阈值比较。）
         let next_slot = base.wrapping_add(k as u8).wrapping_add(1);
+        let mut filler = None;
         if i < payload.len() && payload[i] < 0x20 && payload[i] != next_slot {
+            filler = Some(i);
             i += 1;
         }
+        out.push(PresetEntry {
+            slot,
+            named,
+            name: name.trim_end().to_string(),
+            offset,
+            marks,
+            name_nuls,
+            filler,
+        });
     }
     Some(out)
 }
@@ -1285,6 +1307,58 @@ mod tests {
         f2[32] = 0x08;
         f2[33..42].copy_from_slice(&[0x00, 0x01, 0x00, 0x02, 0x03, 0x05, 0x04, 0x06, 0x07]);
         assert_eq!(parse_chain_order(&f2).unwrap(), vec![0, 1, 2, 3, 5, 4, 6, 7]);
+    }
+
+    /// 记录内部各段的偏移必须能对上载荷本身。
+    ///
+    /// 渲染层逐段标注槽位 / 标记 / 名字 / 填充，任何一段的偏移算错都会指到
+    /// 别人的字节上，而且不会有任何报错。
+    #[test]
+    fn preset_entry_segments_locate_their_own_bytes() {
+        for payload in [PRESET_LIST_BASE32, PRESET_LIST_MID, PRESET_LIST_BASE40] {
+            let got = parse_preset_list(payload).expect("parse");
+            for e in &got {
+                // 槽位字节
+                assert_eq!(payload[e.offset], e.slot, "槽位字节应等于 slot");
+                // 标记段全为 < 0x20，且至少一个字节
+                assert!(e.marks.1 > e.marks.0);
+                assert!(
+                    payload[e.marks.0..e.marks.1].iter().all(|&b| b < 0x20),
+                    "标记段必须全是 < 0x20 的字节"
+                );
+                // named = 标记段不全为零
+                assert_eq!(
+                    e.named,
+                    payload[e.marks.0..e.marks.1].iter().any(|&b| b != 0)
+                );
+                // 名字段去掉 NUL 后正好 8 个可打印字符，且与 e.name 一致
+                // （e.name 已 trim 尾部空格，比较时补回去）。
+                let text: String = payload[e.marks.1..]
+                    .iter()
+                    .filter(|&&b| b != 0)
+                    .take(PRESET_NAME_CHARS)
+                    .map(|&b| b as char)
+                    .collect();
+                assert_eq!(text.len(), PRESET_NAME_CHARS);
+                assert_eq!(text, format!("{:<8}", e.name));
+                // NUL 位置确实落在名字区内
+                for n in &e.name_nuls {
+                    assert!(*n >= e.marks.1 && *n < e.marks.1 + 16, "NUL 应在名字区内");
+                    assert_eq!(payload[*n], 0x00);
+                }
+                // 填充字节（若有）也 < 0x20
+                if let Some(f) = e.filler {
+                    assert!(payload[f] < 0x20);
+                }
+            }
+            // 各条记录互不重叠，且整体铺满载荷
+            let mut cursor = 7;
+            for e in &got {
+                assert_eq!(e.offset, cursor, "记录应首尾相接");
+                cursor = e.filler.map_or(e.marks.1 + 8 + e.name_nuls.len(), |f| f + 1);
+            }
+            assert_eq!(cursor, payload.len(), "记录应恰好铺满载荷");
+        }
     }
 
     /// `0x40` 预设列表不得被读出链序。

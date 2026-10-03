@@ -171,26 +171,77 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
-        // 与快照同构：偏移前置，逐条对应上方 hexdump。`0x40` 的载荷是明文
-        // ASCII（无需解包），所以偏移就是线上偏移，与上面那段 hexdump 同基准。
-        // 标题给出槽位范围——每行只印偏移和名字，槽位号在载荷里，读者要自己对
-        // 照才知道这组是第几到第几。
-        // 槽位号线上 0 起始，显示时 1 起始（与 `preset list` 一致），两端都要 +1。
+        // 逐字节：头部 7 字节给三项，每条记录再拆成槽位 / 标记 / 名字 / 填充。
+        // 标记字节的语义尚未定论（见 PresetEntry::named），所以只印出它的
+        // 位置与字节值，不给它安一个名字。
+        let p = &frame.payload;
         let last = entries.last().expect("count > 0 已由解析保证").slot + 1;
         divider();
-        println!("{indent}slots (#{}-#{last}):", entries[0].slot + 1);
+        print!("{}", field_line("header", 0, 2, "00 00", indent));
+        print!(
+            "{}",
+            field_line(
+                "size",
+                2,
+                1,
+                &format!("{} = 10 x {} slots + 2", p[2], entries.len()),
+                indent
+            )
+        );
+        print!("{}", field_line("reserved", 3, 2, "00 00", indent));
+        print!(
+            "{}",
+            field_line(
+                "first slot",
+                5,
+                1,
+                &format!("{} (#{})", p[5], p[5] as usize + 1),
+                indent
+            )
+        );
+        print!(
+            "{}",
+            field_line("count", 6, 1, &entries.len().to_string(), indent)
+        );
+        println!("{indent}records (#{}-#{last}):", entries[0].slot + 1);
         for e in &entries {
-            // 记录长度 = 槽位 1 字节 + 标记字节 + 8 字符（含跳过的 NUL），
-            // 由下一条的偏移反推，最后一条按载荷末尾算。
-            let len = entries
-                .iter()
-                .find(|x| x.offset > e.offset)
-                .map_or(frame.payload.len() - e.offset, |x| x.offset - e.offset);
-            let mut name = e.name.clone();
+            let name_at = e.marks.1;
+            let name_end = e.filler.unwrap_or(name_at + e.name_nuls.len() + 8);
+            print!(
+                "{}",
+                field_line(
+                    &format!("#{} slot", e.slot + 1),
+                    e.offset,
+                    1,
+                    &format!("{}", p[e.offset]),
+                    indent
+                )
+            );
+            let marks = hex(&p[e.marks.0..e.marks.1]);
+            print!(
+                "{}",
+                field_line(
+                    "marks",
+                    e.marks.0,
+                    e.marks.1 - e.marks.0,
+                    &format!("{marks}  named={}", e.named),
+                    indent
+                )
+            );
+            let mut shown = e.name.clone();
             if !e.named {
-                name = "(empty)".to_string();
+                shown = "(empty)".to_string();
             }
-            print!("{}", field_line("slot", e.offset, len, &name, indent));
+            print!(
+                "{}",
+                field_line("name", name_at, name_end - name_at, &shown, indent)
+            );
+            if let Some(f) = e.filler {
+                print!(
+                    "{}",
+                    field_line("filler", f, 1, &format!("{:02x}", p[f]), indent)
+                );
+            }
         }
         divider();
     }
