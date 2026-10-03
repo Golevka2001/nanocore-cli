@@ -4,6 +4,7 @@
 //! 也不依赖设备或事务——所有字节都由调用方传进来。
 
 use nanocore::Frame;
+use nanocore::msg_type;
 use nanocore::protocol;
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -189,7 +190,13 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         }
         divider();
     }
-    if let Some(order) = protocol::parse_chain_order(&frame.payload) {
+    // 链序只出现在 0x43 预设帧里。不限定类型的话，`parse_chain_order` 会拿
+    // 任意帧去试：`0x40` 预设列表的第 30 字节恰好是 `0x03`（EQ 的槽位索引），
+    // 于是它把紧邻的两个字节读成链序——`EpicSolo` 的 `E`（0x45）被打印成
+    // `chainOrder: [69]`。
+    if frame.kind == msg_type::PRESET_WRITE
+        && let Some(order) = protocol::parse_chain_order(&frame.payload)
+    {
         println!("{inner}chainOrder: {order:?}");
     }
 }
