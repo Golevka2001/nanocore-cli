@@ -379,15 +379,13 @@ pub fn render_snapshot(
                 // （行首 `[4..7]`、参数行 `[7..15]`），再塞一个 `[1]` 进去没法区分。
                 (Some(n), _) if show_bytes => format!(" type={n}"),
                 (Some(n), _) => {
-                    // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字
-                    // 查不到时不加括号 —— 留一个位置比印个"unknown"干净。
-                    format!(
-                        " [{n}]{}",
-                        match protocol::variant_name(i as u8, r.variant) {
-                            Some(t) => format!(" {t}"),
-                            None => String::new(),
-                        }
-                    )
+                    // 名字在前、数字进括号：`Spring(type=5)`。设备侧编号放在
+                    // 名字后面像是它的属性，而不是另一段并列信息。名字查不到时
+                    // 只印数字，不留空括号。
+                    match protocol::variant_name(i as u8, r.variant) {
+                        Some(t) => format!(" {t}(type={n})"),
+                        None => format!(" type={n}"),
+                    }
                 }
             };
             // 归一化值是线上真正的字节；带量程的那个是设备/App 上显示的数字。
