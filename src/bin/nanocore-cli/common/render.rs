@@ -356,8 +356,10 @@ pub fn render_snapshot(
                     indent,
                 ));
             } else {
+                // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
+                // 字段，不该比字段标题更深一层。
                 out.push_str(&format!(
-                    "{indent}  {role:<5} {on} type={} params=[{params}]\n",
+                    "{indent}{role:<6} {on} type={} params=[{params}]\n",
                     r.variant + 1
                 ));
             }
