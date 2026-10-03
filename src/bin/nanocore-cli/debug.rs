@@ -9,8 +9,8 @@ use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, ProtocolKnobs};
 use crate::common::{
-    Failure, describe, hex, open_device, parse_hex, render_snapshot, send_standard, transact,
-    transact_reply,
+    Failure, describe, divider, divider_err, hex, open_device, parse_hex, render_snapshot,
+    send_standard, transact, transact_reply,
 };
 use crate::probe::probe;
 
@@ -37,6 +37,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         DebugCmd::Snapshot { decode, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
+            // 端口回显走 stderr，分节线也走 stderr：两者同流，先后才有保证。
+            divider_err();
             let (k, p) = protocol::request_snapshot();
             let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
             if decode {
@@ -46,6 +48,8 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
                     ));
                 };
                 // 纯协议层视角：不多发 `0x40` 去查名字。`show` 才查。
+                // 解码是独立于收发帧的另一层含义，同样划开。
+                divider();
                 print!("{}", render_snapshot(&reply.payload, "", None));
             }
             Ok(())

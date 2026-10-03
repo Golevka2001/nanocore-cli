@@ -81,6 +81,34 @@ pub fn hex(bytes: &[u8]) -> String {
         .join(" ")
 }
 
+/// 一条 60 宽的横线，带换行。
+fn divider_line() -> String {
+    format!("{}\n", "─".repeat(DIVIDER_WIDTH))
+}
+
+/// 分节线（stdout）：隔开事务收发与快照解码。
+///
+/// 一次 `debug snapshot --decode` 的输出来自三个互不相同的路径：端口回显
+/// （`open_device`，走 **stderr**）、事务收发（`transact_reply`）、快照解码
+/// （`render_snapshot`）。它们顶格排在一起时读者会把后半段误当成前半段的
+/// 续行——尤其 `rx:` 的 payload 十六进制和紧随其后的 `chain:` 行长得毫不相干。
+/// 一条横线把边界标出来，就不必再靠空行猜。
+pub fn divider() {
+    print!("{}", divider_line());
+}
+
+/// 分节线（stderr）：紧跟端口回显，把它与随后的 stdout 正文分开。
+///
+/// 必须走 stderr 才和它所分隔的端口回显落在同一个流里：两个流各自缓冲，
+/// 一旦被重定向到同一个文件，混排的先后就不保证，分节线也就指错了位置。
+pub fn divider_err() {
+    eprint!("{}", divider_line());
+}
+
+/// 分隔线宽度：与项目文档里最宽的一行输出（`show` 的 settings 节）同量级，
+/// 略短于它以免在窄终端里折行。
+const DIVIDER_WIDTH: usize = 60;
+
 pub fn describe(frame: &Frame) {
     println!(
         "  dir={:?} flags=0x{:02x} seq=0x{:04x} type=0x{:02x} payload[{}]",
@@ -111,14 +139,6 @@ pub fn describe(frame: &Frame) {
     }
     if let Some(order) = protocol::parse_chain_order(&frame.payload) {
         println!("  chainOrder: {order:?}");
-    }
-    if frame.kind == 0x63 {
-        let floats = protocol::scan_snapshot_floats(&frame.payload);
-        println!(
-            "  snapshot: {} bytes, {} float candidates",
-            frame.payload.len(),
-            floats.len()
-        );
     }
 }
 
@@ -288,6 +308,10 @@ pub fn render_chain(order: &[u8]) -> String {
 
 /// 把一条 `0x63` 快照载荷渲染为多行可读文本（`show` 与 `debug snapshot --decode` 共用）。
 ///
+/// 输出**只写字节本身能支撑的内容**：每个字段都是从载荷里某个确定偏移解出来的，
+/// 没有字节出处的推断（成因解释、与出厂值的差异、启发式扫描计数）一律不进这里——
+/// 那些属于 `docs/protocol/snapshot.md` 的逆向笔记，不属于「这帧是什么意思」。
+///
 /// `indent` 是每行的前导空白——`show` 有两格缩进，`debug` 下的调用方用空串。
 /// `name` 是当前预设名（`None` 表示未查到或该槽位未命名），显示在编号之后。
 /// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
@@ -321,9 +345,7 @@ pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> Stri
             ));
             // 记录按角色序（= b5 槽位）排列，**不是**链上的物理顺序；
             // 链序见上面那行（它给出角色 -> 链位的映射）。
-            out.push_str(&format!(
-                "{indent}modules (record order = b5 slot = role):\n"
-            ));
+            out.push_str(&format!("{indent}modules:\n"));
             for (i, r) in state.records.iter().enumerate() {
                 let role = protocol::CHAIN_ROLES[i].0;
                 let params = r
@@ -338,11 +360,6 @@ pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> Stri
                     r.variant + 1
                 ));
             }
-            out.push_str(&format!(
-                "{indent}note:          fx1(fx gate)/fx2(comp) `enabled` in the snapshot\n\
-                 {indent}                reflects live DSP state (signal-dependent);\n\
-                 {indent}                fx8 params are runtime values, not factory ones.\n"
-            ));
         }
         None => {
             // 无法结构化解码时退回经验字段。
@@ -354,10 +371,5 @@ pub fn render_snapshot(payload: &[u8], indent: &str, name: Option<&str>) -> Stri
             }
         }
     }
-    out.push_str(&format!(
-        "{indent}data:          snapshot {} bytes, {} raw float candidate(s)\n",
-        payload.len(),
-        protocol::scan_snapshot_floats(payload).len()
-    ));
     out
 }
