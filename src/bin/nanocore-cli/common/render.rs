@@ -5,6 +5,7 @@
 
 use nanocore::Frame;
 use nanocore::msg_type;
+use nanocore::params_data;
 use nanocore::protocol;
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -325,6 +326,7 @@ pub fn render_snapshot(
             // 与 `chain:` 行同一套名字（设备显示名），不是 CLI 短名——
             // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
             let role = protocol::CHAIN_ROLES[i].1;
+            let block = protocol::CHAIN_ROLES[i].0;
             let at = r.stream_offset;
             let on = if r.enabled != 0 { "on " } else { "off" };
             // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
@@ -337,12 +339,42 @@ pub fn render_snapshot(
                     None => String::new(),
                 }
             );
-            let params = r
+            // 归一化值是线上真正的字节；带量程的那个是设备/App 上显示的数字。
+            // 手册没给量程的参数只印归一化值，不猜。
+            // 表比参数列表短时（EQ 3 段却给了 4 个 float）不补名字 —— 印 `?`
+            // 等于承认我们知道那个参数是什么而其实不知道。多出来的按归一化值印。
+            let listed = params_data::params(block, Some(r.variant)).map_or(0, |ps| ps.len());
+            let shown: Vec<String> = r
                 .params
                 .iter()
-                .map(|p| format!("{p:.3}"))
-                .collect::<Vec<_>>()
-                .join(", ");
+                .enumerate()
+                .map(|(i, p)| {
+                    let named = params_data::param_by_index(block, Some(r.variant), i as u8)
+                        .filter(|_| i < listed);
+                    let range = if block == "eq" {
+                        named.map(|_| &params_data::EQ_RANGE)
+                    } else {
+                        named.and_then(|_| params_data::ranges(block, Some(r.variant)))
+                            .and_then(|rs| rs.get(i))
+                    };
+                    match (named, range) {
+                        (Some(pi), Some(rg)) => {
+                            format!("{} = {}", pi.name, params_data::denormalize(rg, *p))
+                        }
+                        // 有名字但手册没给量程：印归一化值，名字保留 —— 读者至少
+                        // 知道这是哪个旋钮，量程的事不能编。
+                        (Some(pi), None) => format!("{} = {p:.3}", pi.name),
+                        _ => format!("{p:.3}"),
+                    }
+                })
+                .collect();
+            let params = if shown.iter().any(|s| s.contains(' ')) {
+                // 有量程时逐个列成 `名字 = 实际值`，一行放不下就换行缩进。
+                let pad = " ".repeat(indent.len() + 2);
+                format!("\n{pad}   {}", shown.join(&format!("\n{pad}   ")))
+            } else {
+                format!("[{}]", shown.join(", "))
+            };
             if show_bytes {
                 // head 三字节逐个说清：enabled / variant / count。count 虽能从
                 // params 区间长度反推（4 字节一个 float），但它是这一行的第三个
@@ -365,7 +397,7 @@ pub fn render_snapshot(
                 // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
                 // 字段，不该比字段标题更深一层。
                 out.push_str(&format!(
-                    "{indent}{role:<6} {on} {vtype} params=[{params}]\n"
+                    "{indent}{role:<6} {on} {vtype} params={params}\n"
                 ));
             }
         }

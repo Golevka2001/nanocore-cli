@@ -660,11 +660,13 @@ pub fn denormalize(range: &Range, normalized: f32) -> String {
     } else {
         2
     };
-    if range.unit.is_empty() {
-        format!("{v:.digits$}")
+    // 大跨度值（Hz 一类）小数位没有意义，且 `12800.0 Hz` 比 `12800 Hz` 宽一格。
+    let body = if span >= 1000.0 {
+        format!("{v:.0}")
     } else {
-        format!("{v:.digits$} {}", range.unit)
-    }
+        format!("{v:.digits$}")
+    };
+    if range.unit.is_empty() { body } else { format!("{body} {}", range.unit) }
 }
 
 /// 某 EQ 类型的频段参数。
