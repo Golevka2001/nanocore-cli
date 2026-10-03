@@ -109,7 +109,12 @@ pub fn describe(frame: &Frame, indent: &str, decode: bool) {
         frame.payload.len()
     );
     print!("{}", dump(&frame.payload, &inner));
-    if frame.kind == 0x63 {
+    if frame.kind == 0x63
+        && protocol::decode_snapshot_state(&frame.payload).is_some()
+    {
+        // 解码成功才渲染：tx 那种 3 字节请求帧也是 0x63，渲染它的 fallback
+        // 只会得到「no structural decode」——对着一帧本就没有内容的载荷说它
+        // 解不出来，是噪音而不是信息。
         // 快照解码自成一块，先与上面的 hexdump 划开。`Bytes::Shown` 会连
         // unpacked 流一起打（monitor 里一帧就是几十行），故只在 decode 时用。
         divider();
@@ -337,6 +342,46 @@ pub fn render_snapshot(
         payload.len()
     ));
     out
+}
+
+#[cfg(test)]
+mod hexdump_tests {
+    use super::*;
+
+    /// 末行必须右补到与满行同宽，否则 ASCII 列在短行上左移——而末行正是
+    /// 读者唯一会去核对最后几个字节的那一行。`HEX_COL` 少算 1 就是这个 bug。
+    #[test]
+    fn short_rows_pad_to_the_full_hex_column() {
+        let out = dump(&(0u8..20).collect::<Vec<_>>(), "");
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let col = |l: &str| l.find('|').expect("ascii column");
+        assert_eq!(col(lines[0]), col(lines[1]), "短行 ASCII 列左移了:\n{out}");
+    }
+
+    /// 8 字节处的分组空隙落在有意义的边界上（打包组大小）。分隔空格本身也是
+    /// 空格，故那里是两格；末行不足 8 字节时不该有空隙。
+    #[test]
+    fn group_gap_after_eight_bytes_only_when_row_is_full() {
+        // 用递增字节：全零会把字面量 `00 01 02` 与输出混为一谈。
+        let full = dump(&(0u8..16).collect::<Vec<_>>(), "");
+        assert!(
+            full.lines().next().unwrap().starts_with("   0  00 01 02 03 04 05 06 07  08 "),
+            "{full}"
+        );
+        let short = dump(&[0u8; 4], "");
+        assert!(
+            short.lines().next().unwrap().starts_with("   0  00 00 00 00 "),
+            "{short}"
+        );
+    }
+
+    /// ASCII 列只把 `0x20..=0x7e` 当可打印；0x7f (DEL) 与 0x00 一样打成 `.`。
+    #[test]
+    fn ascii_column_dots_non_printable() {
+        let out = dump(b"ab\x00\x7f\x80z", "");
+        assert!(out.contains("|ab...z|"), "{out}");
+    }
 }
 
 #[cfg(test)]
