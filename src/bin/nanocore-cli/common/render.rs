@@ -171,36 +171,21 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
     if frame.kind == 0x40
         && let Some(entries) = protocol::parse_preset_list(&frame.payload)
     {
-        // 头部 7 字节 = 5 个字段，之后每条记录一行。
+        // 每条记录一行，offset 是该记录在载荷里的区间（长度由下一条的起点反推）。
         let p = &frame.payload;
         divider();
-        print!("{}", field_line("header", 0, 2, "00 00", indent));
         print!(
             "{}",
-            field_line(
-                "size",
-                2,
-                1,
-                &format!("{} = 10 x {} slots + 2", p[2], entries.len()),
-                indent
-            )
-        );
-        print!("{}", field_line("reserved", 3, 2, "00 00", indent));
-        print!(
-            "{}",
-            field_line(
-                "first slot",
-                5,
-                1,
-                &format!("{} (#{})", p[5], p[5] as usize + 1),
-                indent
-            )
+            field_line("first slot", 5, 1, &format!("#{}", p[5] + 1), indent)
         );
         print!(
             "{}",
             field_line("count", 6, 1, &entries.len().to_string(), indent)
         );
-        for e in &entries {
+        for (k, e) in entries.iter().enumerate() {
+            let len = entries[k + 1..]
+                .first()
+                .map_or(p.len() - e.offset, |x| x.offset - e.offset);
             let mut shown = e.name.clone();
             if !e.named {
                 shown = "(empty)".to_string();
@@ -210,8 +195,8 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
                 field_line(
                     &format!("#{:<3}", e.slot + 1),
                     e.offset,
-                    1,
-                    &shown,
+                    len,
+                    &format!("{shown}  named={}", e.named),
                     indent
                 )
             );
