@@ -306,13 +306,8 @@ pub fn render_chain(order: &[u8]) -> String {
         .join(" ")
 }
 
-/// 每行 16 字节的十六进制转储，左侧标出该行首字节在流内的偏移。
-///
-/// 转储的是**解包后**的数据流（[`protocol::unpack_snapshot_stream`]），不是线上
-/// 载荷：线上每 8 字节有一个掩码字节被吞，同一个字段的字节会被掩码位劈开、
-/// 跨组不连续（187 字节的载荷里 66 个字段有 13 个跨组）。解包后这些都变回连续，
-/// 可读字段才能与字节逐段对齐。
-fn dump_stream(data: &[u8], indent: &str) -> String {
+/// 经典 hexdump：每行 16 字节，左侧是该行首字节的偏移。
+fn dump(data: &[u8], indent: &str) -> String {
     let mut out = String::new();
     for (row, chunk) in data.chunks(16).enumerate() {
         out.push_str(&format!("{indent}{:>4}  {}\n", row * 16, hex(chunk)));
@@ -320,22 +315,27 @@ fn dump_stream(data: &[u8], indent: &str) -> String {
     out
 }
 
-/// 一行里同时给出「字段名 + 原始字节 + 可读值」，用于逐字段对照。
+/// 一行字段：偏移区间 + 可读值。
 ///
-/// 字节取自解包后的流（`slice` 由调用方按 [`SnapshotRecord::stream_offset`] 等
-/// 偏移切出），所以每个数字都能在上面的转储里原位找到。
+/// 偏移区间指向**解包后**数据流（偏移由 [`SnapshotRecord::stream_offset`] 等
+/// 从解码游标带出来），字节本身交给上面的 hexdump 呈现——这里再抄一遍字节
+/// 只会让同一串 hex 出现两遍，改动时容易只改一处。
 ///
-/// 超过 `WIDTH` 就把可读值折到下一行缩进对齐（而不是让它顶出右边）——
-/// 7 个参数的记录光字节就 28 字符，跟在后面会把这个字段的可读值挤出屏幕。
+/// 超过 `FIELD_WIDTH` 就把可读值折到下一行缩进对齐（而不是让它顶出右边）：
+/// 一行放不下的字段（EQ 有 9 个 float 可读值）折行后仍然读得完。
 const FIELD_WIDTH: usize = 96;
 
-fn field_line(label: &str, bytes: &[u8], readable: &str, indent: &str) -> String {
-    let pad = " ".repeat(14);
-    let head = format!("{indent}{label:<14}{}", hex(bytes));
-    if head.chars().count() + readable.chars().count() <= FIELD_WIDTH {
-        format!("{head} {readable}\n")
+fn field_line(label: &str, at: usize, len: usize, readable: &str, indent: &str) -> String {
+    let range = if len == 1 {
+        format!("[{at}]")
     } else {
-        format!("{head}\n{indent}{pad}{readable}\n")
+        format!("[{at}..{}]", at + len)
+    };
+    let head = format!("{indent}{label:<14}{range:<12}");
+    if head.chars().count() + readable.chars().count() <= FIELD_WIDTH {
+        format!("{head}{readable}\n")
+    } else {
+        format!("{head}\n{indent}{:<26}{readable}\n", "")
     }
 }
 
@@ -344,11 +344,7 @@ fn field_line(label: &str, bytes: &[u8], readable: &str, indent: &str) -> String
 pub enum Bytes {
     /// 只给可读字段（`show` 用；日常看状态，不必带字节）。
     None,
-    /// 额外给解包后的字节流转储 + 每字段的原始字节（`debug snapshot --decode` 用）。
-    ///
-    /// 转储的是**解包后**的流：线上载荷每 8 字节有一个掩码字节被吞，同一个
-    /// float 的 4 个字节会被掩码位劈开、跨组不连续（187 字节载荷的 66 个字段里
-    /// 13 个跨组）。解包后字段恢复连续，才谈得上「按偏移逐字段核对」。
+    /// 额外给原始载荷与解包后数据流的 hexdump + 每字段的偏移（`debug … --decode` 用）。
     Shown,
 }
 
@@ -382,19 +378,19 @@ pub fn render_snapshot(
     {
         let show_bytes = bytes == Bytes::Shown;
         if show_bytes {
-            out.push_str(&format!(
-                "{indent}unpacked stream ({} bytes, mask bytes dropped):\n",
-                data.len()
-            ));
-            out.push_str(&dump_stream(&data, &format!("{indent}  ")));
-            out.push('\n');
-            out.push_str(&format!("{indent}fields (same order as the stream above):\n"));
+            // 两段转储的偏移基准不同：payload 是线上字节，unpacked 是解包后的。
+            // 下面 fields 的偏移一律指unpacked，故把它放在最后紧贴 fields。
+            out.push_str(&format!("{indent}payload ({} bytes)\n", payload.len()));
+            out.push_str(&dump(payload, &format!("{indent}  ")));
+            out.push_str(&format!("{indent}unpacked ({} bytes)\n", data.len()));
+            out.push_str(&dump(&data, &format!("{indent}  ")));
+            out.push_str(&format!("{indent}fields (offsets into unpacked)\n"));
         }
-        // 没开字节对照时不逐字段列偏移，只给一份紧凑摘要（`show` 的常态）。
+        // 没开字节对照时不列偏移，只给一份紧凑摘要（`show` 的常态）。
         // 偏移由调用点显式给出，不靠 label 反查——那样换个标签就静默指错字节。
         let head = |label: &str, at: usize, readable: String| {
             if show_bytes {
-                field_line(label, &data[at..at + 1], &readable, indent)
+                field_line(label, at, 1, &readable, indent)
             } else {
                 format!("{indent}{label}: {readable}\n")
             }
@@ -421,7 +417,6 @@ pub fn render_snapshot(
             // 两行讲的是同一组角色，叫法不同会让人以为是两套东西。
             let role = protocol::CHAIN_ROLES[i].1;
             let at = r.stream_offset;
-            let body = &data[at + 3..at + 3 + r.params.len() * 4];
             let on = if r.enabled != 0 { "on " } else { "off" };
             let params = r
                 .params
@@ -432,13 +427,15 @@ pub fn render_snapshot(
             if show_bytes {
                 out.push_str(&field_line(
                     &format!("{role} head"),
-                    &data[at..at + 3],
-                    &format!("{on} type={} ({} params)", r.variant + 1, r.params.len()),
+                    at,
+                    3,
+                    &format!("{on} type={}", r.variant + 1),
                     indent,
                 ));
                 out.push_str(&field_line(
                     &format!("{role} params"),
-                    body,
+                    at + 3,
+                    r.params.len() * 4,
                     &format!("[{params}]"),
                     indent,
                 ));
@@ -450,20 +447,20 @@ pub fn render_snapshot(
             }
         }
         if show_bytes {
-            let at = state.chain_count_offset;
             out.push_str(&field_line(
                 "chain count",
-                &data[at..at + 1],
-                &format!("{} slots", protocol::CHAIN_LEN),
+                state.chain_count_offset,
+                1,
+                &protocol::CHAIN_LEN.to_string(),
                 indent,
             ));
         }
         if let Some(order) = &chain {
             if show_bytes {
-                let at = state.chain_count_offset + 1;
                 out.push_str(&field_line(
                     "chain order",
-                    &data[at..at + order.len()],
+                    state.chain_count_offset + 1,
+                    order.len(),
                     &render_chain(order),
                     indent,
                 ));
