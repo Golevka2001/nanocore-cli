@@ -190,6 +190,18 @@ pub fn variant_name(slot: u8, variant: u8) -> Option<&'static str> {
     crate::params_data::effect_type_name(block, variant)
 }
 
+/// 某槽位当前 `variant` 在设备上显示的类型编号（渲染成 `type=N` 的那个 `N`）。
+///
+/// 多数块它就是 `variant + 1`；**reverb 不同** —— 手册 REV 那栏是产品顺序，
+/// 与存储用的 `variant` 对末三项错开（variant 7 = spring，是设备上的第 5 个
+/// 类型）。委托给 [`crate::params_data::type_number`]，不在渲染层写死 `+1`。
+pub fn type_number(slot: u8, variant: u8) -> u8 {
+    match CHAIN_ROLES.get(slot as usize) {
+        Some((block, _)) => crate::params_data::type_number(block, variant),
+        None => variant + 1,
+    }
+}
+
 /// 插入该消息布局所需的固定 `0x00` 填充字节。
 fn chain_encode(order: &[u8], insert_at: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(CHAIN_LEN + 1);

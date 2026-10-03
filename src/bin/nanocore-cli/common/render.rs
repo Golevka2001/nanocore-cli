@@ -345,13 +345,13 @@ pub fn render_snapshot(
             // 是查表结论，交给 `show`。名字在 debug 段是噪音 —— 它不在这份 hexdump
             // 里，也不是解码出来的。
             let vtype = if show_bytes {
-                format!("type={}", r.variant + 1)
+                format!("type={}", protocol::type_number(i as u8, r.variant))
             } else {
                 // 数字是 variant 字节本身（查表用），名字是它指向的东西。名字查不到
                 // 时不加括号 —— 留一个位置比印个"unknown"干净。
                 format!(
                     "type={}{}",
-                    r.variant + 1,
+                    protocol::type_number(i as u8, r.variant),
                     match protocol::variant_name(i as u8, r.variant) {
                         Some(n) => format!(" {n}"),
                         None => String::new(),

@@ -420,6 +420,24 @@ pub fn effect_type_name(block: &str, type_id: u8) -> Option<&'static str> {
         .map(|(_, n)| *n)
 }
 
+/// 设备为该 `variant` 显示的类型编号（渲染成 `type=N` 的那个 `N`）。
+///
+/// 对 6 个 id 连续的块（fx1 / fx2 / mod / delay / eq）它就是 `variant + 1`。
+/// **reverb 不是**：手册 REV 那栏是**产品顺序**（`5-7 spring`），而存储的
+/// `variant` 是另一套编号，两者对末三项错开 —— variant 7 = spring，在设备上
+/// 是第 5 个类型（`e6d0ddc` 记录了这次实测）。
+///
+/// 所以不能一律 `variant + 1`，也不能反过来一律查表：只有 reverb 需要单独映射。
+pub fn type_number(block: &str, variant: u8) -> u8 {
+    if block == "reverb" {
+        // 手册产品顺序 room..cloud 的位置（1 起始）。
+        const PRODUCT_POS: [u8; 8] = [0, 1, 2, 3, 4, 6, 7, 5];
+        PRODUCT_POS.get(variant as usize).copied().unwrap_or(variant + 1)
+    } else {
+        variant + 1
+    }
+}
+
 
 /// 一个参数的显示量程（官方用户手册「效果列表」节）。
 ///
