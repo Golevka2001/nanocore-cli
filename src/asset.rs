@@ -572,6 +572,73 @@ pub fn parse_slot_query(payload: &[u8]) -> Option<([u8; 4], Vec<u8>)> {
     Some((hash, name))
 }
 
+/// 一个 IR 槽（= CAB 型号）的身份，含**当前是否被预设引用**。
+///
+/// 2026-10-03 真机实测（fw 1.04）：走工厂恢复的前置序列后连发 30 条 `0x56`，
+/// 30 个槽全部应答 39 B，第 7 字节**恰好一个为 `0x01`** —— 那个就是当前预设
+/// 引用的 CAB 型号。位置与 `0x36` 的 amp active 标志一致。
+///
+/// 闭环验证：Psych 出厂 `irSlot=24`（预设包 manifest），实测第 7 字节为 `0x01`
+/// 的正是槽 24（`AC3021`）；写 `CC44=5` 后 active 移到槽 5（`Fd59BM`），
+/// 再写回 `CC44=24` 复原。
+///
+/// 这条路之前没被找到，是因为它只出现在工厂恢复的**前置序列**里 —— 单发
+/// `0x56` 也能应答，但没人知道要查的是这一条。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrSlot {
+    /// 槽位号（= `0x56` 请求的第 5 字节，0..29）。
+    pub index: u8,
+    /// 当前预设是否引用这个槽。
+    pub active: bool,
+    /// 型号名（设备侧 8 字符定宽字段，以 NUL 结尾）。
+    pub name: Vec<u8>,
+}
+
+impl IrSlot {
+    /// 型号名的字符串形式。
+    ///
+    /// 设备存的是**定宽码**（如 `AC3021`），不是完整产品名（`VOX AC30 2x12`）；
+    /// 完整名在 [`crate::models_data`]，按槽位号查。
+    pub fn name_str(&self) -> String {
+        String::from_utf8_lossy(&self.name).into_owned()
+    }
+}
+
+/// 解析一条 `0x56` 应答为 [`IrSlot`]。
+///
+/// 应答固定 39 B，实测（槽 24 = `AC3021`，active）：
+///
+/// ```text
+/// 00 00 1e 00 00 18 01 01 00 10 00 12 00 7b 04 20
+/// 60 1a 1a 00 00 41 43 33 30 32 31 00 32 00 00 00
+/// 00 00 00 00 00 00 00
+/// ```
+///
+/// * `[5]` = 槽位号
+/// * `[7]` = active 标志（同 `0x36`）
+/// * `[17..21]` = `1a 1a 00 00` 名称标记，名字紧随其后
+///
+/// 名字字段是**定宽 8 字节**，不足处补 NUL，其后可能还有别的字节（上面槽 24
+/// 的 NUL 之后紧跟一个 `0x32`）。所以名字在**第一个 NUL 处截断** —— 扫到
+/// 载荷末尾会把后面那些字节也吃进来（`AC3021` 会变成 `AC30212`）。
+pub fn parse_ir_slot(payload: &[u8]) -> Option<IrSlot> {
+    if payload.len() < 24 || payload[17] != 0x1a || payload[18] != 0x1a {
+        return None;
+    }
+    let field = &payload[21..];
+    let end = field.iter().position(|&b| b == 0x00).unwrap_or(field.len());
+    let name: Vec<u8> = field[..end]
+        .iter()
+        .copied()
+        .filter(|b| (0x20..=0x7e).contains(b))
+        .collect();
+    Some(IrSlot {
+        index: payload[5],
+        active: payload[7] != 0,
+        name,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -774,5 +841,35 @@ mod tests {
         // 特意按设备应答的乱序排列。
         let got = assemble(&[mk(144, 3), mk(0, 1), mk(72, 2)]);
         assert_eq!(got, vec![1, 1, 2, 2, 3, 3]);
+    }
+
+    /// `0x56` 应答里 active 标志在**第 7 字节** —— 与 `0x36` 同一位置。
+    ///
+    /// 2026-10-03 真机实测（fw 1.04）：30 个 IR 槽逐个查询，第 7 字节恰好
+    /// 一个为 `0x01`。Psych 的 `irSlot=24`（预设包 manifest）对应的那一槽
+    /// 正是它，名为 `AC3021`；写 `CC44=5` 后 active 移到槽 5（`Fd59BM`），
+    /// 写回 `CC44=24` 复原。
+    ///
+    /// 两个真实应答，只差槽号与 active 位 —— 抓这两条是为了把「[7] 是
+    /// active、不是别的」钉死。
+    #[test]
+    fn ir_slot_active_flag_is_byte_seven() {
+        // 槽 24 = `AC3021`，active。名字字段是 8 字节定宽 `41 43 33 30 32 31
+        // 00 32` —— NUL 之后还有一个 `0x32`，扫到载荷末尾会把它吃进来。
+        let active = [
+            0x00, 0x00, 0x1e, 0x00, 0x00, 24, 0x01, 0x01, 0x00, 0x10, 0x00, 0x12, 0x00, 0x7b,
+            0x04, 0x20, 0x60, 0x1a, 0x1a, 0x00, 0x00, b'A', b'C', b'3', b'0', b'2', b'1', 0x00,
+            b'2', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        // 槽 5 = `Fd59BM`，非 active。
+        let other = [
+            0x00, 0x00, 0x1e, 0x00, 0x00, 5, 0x01, 0x00, 0x00, 0x10, 0x00, 0x1e, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x1a, 0x1a, 0x00, 0x00, b'F', b'd', b'5', b'9', b'B', b'M', 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let a = parse_ir_slot(&active).expect("active 槽应能解析");
+        assert_eq!((a.index, a.active, a.name_str().as_str()), (24, true, "AC3021"));
+        let o = parse_ir_slot(&other).expect("非 active 槽也应能解析");
+        assert_eq!((o.index, o.active, o.name_str().as_str()), (5, false, "Fd59BM"));
     }
 }
