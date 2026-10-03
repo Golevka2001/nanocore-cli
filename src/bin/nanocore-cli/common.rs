@@ -18,5 +18,5 @@ mod tx;
 
 pub use device::{cmd_list, open_device};
 pub use failure::{Dev, Failure};
-pub use render::{Bytes, describe, divider, hex, render_chain, render_snapshot};
+pub use render::{Bytes, describe, hex, render_chain, render_snapshot};
 pub use tx::{parse_hex, progress, send_standard, transact, transact_reply};

@@ -41,7 +41,7 @@ pub fn transact(
     payload: Vec<u8>,
     expect: &[u8],
 ) -> Result<(), Failure> {
-    transact_reply(dev, conn, kind, payload, expect).map(|_| ())
+    transact_reply(dev, conn, kind, payload, expect, false).map(|_| ())
 }
 
 /// 与 [`transact`] 相同，但把应答帧交回调用方
@@ -50,12 +50,17 @@ pub fn transact(
 /// 参数写入需要它：设备会用一条 5 字节帧 [`protocol::PARAM_WRITE_REJECTED`]
 /// 拒绝 `b6` 超出存储范围的写入，此时原值保持不变 —— 只打印应答会让用户
 /// 以为写成功了。
+///
+/// `decode` 透传给 [`describe`]。传 `false` 时应答帧只印帧头与 hexdump，由调用
+/// 方自己决定怎么渲染载荷——`debug snapshot --decode` 要印完整展开版，不能让
+/// describe 先印一份紧凑版。
 pub fn transact_reply(
     dev: &mut Dev,
     conn: &Conn,
     kind: u8,
     payload: Vec<u8>,
     expect: &[u8],
+    decode: bool,
 ) -> Result<Option<Frame>, Failure> {
     if payload.iter().any(|b| b & 0x80 != 0) {
         eprintln!(
@@ -74,7 +79,7 @@ pub fn transact_reply(
             // tx 与 rx 用同一个渲染器：两行并排即可看出 seq 是否被设备回显成
             // 同一个值（这正是配对的依据），也免去手打 tx 字符串漏掉字段。
             describe(&tx, "", false);
-            describe(&rx, "", false);
+            describe(&rx, "", decode);
             Ok(Some(rx))
         }
         Err(Error::Timeout { attempts, elapsed }) => Err(Failure::error(format!(

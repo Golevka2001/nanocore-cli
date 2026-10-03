@@ -9,8 +9,7 @@ use nanocore::{Frame, Transport, msg_type};
 
 use crate::cli::{Conn, DebugCmd, ProtocolKnobs, parse_hex_byte};
 use crate::common::{
-    Bytes, Failure, describe, divider, hex, open_device, parse_hex, render_snapshot,
-    send_standard, transact, transact_reply,
+    Failure, describe, hex, open_device, parse_hex, send_standard, transact, transact_reply,
 };
 use crate::probe::probe;
 
@@ -39,20 +38,14 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             // 端口回显后的分节线由 open_device 统一打（见 common.rs）。
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
-            let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
-            if decode {
-                let Some(reply) = reply else {
-                    return Err(Failure::error(
-                        "no reply to decode — drop --no-wait, the snapshot needs its answer",
-                    ));
-                };
-                // 纯协议层视角：不多发 `0x40` 去查名字。`show` 才查。
-                // 解码是独立于收发帧的另一层含义，同样划开。
-                divider();
-                print!(
-                    "{}",
-                    render_snapshot(&reply.payload, "", None, Bytes::Shown)
-                );
+            // decode 交给 transact_reply → describe：紧跟 rx 帧就是快照的完整
+            // 展开（含 unpacked 流与字段表）。这里不能再打一份紧凑版——那会让
+            // 同一帧的解码出现两次，之间还夹着两条重复的分割线。
+            let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT], decode)?;
+            if decode && reply.is_none() {
+                return Err(Failure::error(
+                    "no reply to decode — drop --no-wait, the snapshot needs its answer",
+                ));
             }
             Ok(())
         }
@@ -119,13 +112,13 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             // 槽位号线上 0 起始。
             let (k, p) = protocol::query_preset_list(start - 1, count);
-            transact_reply(&mut dev, conn, k, p, &[msg_type::PRESET_LIST]).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::PRESET_LIST], false).map(|_| ())
         }
         DebugCmd::Settings { knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::query_settings();
-            transact_reply(&mut dev, conn, k, p, &[msg_type::SETTINGS]).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::SETTINGS], false).map(|_| ())
         }
         DebugCmd::Setfield { field, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
@@ -138,7 +131,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::model_query(index);
-            transact_reply(&mut dev, conn, k, p, &[msg_type::MODEL_LIST]).map(|_| ())
+            transact_reply(&mut dev, conn, k, p, &[msg_type::MODEL_LIST], false).map(|_| ())
         }
         DebugCmd::Setfield6d { field, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
