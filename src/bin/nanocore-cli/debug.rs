@@ -3,7 +3,6 @@
 use std::io::Write;
 
 use nanocore::midicc;
-use nanocore::models_data;
 use nanocore::protocol;
 use nanocore::{Frame, Transport, msg_type};
 
@@ -157,18 +156,6 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             let (k, payload) = protocol::param_write(b5, b6, value);
             transact(&mut dev, conn, k, payload, &[])
-        }
-        DebugCmd::Variant { index, knobs } => {
-            let conn = &conn_with(conn, &knobs)?;
-            // 槽位编号 1-38 → wire 0-37。
-            let wire = index - 1;
-            match models_data::lookup_amp(wire) {
-                Some(m) => println!("variant {index} -> {} ({})", m.name, m.code),
-                None => println!("variant {index} (unknown slot; device has 1-38)"),
-            }
-            let mut dev = open_device(conn)?;
-            let (k, p) = protocol::select_variant(wire);
-            transact(&mut dev, conn, k, p, &[])
         }
         DebugCmd::Raw { bytes, knobs } => {
             let conn = &conn_with(conn, &knobs)?;

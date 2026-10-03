@@ -6,7 +6,6 @@ use clap_complete::{ArgValueCandidates, CompletionCandidate};
 use nanocore::asset;
 use nanocore::midi;
 use nanocore::midicc::Block;
-use nanocore::models_data;
 use nanocore::protocol;
 
 /// `chain set` 位置的补全候选：角色名、设备显示名（小写，`chain_role_index` 可接受的形式）以及 1-8 的索引。
@@ -46,16 +45,6 @@ fn model_id_candidates() -> Vec<CompletionCandidate> {
 
 /// `debug variant <N>` 的补全候选：完整的音箱 / 踏板槽位表（1–38），
 /// 该命令正是唯一能寻址 31–38 的路径，因此这里标注型号名是准确的。
-fn variant_candidates() -> Vec<CompletionCandidate> {
-    (1u8..=38)
-        .map(|i| match models_data::lookup_amp(i - 1) {
-            Some(m) => CompletionCandidate::new(i.to_string())
-                .help(Some(format!("{} ({})", m.name, m.code).into())),
-            None => CompletionCandidate::new(i.to_string()),
-        })
-        .collect()
-}
-
 // ─── CLI 定义 ─────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
@@ -555,16 +544,6 @@ pub enum DebugCmd {
         b6: String,
         /// Parameter value 0.0–1.0
         value: f32,
-        #[command(flatten)]
-        knobs: ProtocolKnobs,
-    },
-    /// Select an amp model via SysEx
-    ///
-    /// Same table as `module amp model`, but also reaches 31–38 (FX2 drive pedals).
-    Variant {
-        /// Amp/pedal slot 1–38 (30 amp sims + 8 FX2 drive pedals)
-        #[arg(add = ArgValueCandidates::new(variant_candidates), value_parser = clap::value_parser!(u8).range(1..=38))]
-        index: u8,
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },
