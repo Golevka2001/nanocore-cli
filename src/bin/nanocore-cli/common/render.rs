@@ -425,31 +425,27 @@ pub fn render_snapshot(
                 .max()
                 .unwrap_or(0);
             let pad = " ".repeat(indent.len() + 3);
-            // 类型名查不到时必须换行：留在同一行时第一个参数会被当成类型名读
-            // （`type=8 0.087 0.200 …` 看着就像一个叫 "0.087 0.200 …" 的效果）。
-            let params = if namew == 0 {
-                format!("\n{}", shown.iter().map(|x| format!("{pad}{x}")).collect::<Vec<_>>().join("\n"))
-            } else if protocol::variant_name(i as u8, r.variant).is_none() {
-                let body = shown
-                    .iter()
-                    .map(|x| format!("{pad}{x}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!("\n{body}")
-            } else {
-                // 每行都带 pad：join 只在行间插换行，不会自动续缩进。
-                let body = shown
-                    .iter()
-                    .map(|s| match s.split_once(" = ") {
-                        Some((n, v)) => format!("{pad}{n:<namew$}  {v}"),
-                        None => format!("{pad}{s:<namew$}"),
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                // 块之间不留空行：模块名自己就是分隔，8 个模块各 1-6 行参数，
-                // 空行会让 `show` 变成 40 行。靠缩进分组已经够了。
-                format!("\n{body}")
-            };
+            // 参数一律按 `名 = 值` 排，列宽取本块最长名 + 2 —— `=` 与值在同一
+            // 条竖线上。
+            //
+            // 此前分了两个分支：有 `variant_name` 的块走对齐（`split_once(" = ")`
+            // 把 `=` 吃掉，输出 `名  值`），没有的块（amp / cab）走原样输出
+            // `名 = 值`。于是同一份输出里 `Gain 0.50` 与 `Amp Gain = 0.60` 混排，
+            // 差别只取决于「这个块有没有型号名」—— 与缩进无关，是分支的副作用。
+            // 现在两条路都产 `名 = 值`，对齐只做一次。
+            let body = shown
+                .iter()
+                .map(|s| match s.split_once(" = ") {
+                    Some((n, v)) => format!("{pad}{n:<namew$} = {v}"),
+                    // 没有量程时 `shown` 已经是 `{name} = {normalized}`，上面
+                    // 那支会处理；走不到这里的是没有名字的裸值。
+                    None => format!("{pad}{s}"),
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 块之间不留空行：模块名自己就是分隔，8 个模块各 1-6 行参数，
+            // 空行会让 `show` 变成 40 行。靠缩进分组已经够了。
+            let params = format!("\n{body}");
             if show_bytes {
                 // head 三字节逐个说清：enabled / variant / count。count 虽能从
                 // params 区间长度反推（4 字节一个 float），但它是这一行的第三个
