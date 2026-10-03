@@ -335,11 +335,6 @@
             "index": 2,
             "cc": 70,
             "name": "Mix"
-          },
-          {
-            "index": 3,
-            "cc": 71,
-            "name": "Level"
           }
         ],
         "9": [
@@ -362,11 +357,6 @@
             "index": 3,
             "cc": 71,
             "name": "Mix"
-          },
-          {
-            "index": 4,
-            "cc": 72,
-            "name": "Level"
           }
         ],
         "10": [
@@ -394,11 +384,6 @@
             "index": 4,
             "cc": 72,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 73,
-            "name": "Level"
           }
         ]
       },
@@ -414,7 +399,7 @@
         {
           "index": 0,
           "cc": 60,
-          "name": "Amp Gain"
+          "name": "Gain"
         },
         {
           "index": 1,
@@ -434,7 +419,7 @@
         {
           "index": 4,
           "cc": 64,
-          "name": "Amp Level"
+          "name": "Level"
         }
       ]
     },
@@ -443,17 +428,12 @@
         {
           "index": 0,
           "cc": 65,
-          "name": "Cab Low Cut"
+          "name": "Low Cut"
         },
         {
           "index": 1,
           "cc": 66,
-          "name": "Cab High Cut"
-        },
-        {
-          "index": 2,
-          "cc": 67,
-          "name": "Cab Level"
+          "name": "High Cut"
         }
       ]
     },
@@ -469,11 +449,6 @@
             "index": 1,
             "cc": 69,
             "name": "Depth"
-          },
-          {
-            "index": 2,
-            "cc": 70,
-            "name": "Level"
           }
         ],
         "1": [
@@ -491,11 +466,6 @@
             "index": 2,
             "cc": 70,
             "name": "Mix"
-          },
-          {
-            "index": 3,
-            "cc": 71,
-            "name": "Level"
           }
         ],
         "2": [
@@ -513,11 +483,6 @@
             "index": 2,
             "cc": 70,
             "name": "Mix"
-          },
-          {
-            "index": 3,
-            "cc": 71,
-            "name": "Level"
           }
         ],
         "3": [
@@ -545,11 +510,6 @@
             "index": 4,
             "cc": 72,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 73,
-            "name": "Level"
           }
         ],
         "4": [
@@ -572,11 +532,6 @@
             "index": 3,
             "cc": 71,
             "name": "Mix"
-          },
-          {
-            "index": 4,
-            "cc": 72,
-            "name": "Level"
           }
         ]
       }
@@ -603,11 +558,6 @@
             "index": 3,
             "cc": 77,
             "name": "Mix"
-          },
-          {
-            "index": 4,
-            "cc": 78,
-            "name": "Level"
           }
         ],
         "1": [
@@ -625,11 +575,6 @@
             "index": 2,
             "cc": 76,
             "name": "Mix"
-          },
-          {
-            "index": 3,
-            "cc": 77,
-            "name": "Level"
           }
         ],
         "2": [
@@ -652,11 +597,6 @@
             "index": 3,
             "cc": 77,
             "name": "Mix"
-          },
-          {
-            "index": 4,
-            "cc": 78,
-            "name": "Level"
           }
         ],
         "3": [
@@ -679,11 +619,6 @@
             "index": 3,
             "cc": 77,
             "name": "Mix"
-          },
-          {
-            "index": 4,
-            "cc": 78,
-            "name": "Level"
           }
         ],
         "4": [
@@ -701,11 +636,6 @@
             "index": 2,
             "cc": 76,
             "name": "Mix"
-          },
-          {
-            "index": 3,
-            "cc": 77,
-            "name": "Level"
           }
         ],
         "5": [
@@ -733,11 +663,6 @@
             "index": 4,
             "cc": 78,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 79,
-            "name": "Level"
           }
         ],
         "6": [
@@ -765,11 +690,6 @@
             "index": 4,
             "cc": 78,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 79,
-            "name": "Level"
           }
         ],
         "7": [
@@ -797,11 +717,6 @@
             "index": 4,
             "cc": 78,
             "name": "Mix"
-          },
-          {
-            "index": 5,
-            "cc": 79,
-            "name": "Level"
           }
         ]
       }
@@ -1953,7 +1868,7 @@
     "flat": {
       "amp": [
         {
-          "name": "Amp Gain",
+          "name": "Gain",
           "lo": 0.0,
           "hi": 1.0,
           "unit": ""
@@ -1977,7 +1892,7 @@
           "unit": "dB"
         },
         {
-          "name": "Amp Level",
+          "name": "Level",
           "lo": -10.0,
           "hi": 10.0,
           "unit": "dB"
@@ -1985,13 +1900,13 @@
       ],
       "cab": [
         {
-          "name": "Cab Low Cut",
+          "name": "Low Cut",
           "lo": 20.0,
           "hi": 500.0,
           "unit": "Hz"
         },
         {
-          "name": "Cab High Cut",
+          "name": "High Cut",
           "lo": 2000.0,
           "hi": 20000.0,
           "unit": "Hz"

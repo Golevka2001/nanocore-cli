@@ -117,14 +117,12 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 0, name: "Pitch", cc: 68 },
     ParamInfo { index: 1, name: "Fine", cc: 69 },
     ParamInfo { index: 2, name: "Mix", cc: 70 },
-    ParamInfo { index: 3, name: "Level", cc: 71 },
 ]),
 ("fx2", 9, &[
     ParamInfo { index: 0, name: "Freq", cc: 68 },
     ParamInfo { index: 1, name: "Env", cc: 69 },
     ParamInfo { index: 2, name: "Q", cc: 70 },
     ParamInfo { index: 3, name: "Mix", cc: 71 },
-    ParamInfo { index: 4, name: "Level", cc: 72 },
 ]),
 ("fx2", 10, &[
     ParamInfo { index: 0, name: "Freq", cc: 68 },
@@ -132,24 +130,20 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Rate", cc: 70 },
     ParamInfo { index: 3, name: "Shape", cc: 71 },
     ParamInfo { index: 4, name: "Mix", cc: 72 },
-    ParamInfo { index: 5, name: "Level", cc: 73 },
 ]),
 ("mod", 0, &[
     ParamInfo { index: 0, name: "Rate", cc: 68 },
     ParamInfo { index: 1, name: "Depth", cc: 69 },
-    ParamInfo { index: 2, name: "Level", cc: 70 },
 ]),
 ("mod", 1, &[
     ParamInfo { index: 0, name: "Rate", cc: 68 },
     ParamInfo { index: 1, name: "Feedback", cc: 69 },
     ParamInfo { index: 2, name: "Mix", cc: 70 },
-    ParamInfo { index: 3, name: "Level", cc: 71 },
 ]),
 ("mod", 2, &[
     ParamInfo { index: 0, name: "Rate", cc: 68 },
     ParamInfo { index: 1, name: "Feedback", cc: 69 },
     ParamInfo { index: 2, name: "Mix", cc: 70 },
-    ParamInfo { index: 3, name: "Level", cc: 71 },
 ]),
 ("mod", 3, &[
     ParamInfo { index: 0, name: "Rate", cc: 68 },
@@ -157,47 +151,40 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Wave", cc: 70 },
     ParamInfo { index: 3, name: "Smooth", cc: 71 },
     ParamInfo { index: 4, name: "Mix", cc: 72 },
-    ParamInfo { index: 5, name: "Level", cc: 73 },
 ]),
 ("mod", 4, &[
     ParamInfo { index: 0, name: "Rate", cc: 68 },
     ParamInfo { index: 1, name: "Depth", cc: 69 },
     ParamInfo { index: 2, name: "Wave", cc: 70 },
     ParamInfo { index: 3, name: "Mix", cc: 71 },
-    ParamInfo { index: 4, name: "Level", cc: 72 },
 ]),
 ("delay", 0, &[
     ParamInfo { index: 0, name: "Delay", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
     ParamInfo { index: 2, name: "Age", cc: 76 },
     ParamInfo { index: 3, name: "Mix", cc: 77 },
-    ParamInfo { index: 4, name: "Level", cc: 78 },
 ]),
 ("delay", 1, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
     ParamInfo { index: 2, name: "Mix", cc: 76 },
-    ParamInfo { index: 3, name: "Level", cc: 77 },
 ]),
 ("delay", 2, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
     ParamInfo { index: 2, name: "Filter", cc: 76 },
     ParamInfo { index: 3, name: "Mix", cc: 77 },
-    ParamInfo { index: 4, name: "Level", cc: 78 },
 ]),
 ("delay", 3, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
     ParamInfo { index: 2, name: "Interval", cc: 76 },
     ParamInfo { index: 3, name: "Mix", cc: 77 },
-    ParamInfo { index: 4, name: "Level", cc: 78 },
 ]),
 ("delay", 4, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
     ParamInfo { index: 2, name: "Mix", cc: 76 },
-    ParamInfo { index: 3, name: "Level", cc: 77 },
 ]),
 ("delay", 5, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
@@ -205,7 +192,6 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Bit Depth", cc: 76 },
     ParamInfo { index: 3, name: "LoFi Mix", cc: 77 },
     ParamInfo { index: 4, name: "Mix", cc: 78 },
-    ParamInfo { index: 5, name: "Level", cc: 79 },
 ]),
 ("delay", 6, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
@@ -213,7 +199,6 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Smear", cc: 76 },
     ParamInfo { index: 3, name: "Filter", cc: 77 },
     ParamInfo { index: 4, name: "Mix", cc: 78 },
-    ParamInfo { index: 5, name: "Level", cc: 79 },
 ]),
 ("delay", 7, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
@@ -221,7 +206,6 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 2, name: "Mod Depth", cc: 76 },
     ParamInfo { index: 3, name: "Mod Rate", cc: 77 },
     ParamInfo { index: 4, name: "Mix", cc: 78 },
-    ParamInfo { index: 5, name: "Level", cc: 79 },
 ]),
 // reverb 的键是**真实 variant**，不是手册的产品序号 —— 两者对 0..3 一致，
 // 但末三项错位（产品序号 4,5,6 = spring/shimmer/cloud 对应 variant 7,5,6）。
@@ -355,17 +339,19 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
 
 /// 参数列表不依赖效果类型的块的 `(块键, b5, 参数列表)`。
 pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
+// 手册「AMP 参数说明」写的是 Gain / Bass / Mid / Treble / Level —— 无块名前缀，
+// 设备与 App 上也是这么显示的。`cab` 同理，只有 Low Cut / High Cut 两个，
+// 设备实存也是 2 个（此前表里多一个 `Level`(CC67)，设备并不存）。
 ("amp", 2, &[
-    ParamInfo { index: 0, name: "Amp Gain", cc: 60 },
+    ParamInfo { index: 0, name: "Gain", cc: 60 },
     ParamInfo { index: 1, name: "Bass", cc: 61 },
     ParamInfo { index: 2, name: "Mid", cc: 62 },
     ParamInfo { index: 3, name: "Treble", cc: 63 },
-    ParamInfo { index: 4, name: "Amp Level", cc: 64 },
+    ParamInfo { index: 4, name: "Level", cc: 64 },
 ]),
 ("cab", 3, &[
-    ParamInfo { index: 0, name: "Cab Low Cut", cc: 65 },
-    ParamInfo { index: 1, name: "Cab High Cut", cc: 66 },
-    ParamInfo { index: 2, name: "Cab Level", cc: 67 },
+    ParamInfo { index: 0, name: "Low Cut", cc: 65 },
+    ParamInfo { index: 1, name: "High Cut", cc: 66 },
 ]),
 ];
 
@@ -672,15 +658,15 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
 /// 与 [`RANGES`] 分开是因为键不同：这里只按块键索引。
 pub const FLAT_RANGES: &[(&str, &[Range])] = &[
 ("amp", &[
-    Range { name: "Amp Gain", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Gain", lo: 0.0, hi: 1.0, unit: "" },
     Range { name: "Bass", lo: -10.0, hi: 10.0, unit: "dB" },
     Range { name: "Mid", lo: -10.0, hi: 10.0, unit: "dB" },
     Range { name: "Treble", lo: -10.0, hi: 10.0, unit: "dB" },
-    Range { name: "Amp Level", lo: -10.0, hi: 10.0, unit: "dB" },
+    Range { name: "Level", lo: -10.0, hi: 10.0, unit: "dB" },
 ]),
 ("cab", &[
-    Range { name: "Cab Low Cut", lo: 20.0, hi: 500.0, unit: "Hz" },
-    Range { name: "Cab High Cut", lo: 2000.0, hi: 20000.0, unit: "Hz" },
+    Range { name: "Low Cut", lo: 20.0, hi: 500.0, unit: "Hz" },
+    Range { name: "High Cut", lo: 2000.0, hi: 20000.0, unit: "Hz" },
 ]),
 ];
 
@@ -765,14 +751,24 @@ pub fn param_by_name(block: &str, type_id: Option<u8>, name: &str) -> Option<&'s
     if let Some(p) = all.iter().find(|p| norm(p.name) == want) {
         return Some(p);
     }
-    // 退回到后缀匹配，但仅在结果无歧义时使用：像 "gain" 这样的短名称可解析到 "Amp Gain"，
+    // 退回到后缀匹配，但仅在结果无歧义时使用：像 "gain" 这样的短名称可解析到 "Gain"，
     // 而若多个参数都以 "level" 结尾，则保持报错。
     let mut hits = all.iter().filter(|p| norm(p.name).ends_with(&want));
-    let first = hits.next()?;
-    if hits.next().is_some() {
-        return None;
+    if let Some(first) = hits.next()
+        && hits.next().is_none()
+    {
+        return Some(first);
     }
-    Some(first)
+    // 带块名前缀的旧写法仍然接受。显示名按设备/App 上的原名（`Gain` / `Level` /
+    // `Low Cut`），但用户脚本里可能还写着 `Amp Gain` / `Cab Low Cut` —— 剥掉块名
+    // 前缀后就能按普通名字查到。
+    let block_norm = norm(block);
+    if let Some(rest) = want.strip_prefix(block_norm.as_str())
+        && let Some(p) = all.iter().find(|p| norm(p.name) == rest)
+    {
+        return Some(p);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -826,16 +822,21 @@ mod tests {
     #[test]
     fn lookup_by_name_is_forgiving() {
         assert_eq!(param_by_name("amp", None, "gain").unwrap().cc, 60);
-        assert_eq!(param_by_name("amp", None, "Amp Gain").unwrap().index, 0);
+        assert_eq!(param_by_name("amp", None, "Gain").unwrap().index, 0);
         assert_eq!(param_by_name("cab", None, "low cut").unwrap().cc, 65);
+        // 显示名已改回手册原名（`Level` / `Low Cut`），但带块名前缀的旧写法
+        // 仍能解析 —— 用户的脚本里可能还写着 `Amp-Level`。
         assert_eq!(param_by_name("amp", None, "Amp-Level").unwrap().cc, 64);
+        assert_eq!(param_by_name("amp", None, "level").unwrap().cc, 64);
+        assert_eq!(param_by_name("cab", None, "Cab Low Cut").unwrap().cc, 65);
         assert!(param_by_name("amp", None, "nope").is_none());
         // 即使完全匹配同时也是更长名称的后缀，完全匹配仍然优先：
         // delay 类型 5 同时有 "Mix" 和 "Lo-Fi Mix"。
         assert_eq!(param_by_name("delay", Some(5), "mix").unwrap().cc, 78);
         assert_eq!(param_by_name("delay", Some(5), "lofi mix").unwrap().cc, 77);
         // 无完全匹配时，后缀回退可以帮上忙。
-        assert_eq!(param_by_name("amp", None, "gain").unwrap().name, "Amp Gain");
+        // 显示名是设备上的原名 `Gain`（不带块名前缀），旧写法仍能解析。
+        assert_eq!(param_by_name("amp", None, "gain").unwrap().name, "Gain");
         // ……但歧义的后缀会被拒绝而非猜测：8 频段 EQ 同时有 1 kHz / 2 kHz / 4 kHz。
         assert!(param_by_name("eq", Some(2), "khz").is_none());
         assert_eq!(param_by_name("eq", Some(2), "1khz").unwrap().cc, 95);
@@ -843,8 +844,10 @@ mod tests {
 
     #[test]
     fn typed_tables_resolve_by_type() {
-        assert_eq!(params("delay", Some(1)).unwrap().len(), 4); // Digital
-        assert_eq!(params("delay", Some(0)).unwrap().len(), 5); // BBD
+        // 数目取设备实存（40 组出厂快照）：Digital 3 个、BBD 4 个。
+        // CC 指南的表每行末尾多一列「电平」，设备不存那个 b6。
+        assert_eq!(params("delay", Some(1)).unwrap().len(), 3); // Digital
+        assert_eq!(params("delay", Some(0)).unwrap().len(), 4); // BBD
         assert_eq!(params("delay", Some(1)).unwrap()[0].name, "Time");
         assert_eq!(params("delay", Some(0)).unwrap()[3].name, "Mix"); // index == b6
         // 依赖类型的块：类型未知或缺省 -> 无法解析
@@ -882,7 +885,9 @@ mod tests {
     fn fixed_blocks_ignore_type() {
         assert_eq!(params("amp", None).unwrap().len(), 5);
         assert_eq!(params("amp", Some(7)).unwrap().len(), 5); // 类型被忽略
-        assert_eq!(params("cab", Some(3)).unwrap().len(), 3);
+        // cab 只有 2 个参数：手册「CAB 参数说明」只列 Low Cut / High Cut，设备
+        // 实存也是 2 个（40 组出厂快照 + 真机 `module cab params` 一致）。
+        assert_eq!(params("cab", Some(3)).unwrap().len(), 2);
     }
 }
 

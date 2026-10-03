@@ -478,3 +478,104 @@ fn effect_type_names_come_from_the_manual() {
         "fx1 gate 首参在手册与设备上都叫 Threshold"
     );
 }
+
+/// **任何参数名都不得以块名开头** —— 除非手册里真那么写。
+///
+/// 此前 CLI 给 5 个参数加了块名前缀：`Amp Gain` / `Amp Level` / `Cab Low Cut` /
+/// `Cab High Cut` / `Cab Level`，而设备与 App 上（以及手册的参数说明栏）写的是
+/// `Gain` / `Level` / `Low Cut` / `High Cut`。用户按设备上看到的名字找不到，
+/// 2026-10-03 指出「参数名也没有 cab」。
+///
+/// 唯一的例外是 `delay` 的 `Delay`：那是手册 `1-8 bbd` 的真实参数名（其余延迟
+/// 类型叫 `Time`），不是块名前缀。
+#[test]
+fn no_parameter_name_starts_with_its_block_name() {
+    // 手册里确实带块名/限定词的那几个。
+    const ALLOWED: &[(&str, &str)] = &[("delay", "Delay")];
+    let check = |block: &str, name: &str| {
+        if ALLOWED.iter().any(|(b, n)| *b == block && *n == name) {
+            return;
+        }
+        assert!(
+            !name.to_ascii_lowercase().starts_with(block),
+            "{block} 的参数名 `{name}` 以块名开头 —— 设备上写的是不带前缀的那个"
+        );
+    };
+    for (block, _, ps) in params_data::TYPED {
+        for p in *ps {
+            check(block, p.name);
+        }
+    }
+    for (block, _, ps) in params_data::FIXED {
+        for p in *ps {
+            check(block, p.name);
+        }
+    }
+    for (block, rs) in params_data::FLAT_RANGES {
+        for r in *rs {
+            check(block, r.name);
+        }
+    }
+}
+
+/// 参数个数一律等于**设备实存**的个数（40 组出厂快照 + 真机 `module x params`）。
+///
+/// 此前 16 处按 CC 指南的表多列了一个末位「电平」，设备并不存那个 b6；`cab` 还
+/// 多了一个 `Level`(CC67)。写它会被设备拒绝（`not in device storage`），
+/// `params` 列表里则是多印一行不存在的东西。
+#[test]
+fn parameter_counts_match_what_the_device_stores() {
+    // 40 组出厂快照实测的 (块, variant) -> count。
+    const STORED: &[(&str, u8, usize)] = &[
+        ("amp", 0, 5),
+        ("cab", 0, 2),
+        ("fx1", 0, 2),
+        ("fx1", 3, 6),
+        ("fx2", 0, 3),
+        ("fx2", 1, 3),
+        ("fx2", 2, 3),
+        ("fx2", 3, 3),
+        ("fx2", 4, 3),
+        ("fx2", 8, 3),
+        ("fx2", 9, 4),
+        ("fx2", 10, 5),
+        ("mod", 0, 2),
+        ("mod", 1, 3),
+        ("mod", 2, 3),
+        ("mod", 3, 5),
+        ("mod", 4, 4),
+        ("delay", 0, 4),
+        ("delay", 1, 3),
+        ("delay", 2, 4),
+        ("delay", 3, 4),
+        ("delay", 4, 3),
+        ("delay", 5, 5),
+        ("delay", 6, 5),
+        ("delay", 7, 5),
+        ("reverb", 0, 5),
+        ("reverb", 1, 5),
+        ("reverb", 2, 5),
+        ("reverb", 3, 5),
+        ("reverb", 5, 5),
+        ("reverb", 6, 5),
+        ("reverb", 7, 5),
+    ];
+    // 有几个类型**故意不在**表里，因为手册没给它们的参数说明：
+    //   * `fx1` type 1（auto gate）—— 手册「无手动调节参数」，设备仍存 2 个
+    //     float（40 组快照里都是 `0.5, 0.321`，是内部状态而非可调旋钮）
+    //   * `fx1` type 2（NG-Comp）—— 手册有 7 个参数说明，但我们未逐一核对过
+    //   * `fx2` type 5/6/7（Range/XAC/Fiman）—— 手册只有一条 `Boost`
+    // **「手册说无参数」≠「设备不存值」**，两者别混；本断言只覆盖有表的类型。
+    for (block, ty, want) in STORED.iter().copied() {
+        let got = params_data::params(block, Some(ty))
+            .unwrap_or_else(|| panic!("{block} type {ty}"))
+            .len();
+        assert_eq!(
+            got, want,
+            "{block} type {ty} 的参数个数应为 {want}（设备实存），表里是 {got}"
+        );
+    }
+    // 不随类型变化的两个块走 FLAT_RANGES / FIXED 的同一份数据。
+    assert_eq!(params_data::params("cab", None).unwrap().len(), 2);
+    assert_eq!(params_data::params("amp", None).unwrap().len(), 5);
+}
