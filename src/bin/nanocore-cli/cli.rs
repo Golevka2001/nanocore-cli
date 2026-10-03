@@ -501,6 +501,59 @@ pub enum DebugCmd {
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },
+    /// Read the preset-name list (0x40); same frame as `preset list`
+    Presets {
+        /// First slot, 1-based
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64), default_value_t = 1)]
+        start: u8,
+        /// How many slots to request
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64), default_value_t = 8)]
+        count: u8,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
+    /// Read the settings-page snapshot (0x65); same frame as `settings show`
+    Settings {
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
+    /// Write one settings field (0x66)
+    Setfield {
+        /// Field id: 01 wireless, 02 playback, 04 input gain, 08 USB volume,
+        /// 10 BT volume, 20 input channel (hex)
+        field: String,
+        /// Value (decimal; for 04 it is 7-bit two's-complement dB)
+        value: u8,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
+    /// Read a slot's effect-data name (0x36); same frame as `models`
+    Model {
+        /// Slot index, 0-based
+        #[arg(value_parser = clap::value_parser!(u8))]
+        index: u8,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
+    /// Write a scalar field (0x6D sub 0x02); same frame as `preset set`
+    Setfield6d {
+        /// Field id (hex)
+        field: String,
+        /// Value (decimal)
+        value: u8,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
+    /// Rename a preset (0x6D sub 0x0A); `preset rename` also waits and verifies
+    Rename {
+        /// Slot number, 1-based
+        #[arg(value_parser = clap::value_parser!(u8).range(1..=64))]
+        slot: u8,
+        /// New name
+        name: String,
+        #[command(flatten)]
+        knobs: ProtocolKnobs,
+    },
     /// Raw SysEx parameter write (b5/b6 in hex; the restore mask is derived from the value)
     Setparam {
         b5: String,

@@ -114,6 +114,60 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = protocol::set_enabled(slot - 1, state.on());
             transact(&mut dev, conn, k, p, &[])
         }
+        DebugCmd::Presets { start, count, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let mut dev = open_device(conn)?;
+            // 槽位号线上 0 起始。
+            let (k, p) = protocol::query_preset_list(start - 1, count);
+            transact_reply(&mut dev, conn, k, p, &[msg_type::PRESET_LIST]).map(|_| ())
+        }
+        DebugCmd::Settings { knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let mut dev = open_device(conn)?;
+            let (k, p) = protocol::query_settings();
+            transact_reply(&mut dev, conn, k, p, &[msg_type::SETTINGS]).map(|_| ())
+        }
+        DebugCmd::Setfield { field, value, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let f = parse_hex_byte(&field).map_err(|e| Failure::error(e.to_string()))?;
+            let mut dev = open_device(conn)?;
+            let (k, p) = protocol::set_setting(f, value);
+            transact(&mut dev, conn, k, p, &[])
+        }
+        DebugCmd::Model { index, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let mut dev = open_device(conn)?;
+            let (k, p) = protocol::model_query(index);
+            transact_reply(&mut dev, conn, k, p, &[msg_type::MODEL_LIST]).map(|_| ())
+        }
+        DebugCmd::Setfield6d { field, value, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let f = parse_hex_byte(&field).map_err(|e| Failure::error(e.to_string()))?;
+            let mut dev = open_device(conn)?;
+            let (k, p) = protocol::set_field(f, value);
+            transact(&mut dev, conn, k, p, &[])
+        }
+        DebugCmd::Rename { slot, name, knobs } => {
+            let conn = &conn_with(conn, &knobs)?;
+            let encoded = protocol::encode_preset_name_field(&name).map_err(Failure::error)?;
+            let wire = slot - 1;
+            let mut dev = open_device(conn)?;
+            // 与官方抓包一致：先选槽，等设备自发切槽事件，再写名字区。
+            let (k, p) = protocol::select_preset(wire);
+            let (tx, rx) = dev
+                .transact_with_flags(conn.flags, k, p, &[])
+                .map_err(|e| Failure::error(e.to_string()))?;
+            describe(&tx, "", false);
+            describe(&rx, "", false);
+            // 切槽事件是设备的**附带**通知，不是写名字的前置条件：槽位已是
+            // 当前预设时它不会发。因此等不到就继续——`preset rename` 需要它
+            // 只因为后面还要读回校验，这里不需要。
+            if let Ok(f) = dev.wait_for_preset_switch_event(wire, 2_000) {
+                describe(&f, "", false);
+            }
+            let (k, p) = protocol::set_name_field(&encoded);
+            transact(&mut dev, conn, k, p, &[])
+        }
         DebugCmd::Setparam { b5, b6, value, knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let p = |s: &str| parse_hex_byte(s).map_err(|_| format!("{s:?} must be hex"));
