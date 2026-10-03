@@ -190,3 +190,71 @@ fn effect_type_names_match_params_json() {
         }
     }
 }
+
+/// 参数量程表（`params.json` 的 `ranges`）必须与内嵌表逐项一致。
+///
+/// 量程错一位不会报错，只会让 `show` 把归一化值印成错误的设备读数 —— 而那正是
+/// 读者拿它去对照设备/App 的数字。量程按 `(块, 效果类型)` 索引，同名参数在不同
+/// 类型下量程不同（`Decay` 三种、`Rate` 四种），所以粒度必须到类型。
+#[test]
+fn parameter_ranges_match_params_json() {
+    let p: Value = serde_json::from_str(PARAMS_JSON).unwrap();
+    let r = &p["ranges"];
+
+    let json_rows = |block: &str, tid: &str| -> Vec<(String, f64, f64, String)> {
+        r["by_type"][block][tid]
+            .as_array()
+            .unwrap_or_else(|| panic!("ranges.by_type.{block}.{tid} missing"))
+            .iter()
+            .map(|x| {
+                (
+                    x["name"].as_str().unwrap().to_string(),
+                    x["lo"].as_f64().unwrap(),
+                    x["hi"].as_f64().unwrap(),
+                    x["unit"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    };
+    // 量程存成 f32，转 f64 后 `1.1` 变成 1.100000023841858 —— 逐位比会永远失败。
+    // 这里比名称与单位（必须全等），数值比相对误差。
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-5 * a.abs().max(b.abs()).max(1.0);
+    let compare = |what: &str, j: &[(String, f64, f64, String)], rs: &[params_data::Range]| {
+        let rows: Vec<_> = rs
+            .iter()
+            .map(|x| (x.name.to_string(), x.lo as f64, x.hi as f64, x.unit.to_string()))
+            .collect::<Vec<_>>();
+        assert_eq!(j.len(), rows.len(), "{what}: entry count drifted");
+        for ((jn, jlo, jhi, ju), (rn, rlo, rhi, ru)) in j.iter().zip(rows.iter()) {
+            assert_eq!(jn, rn, "{what}: name drifted");
+            assert_eq!(ju, ru, "{what} {rn}: unit drifted");
+            assert!(close(*jlo, *rlo), "{what} {rn}: lo {jlo} vs {rlo}");
+            assert!(close(*jhi, *rhi), "{what} {rn}: hi {jhi} vs {rhi}");
+        }
+    };
+
+    for (block, tid, table) in params_data::RANGES {
+        let j = json_rows(block, &tid.to_string());
+        compare(&format!("{block} type {tid}"), &j, table);
+    }
+    for (block, table) in params_data::FLAT_RANGES {
+        let j: Vec<_> = r["flat"][block]
+            .as_array()
+            .unwrap_or_else(|| panic!("ranges.flat.{block} missing"))
+            .iter()
+            .map(|x| {
+                (
+                    x["name"].as_str().unwrap().to_string(),
+                    x["lo"].as_f64().unwrap(),
+                    x["hi"].as_f64().unwrap(),
+                    x["unit"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        compare(block, &j, table);
+    }
+    // EQ 的量程对每个频段相同，手册对每段重复写了一遍，故只存一份。
+    assert_eq!(r["eq_band"]["lo"].as_f64(), Some(params_data::EQ_RANGE.lo as f64));
+    assert_eq!(r["eq_band"]["hi"].as_f64(), Some(params_data::EQ_RANGE.hi as f64));
+    assert_eq!(r["eq_band"]["unit"], params_data::EQ_RANGE.unit);
+}

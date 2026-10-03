@@ -1133,5 +1133,891 @@
   "notes": [
     "cc = standard MIDI CC (7-bit, one-way, documented). name = device/display name.",
     "b3 in the SysEx write is NOT addressing: it only takes 0x00,0x08..0x38 and varies independently of block/param/value. Meaning undetermined; 0x00 was used in every capture."
-  ]
+  ],
+  "ranges": {
+    "by_type": {
+      "fx1": {
+        "0": [
+          {
+            "name": "Gate Threshold",
+            "lo": -100.0,
+            "hi": 0.0,
+            "unit": "dB"
+          }
+        ],
+        "2": [
+          {
+            "name": "Gate Threshold",
+            "lo": -100.0,
+            "hi": 0.0,
+            "unit": "dB"
+          },
+          {
+            "name": "Compressor Threshold",
+            "lo": -60.0,
+            "hi": 0.0,
+            "unit": "dB"
+          },
+          {
+            "name": "Ratio",
+            "lo": 1.1,
+            "hi": 20.0,
+            "unit": ":1"
+          },
+          {
+            "name": "Knee",
+            "lo": 0.0,
+            "hi": 24.0,
+            "unit": "dB"
+          },
+          {
+            "name": "Attack",
+            "lo": 0.0,
+            "hi": 200.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Release",
+            "lo": 0.0,
+            "hi": 1000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Makeup",
+            "lo": -24.0,
+            "hi": 24.0,
+            "unit": "dB"
+          }
+        ],
+        "3": [
+          {
+            "name": "Compressor Threshold",
+            "lo": -60.0,
+            "hi": 0.0,
+            "unit": "dB"
+          },
+          {
+            "name": "Ratio",
+            "lo": 1.1,
+            "hi": 20.0,
+            "unit": ":1"
+          },
+          {
+            "name": "Knee",
+            "lo": 0.0,
+            "hi": 24.0,
+            "unit": "dB"
+          },
+          {
+            "name": "Attack",
+            "lo": 0.0,
+            "hi": 200.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Release",
+            "lo": 0.0,
+            "hi": 1000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Makeup",
+            "lo": -24.0,
+            "hi": 24.0,
+            "unit": "dB"
+          }
+        ]
+      },
+      "fx2": {
+        "0": [
+          {
+            "name": "Drive Gain / Boost",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": ""
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Level",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "1": [
+          {
+            "name": "Drive Gain / Boost",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": ""
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Level",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "2": [
+          {
+            "name": "Drive Gain / Boost",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": ""
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Level",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "3": [
+          {
+            "name": "Drive Gain / Boost",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": ""
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Level",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "4": [
+          {
+            "name": "Drive Gain / Boost",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": ""
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Level",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "8": [
+          {
+            "name": "Pitch",
+            "lo": -12.0,
+            "hi": 12.0,
+            "unit": "st"
+          },
+          {
+            "name": "Fine",
+            "lo": -1.0,
+            "hi": 1.0,
+            "unit": "st"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "9": [
+          {
+            "name": "Freq",
+            "lo": 10.0,
+            "hi": 20000.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Env",
+            "lo": 0.0,
+            "hi": 20000.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Q",
+            "lo": 0.1,
+            "hi": 20.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "10": [
+          {
+            "name": "Freq",
+            "lo": 163.0,
+            "hi": 3500.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Sweep",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Rate",
+            "lo": 0.0,
+            "hi": 8.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Shape",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ]
+      },
+      "delay": {
+        "0": [
+          {
+            "name": "Delay",
+            "lo": 1.0,
+            "hi": 2000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Age",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "1": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "2": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Filter",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "3": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Interval",
+            "lo": -12.0,
+            "hi": 12.0,
+            "unit": "st"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "4": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "5": [
+          {
+            "name": "Time",
+            "lo": 2.0,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Bit Depth",
+            "lo": 4.0,
+            "hi": 16.0,
+            "unit": "bit"
+          },
+          {
+            "name": "LoFi Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "6": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Smear",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Filter",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "7": [
+          {
+            "name": "Time",
+            "lo": 0.1,
+            "hi": 3000.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Feedback",
+            "lo": 0.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Mod Depth",
+            "lo": 0.0,
+            "hi": 20.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Mod Rate",
+            "lo": 0.05,
+            "hi": 5.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ]
+      },
+      "mod": {
+        "0": [
+          {
+            "name": "Rate",
+            "lo": 0.1,
+            "hi": 3.74,
+            "unit": "Hz"
+          },
+          {
+            "name": "Depth",
+            "lo": 0.0,
+            "hi": 1.0,
+            "unit": "ms"
+          }
+        ],
+        "1": [
+          {
+            "name": "Rate",
+            "lo": 0.05,
+            "hi": 5.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Feedback",
+            "lo": -95.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "2": [
+          {
+            "name": "Rate",
+            "lo": 0.05,
+            "hi": 5.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Feedback",
+            "lo": -95.0,
+            "hi": 95.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "3": [
+          {
+            "name": "Rate",
+            "lo": 0.01,
+            "hi": 20.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Depth",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Wave",
+            "lo": 0.0,
+            "hi": 3.0,
+            "unit": ""
+          },
+          {
+            "name": "Smooth",
+            "lo": 0.0,
+            "hi": 40.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "4": [
+          {
+            "name": "Rate",
+            "lo": 0.01,
+            "hi": 20.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Depth",
+            "lo": 0.0,
+            "hi": 20.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Wave",
+            "lo": 0.0,
+            "hi": 3.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ]
+      },
+      "reverb": {
+        "0": [
+          {
+            "name": "Decay",
+            "lo": 0.5,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 0.0,
+            "hi": 80.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mod",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "1": [
+          {
+            "name": "Decay",
+            "lo": 0.5,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 0.0,
+            "hi": 80.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mod",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "2": [
+          {
+            "name": "Decay",
+            "lo": 0.5,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 0.0,
+            "hi": 80.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "LF Damp",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "3": [
+          {
+            "name": "Decay",
+            "lo": 0.5,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 0.0,
+            "hi": 80.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "HF Damp",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "4": [
+          {
+            "name": "Decay",
+            "lo": 0.0,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 5.0,
+            "hi": 80.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Pitch",
+            "lo": -24.0,
+            "hi": 24.0,
+            "unit": "st"
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "5": [
+          {
+            "name": "Decay",
+            "lo": 0.0,
+            "hi": 12.0,
+            "unit": "s"
+          },
+          {
+            "name": "PreDelay",
+            "lo": 5.0,
+            "hi": 120.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mod",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ],
+        "6": [
+          {
+            "name": "Decay",
+            "lo": 1.0,
+            "hi": 100.0,
+            "unit": "s"
+          },
+          {
+            "name": "Tone",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Crossover",
+            "lo": 800.0,
+            "hi": 8000.0,
+            "unit": "Hz"
+          },
+          {
+            "name": "Mod",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Mix",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          }
+        ]
+      }
+    },
+    "flat": {
+      "amp": [
+        {
+          "name": "Amp Gain",
+          "lo": 0.0,
+          "hi": 1.0,
+          "unit": ""
+        },
+        {
+          "name": "Bass",
+          "lo": -10.0,
+          "hi": 10.0,
+          "unit": "dB"
+        },
+        {
+          "name": "Mid",
+          "lo": -10.0,
+          "hi": 10.0,
+          "unit": "dB"
+        },
+        {
+          "name": "Treble",
+          "lo": -10.0,
+          "hi": 10.0,
+          "unit": "dB"
+        },
+        {
+          "name": "Amp Level",
+          "lo": -10.0,
+          "hi": 10.0,
+          "unit": "dB"
+        }
+      ],
+      "cab": [
+        {
+          "name": "Cab Low Cut",
+          "lo": 20.0,
+          "hi": 500.0,
+          "unit": "Hz"
+        },
+        {
+          "name": "Cab High Cut",
+          "lo": 2000.0,
+          "hi": 20000.0,
+          "unit": "Hz"
+        }
+      ]
+    },
+    "eq_band": {
+      "lo": -15.0,
+      "hi": 15.0,
+      "unit": "dB"
+    },
+    "source": "NANOCORE-User-Manual.md 「效果列表」节。手册未给量程的参数不在表内（如多数类型末尾的 Level、auto gate 的全部参数）——不编造。"
+  }
 }

@@ -398,6 +398,275 @@ pub fn effect_type_name(block: &str, type_id: u8) -> Option<&'static str> {
         .map(|(_, n)| *n)
 }
 
+
+/// 一个参数的显示量程（官方用户手册「效果列表」节）。
+///
+/// 快照与 CC 传的都是 `[0,1]` 归一化值，量程是把它们还原成设备/手册上印的那个
+/// 数字的依据：线性，`实际值 = lo + 归一化值 × (hi - lo)`。
+///
+/// **量程按 `(块, 效果类型)` 而非按参数名**：手册里 `Decay` 有 0.5\~12.0s（Room）、
+/// 0.0\~12.0s（Spring/Shimmer）、1.0\~100.0s（Cloud）三种；`Rate` 有四种；
+/// `Threshold` 也有 -100\~0（门）与 -60\~0（压缩）两种。按名字索引必然取错。
+///
+/// 手册未给量程的参数不在表内（返回 `None`）——例如多数类型末尾的 `Level`、
+/// `auto gate` 的全部参数。宁可少印，不可编一个量程出来。
+pub struct Range {
+    pub name: &'static str,
+    pub lo: f32,
+    pub hi: f32,
+    /// 手册写的单位（`dB` / `ms` / `Hz` / `st` / `:1` / `bit`；无则空串）。
+    pub unit: &'static str,
+}
+
+/// `(块键, 效果类型 ID, 该类型的量程表)`，与 `data/params.json` 的 `ranges` 镜像。
+pub const RANGES: &[(&str, u8, &[Range])] = &[
+("fx1", 0, &[
+    Range { name: "Gate Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
+]),
+("fx1", 2, &[
+    Range { name: "Gate Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
+    Range { name: "Compressor Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
+    Range { name: "Ratio", lo: 1.1, hi: 20.0, unit: ":1" },
+    Range { name: "Knee", lo: 0.0, hi: 24.0, unit: "dB" },
+    Range { name: "Attack", lo: 0.0, hi: 200.0, unit: "ms" },
+    Range { name: "Release", lo: 0.0, hi: 1000.0, unit: "ms" },
+    Range { name: "Makeup", lo: -24.0, hi: 24.0, unit: "dB" },
+]),
+("fx1", 3, &[
+    Range { name: "Compressor Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
+    Range { name: "Ratio", lo: 1.1, hi: 20.0, unit: ":1" },
+    Range { name: "Knee", lo: 0.0, hi: 24.0, unit: "dB" },
+    Range { name: "Attack", lo: 0.0, hi: 200.0, unit: "ms" },
+    Range { name: "Release", lo: 0.0, hi: 1000.0, unit: "ms" },
+    Range { name: "Makeup", lo: -24.0, hi: 24.0, unit: "dB" },
+]),
+("fx2", 0, &[
+    Range { name: "Drive Gain / Boost", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 1, &[
+    Range { name: "Drive Gain / Boost", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 2, &[
+    Range { name: "Drive Gain / Boost", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 3, &[
+    Range { name: "Drive Gain / Boost", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 4, &[
+    Range { name: "Drive Gain / Boost", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 8, &[
+    Range { name: "Pitch", lo: -12.0, hi: 12.0, unit: "st" },
+    Range { name: "Fine", lo: -1.0, hi: 1.0, unit: "st" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 9, &[
+    Range { name: "Freq", lo: 10.0, hi: 20000.0, unit: "Hz" },
+    Range { name: "Env", lo: 0.0, hi: 20000.0, unit: "Hz" },
+    Range { name: "Q", lo: 0.1, hi: 20.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("fx2", 10, &[
+    Range { name: "Freq", lo: 163.0, hi: 3500.0, unit: "Hz" },
+    Range { name: "Sweep", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Rate", lo: 0.0, hi: 8.0, unit: "Hz" },
+    Range { name: "Shape", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 0, &[
+    Range { name: "Delay", lo: 1.0, hi: 2000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Age", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 1, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 2, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Filter", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 3, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Interval", lo: -12.0, hi: 12.0, unit: "st" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 4, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 5, &[
+    Range { name: "Time", lo: 2.0, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Bit Depth", lo: 4.0, hi: 16.0, unit: "bit" },
+    Range { name: "LoFi Mix", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 6, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Smear", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Filter", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("delay", 7, &[
+    Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
+    Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Mod Depth", lo: 0.0, hi: 20.0, unit: "ms" },
+    Range { name: "Mod Rate", lo: 0.05, hi: 5.0, unit: "Hz" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("mod", 0, &[
+    Range { name: "Rate", lo: 0.1, hi: 3.74, unit: "Hz" },
+    Range { name: "Depth", lo: 0.0, hi: 1.0, unit: "ms" },
+]),
+("mod", 1, &[
+    Range { name: "Rate", lo: 0.05, hi: 5.0, unit: "Hz" },
+    Range { name: "Feedback", lo: -95.0, hi: 95.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("mod", 2, &[
+    Range { name: "Rate", lo: 0.05, hi: 5.0, unit: "Hz" },
+    Range { name: "Feedback", lo: -95.0, hi: 95.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("mod", 3, &[
+    Range { name: "Rate", lo: 0.01, hi: 20.0, unit: "Hz" },
+    Range { name: "Depth", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Wave", lo: 0.0, hi: 3.0, unit: "" },
+    Range { name: "Smooth", lo: 0.0, hi: 40.0, unit: "Hz" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("mod", 4, &[
+    Range { name: "Rate", lo: 0.01, hi: 20.0, unit: "Hz" },
+    Range { name: "Depth", lo: 0.0, hi: 20.0, unit: "ms" },
+    Range { name: "Wave", lo: 0.0, hi: 3.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 0, &[
+    Range { name: "Decay", lo: 0.5, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 0.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 1, &[
+    Range { name: "Decay", lo: 0.5, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 0.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 2, &[
+    Range { name: "Decay", lo: 0.5, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 0.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "LF Damp", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 3, &[
+    Range { name: "Decay", lo: 0.5, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 0.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "HF Damp", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 4, &[
+    Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 5.0, hi: 80.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 5, &[
+    Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
+    Range { name: "PreDelay", lo: 5.0, hi: 120.0, unit: "ms" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+("reverb", 6, &[
+    Range { name: "Decay", lo: 1.0, hi: 100.0, unit: "s" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Crossover", lo: 800.0, hi: 8000.0, unit: "Hz" },
+    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
+]),
+
+];
+
+/// 参数表不随效果类型变化的块（amp / cab / eq）的量程。
+///
+/// 与 [`RANGES`] 分开是因为键不同：这里只按块键索引。
+pub const FLAT_RANGES: &[(&str, &[Range])] = &[
+("amp", &[
+    Range { name: "Amp Gain", lo: 0.0, hi: 1.0, unit: "" },
+    Range { name: "Bass", lo: -10.0, hi: 10.0, unit: "dB" },
+    Range { name: "Mid", lo: -10.0, hi: 10.0, unit: "dB" },
+    Range { name: "Treble", lo: -10.0, hi: 10.0, unit: "dB" },
+    Range { name: "Amp Level", lo: -10.0, hi: 10.0, unit: "dB" },
+]),
+("cab", &[
+    Range { name: "Cab Low Cut", lo: 20.0, hi: 500.0, unit: "Hz" },
+    Range { name: "Cab High Cut", lo: 2000.0, hi: 20000.0, unit: "Hz" },
+]),
+];
+
+/// EQ 每个频段的量程 —— 3 / 6 / 8 段都一样，手册对每段重复写了一遍。
+pub const EQ_RANGE: Range = Range { name: "", lo: -15.0, hi: 15.0, unit: "dB" };
+
+/// 某块某效果类型的量程表。
+pub fn ranges(block: &str, type_id: Option<u8>) -> Option<&'static [Range]> {
+    if block == "eq" {
+        return None; // EQ 用 [`EQ_RANGE`]，逐频段同一值
+    }
+    if let Some(rs) = FLAT_RANGES.iter().find(|(k, _)| *k == block) {
+        return Some(rs.1);
+    }
+    let t = type_id?;
+    RANGES
+        .iter()
+        .find(|(k, t2, _)| *k == block && *t2 == t)
+        .map(|(_, _, rs)| *rs)
+}
+
+/// 把归一化值换算成带单位的显示值。
+///
+/// 线性映射，与设备一致：手册量程 `lo~hi` 对应归一化 `0.0~1.0`。
+/// 小数位按量程跨度选，避免 `0.300` 变成 `0.3 ms` 或 `20000.00 Hz`。
+pub fn denormalize(range: &Range, normalized: f32) -> String {
+    let v = range.lo + normalized.clamp(0.0, 1.0) * (range.hi - range.lo);
+    let span = (range.hi - range.lo).abs();
+    let digits = if span >= 1000.0 {
+        0
+    } else if span >= 10.0 {
+        1
+    } else {
+        2
+    };
+    if range.unit.is_empty() {
+        format!("{v:.digits$}")
+    } else {
+        format!("{v:.digits$} {}", range.unit)
+    }
+}
+
 /// 某 EQ 类型的频段参数。
 pub fn eq_bands(type_id: u8) -> Option<&'static [ParamInfo]> {
     EQ_BANDS.iter().find(|(t, _)| *t == type_id).map(|(_, ps)| *ps)
