@@ -426,7 +426,10 @@ pub fn render_snapshot(
             // 参数名列宽按**块行里 `off` / `on ` 的起始列**算（`role` 占 6 字符），
             // 于是参数名与开关左边对齐，一眼看得出谁属于哪个块。名字与值之间用空格
             // 分隔、不加 `=` —— 缩进已经表达了从属关系，`=` 是多余的。
-            const SWITCH_COL: usize = 6;
+            // 参数名比块行里 `off` / `on ` **深一格**：块行 `role` 占 6 字符，
+            // 开关从第 6 列开始，参数从第 7 列 —— 缩进一格表示"属于这个块"，
+            // 同列则看不出从属。
+            const SWITCH_COL: usize = 7;
             let namew = shown
                 .iter()
                 .filter_map(|(n, _)| *n)

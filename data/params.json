@@ -186,7 +186,7 @@
           {
             "index": 0,
             "cc": 50,
-            "name": "Gate Threshold"
+            "name": "Threshold"
           },
           {
             "index": 1,
@@ -198,7 +198,7 @@
           {
             "index": 0,
             "cc": 51,
-            "name": "Compressor Threshold"
+            "name": "Threshold"
           },
           {
             "index": 1,
@@ -1124,7 +1124,7 @@
       "fx1": {
         "0": [
           {
-            "name": "Gate Threshold",
+            "name": "Threshold",
             "lo": -100.0,
             "hi": 0.0,
             "unit": "dB"
@@ -1132,13 +1132,13 @@
         ],
         "2": [
           {
-            "name": "Gate Threshold",
+            "name": "Threshold",
             "lo": -100.0,
             "hi": 0.0,
             "unit": "dB"
           },
           {
-            "name": "Compressor Threshold",
+            "name": "Threshold",
             "lo": -60.0,
             "hi": 0.0,
             "unit": "dB"
@@ -1176,7 +1176,7 @@
         ],
         "3": [
           {
-            "name": "Compressor Threshold",
+            "name": "Threshold",
             "lo": -60.0,
             "hi": 0.0,
             "unit": "dB"

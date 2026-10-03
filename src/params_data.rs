@@ -77,11 +77,11 @@ pub fn slot_legend() -> String {
 /// 缺失的类型即文档记载的空白。
 pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ("fx1", 0, &[
-    ParamInfo { index: 0, name: "Gate Threshold", cc: 50 },
+    ParamInfo { index: 0, name: "Threshold", cc: 50 },
     ParamInfo { index: 1, name: "Release", cc: 50 },
 ]),
 ("fx1", 3, &[
-    ParamInfo { index: 0, name: "Compressor Threshold", cc: 51 },
+    ParamInfo { index: 0, name: "Threshold", cc: 51 },
     ParamInfo { index: 1, name: "Ratio", cc: 52 },
     ParamInfo { index: 2, name: "Knee", cc: 53 },
     ParamInfo { index: 3, name: "Attack", cc: 54 },
@@ -474,11 +474,11 @@ pub struct Range {
 /// `(块键, 效果类型 ID, 该类型的量程表)`，与 `data/params.json` 的 `ranges` 镜像。
 pub const RANGES: &[(&str, u8, &[Range])] = &[
 ("fx1", 0, &[
-    Range { name: "Gate Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
+    Range { name: "Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
 ]),
 ("fx1", 2, &[
-    Range { name: "Gate Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
-    Range { name: "Compressor Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
+    Range { name: "Threshold", lo: -100.0, hi: 0.0, unit: "dB" },
+    Range { name: "Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
     Range { name: "Ratio", lo: 1.1, hi: 20.0, unit: ":1" },
     Range { name: "Knee", lo: 0.0, hi: 24.0, unit: "dB" },
     Range { name: "Attack", lo: 0.0, hi: 200.0, unit: "ms" },
@@ -486,7 +486,7 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "Makeup", lo: -24.0, hi: 24.0, unit: "dB" },
 ]),
 ("fx1", 3, &[
-    Range { name: "Compressor Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
+    Range { name: "Threshold", lo: -60.0, hi: 0.0, unit: "dB" },
     Range { name: "Ratio", lo: 1.1, hi: 20.0, unit: ":1" },
     Range { name: "Knee", lo: 0.0, hi: 24.0, unit: "dB" },
     Range { name: "Attack", lo: 0.0, hi: 200.0, unit: "ms" },
@@ -796,7 +796,7 @@ mod tests {
         let comp = params("fx1", Some(3)).expect("fx1 compressor");
         assert_eq!(
             comp.iter().map(|p| p.name).collect::<Vec<_>>(),
-            vec!["Compressor Threshold", "Ratio", "Knee", "Attack", "Release", "Makeup"]
+            vec!["Threshold", "Ratio", "Knee", "Attack", "Release", "Makeup"]
         );
         assert_eq!(comp.iter().map(|p| p.index).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5]);
         let makeup = param_by_name("fx1", Some(3), "makeup").expect("makeup");
@@ -804,8 +804,23 @@ mod tests {
         assert_eq!(makeup.cc, 56);
 
         // 噪声门是同一块中的另一类型，且只有两个参数。
+        //
+        // 名字是 `Threshold` 而非 `Gate Threshold`：产品手册 `1-4 gate` 与
+        // `4-4 compressor` 的参数说明栏都写 `Threshold`，设备/App 上也显示
+        // `Threshold`。此前 CLI 加了块名前缀（`Gate Threshold` /
+        // `Compressor Threshold`），用户按设备上的名字找不到。
         let gate = params("fx1", Some(0)).expect("fx1 gate");
-        assert_eq!(gate.iter().map(|p| p.name).collect::<Vec<_>>(), vec!["Gate Threshold", "Release"]);
+        assert_eq!(
+            gate.iter().map(|p| p.name).collect::<Vec<_>>(),
+            vec!["Threshold", "Release"],
+            "fx1 gate 的首参在手册与设备上都叫 Threshold，不带块名前缀"
+        );
+        let comp = params("fx1", Some(3)).expect("fx1 compressor");
+        assert_eq!(
+            comp.first().map(|p| p.name),
+            Some("Threshold"),
+            "fx1 compressor 的首参同样叫 Threshold"
+        );
     }
 
     #[test]
