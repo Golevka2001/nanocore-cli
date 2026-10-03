@@ -363,8 +363,10 @@ pub fn render_snapshot(
                 .map(|(i, p)| {
                     let named = params_data::param_by_index(block, Some(r.variant), i as u8)
                         .filter(|_| i < listed);
+                    // EQ 的频段共用 -15~15 dB；末位 Level 不在手册的 EQ 表里，
+                    // 没有量程，套上频段的量程会印出一个假的 dB 值。
                     let range = if block == "eq" {
-                        named.map(|_| &params_data::EQ_RANGE)
+                        named.filter(|pi| pi.name != "Level").map(|_| &params_data::EQ_RANGE)
                     } else {
                         named.and_then(|_| params_data::ranges(block, Some(r.variant)))
                             .and_then(|rs| rs.get(i))

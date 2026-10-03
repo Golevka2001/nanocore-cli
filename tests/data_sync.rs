@@ -9,6 +9,7 @@
 use serde_json::Value;
 
 use nanocore::models_data;
+use nanocore::protocol;
 use nanocore::params_data;
 
 const MODELS_JSON: &str = include_str!("../data/models.json");
@@ -288,4 +289,52 @@ fn reverb_effect_type_ids_are_not_contiguous() {
         ],
         "reverb 类型 id / 名称已变——先真机重测 CC47 逐值回读，别照手册顺序改"
     );
+}
+
+/// fx2 的 11 个类型名是设备/App 的 pedal 名，不是 CC 指南的 `Drive 1-5` / `Boost 1-3`。
+///
+/// 设备上核对过：FX2 `type=5` 显示 `PiFUZZ v.2`，而 CC 指南在那一格写的是
+/// `Drive 5`。id 与手册 `N-11` 的产品编号一致（0 起始），真机 CC41 写 0..10
+/// 回读 `type=1..11` 连续无空洞 —— 错的只是名字。
+#[test]
+fn fx2_effect_types_use_pedal_names() {
+    let fx2: Vec<(u8, &str)> = params_data::EFFECT_TYPES
+        .iter()
+        .find(|(k, _)| *k == "fx2")
+        .map(|(_, ts)| ts.iter().map(|(id, n)| (*id, *n)).collect())
+        .expect("fx2 in EFFECT_TYPES");
+    assert_eq!(
+        fx2,
+        vec![
+            (0, "Scream"),
+            (1, "Klone"),
+            (2, "OCD"),
+            (3, "DS2"),
+            (4, "PiFUZZ"),
+            (5, "Range"),
+            (6, "XAC"),
+            (7, "Fiman"),
+            (8, "Pitch"),
+            (9, "Envelope Wah"),
+            (10, "Wah"),
+        ],
+        "fx2 类型名已变——CC 指南的 Drive/Boost 命名设备上不显示"
+    );
+}
+
+/// amp / cab 的 `variant` 恒为 0，型号不在快照里。
+///
+/// 40 个出厂预设的 amp 与 cab `variant` 全是 0，且写 `model 1 / 5 / 25 / 34`
+/// 后快照的 variant 都不变。用它当 `models_data` 的索引会印出一个与实际型号
+/// 无关的名字（曾把 VXAC30 印成 `Bogner XTC #1`）。型号只能从 `0x36` 应答的
+/// per-model `active` 标记查。
+#[test]
+fn amp_and_cab_have_no_variant_name() {
+    for (slot, block) in [(2u8, "amp"), (3, "cab")] {
+        assert_eq!(
+            protocol::variant_name(slot, 0),
+            None,
+            "{block} 的 variant 不是型号索引，不该从快照得出型号名"
+        );
+    }
 }

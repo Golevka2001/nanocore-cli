@@ -35,35 +35,35 @@
     "fx2": [
       {
         "id": 0,
-        "name": "Drive 1"
+        "name": "Scream"
       },
       {
         "id": 1,
-        "name": "Drive 2"
+        "name": "Klone"
       },
       {
         "id": 2,
-        "name": "Drive 3"
+        "name": "OCD"
       },
       {
         "id": 3,
-        "name": "Drive 4"
+        "name": "DS2"
       },
       {
         "id": 4,
-        "name": "Drive 5"
+        "name": "PiFUZZ"
       },
       {
         "id": 5,
-        "name": "Boost 1"
+        "name": "Range"
       },
       {
         "id": 6,
-        "name": "Boost 2"
+        "name": "XAC"
       },
       {
         "id": 7,
-        "name": "Boost 3"
+        "name": "Fiman"
       },
       {
         "id": 8,
@@ -239,7 +239,7 @@
           {
             "index": 0,
             "cc": 57,
-            "name": "Drive Gain / Boost"
+            "name": "Gain"
           },
           {
             "index": 1,
@@ -256,7 +256,7 @@
           {
             "index": 0,
             "cc": 57,
-            "name": "Drive Gain / Boost"
+            "name": "Gain"
           },
           {
             "index": 1,
@@ -273,7 +273,7 @@
           {
             "index": 0,
             "cc": 57,
-            "name": "Drive Gain / Boost"
+            "name": "Gain"
           },
           {
             "index": 1,
@@ -290,7 +290,7 @@
           {
             "index": 0,
             "cc": 57,
-            "name": "Drive Gain / Boost"
+            "name": "Gain"
           },
           {
             "index": 1,
@@ -307,7 +307,7 @@
           {
             "index": 0,
             "cc": 57,
-            "name": "Drive Gain / Boost"
+            "name": "Gain"
           },
           {
             "index": 1,
@@ -1051,6 +1051,11 @@
             "index": 2,
             "cc": 93,
             "name": "High"
+          },
+          {
+            "index": 3,
+            "cc": 94,
+            "name": "Level"
           }
         ],
         "1": [
@@ -1083,6 +1088,11 @@
             "index": 5,
             "cc": 96,
             "name": "4 kHz"
+          },
+          {
+            "index": 6,
+            "cc": 97,
+            "name": "Level"
           }
         ],
         "2": [
@@ -1125,15 +1135,24 @@
             "index": 7,
             "cc": 33,
             "name": "8 kHz"
+          },
+          {
+            "index": 8,
+            "cc": 34,
+            "name": "Level"
           }
         ]
-      }
+      },
+      "notes": "每个类型 = 频段 + 末位 Level。实测参数个数 = 频段数 + 1（3/6/8 段 -> 4/7/9），Level 的 CC 沿用频段序列的下一个。手册只列频段，Level 无量程。"
     }
   },
   "notes": [
     "cc = standard MIDI CC (7-bit, one-way, documented). name = device/display name.",
     "b3 in the SysEx write is NOT addressing: it only takes 0x00,0x08..0x38 and varies independently of block/param/value. Meaning undetermined; 0x00 was used in every capture.",
-    "reverb 的 effect_types id 不是连续的：设备在 variant 4 上不使用该槽位，7 个类型分别落在 id 0,1,2,3,5,6,7。依据：CC47 逐值写入 0..6 并回读 0x63 快照，type 依次为 Room/Plate/Hall/Concert/Spring/Shimmer/Cloud，写入 4 落在 id 5 上，写入 >=7 被钳在 id 7。按手册的产品顺序（room..cloud）顺序填 0..6 会整体错位。"
+    "reverb 的 effect_types id 不是连续的：设备在 variant 4 上不使用该槽位，7 个类型分别落在 id 0,1,2,3,5,6,7。依据：CC47 逐值写入 0..6 并回读 0x63 快照，type 依次为 Room/Plate/Hall/Concert/Spring/Shimmer/Cloud，写入 4 落在 id 5 上，写入 >=7 被钳在 id 7。按手册的产品顺序（room..cloud）顺序填 0..6 会整体错位。",
+    "fx2 的 11 个类型名取设备/App 的 pedal 名（Scream/Klone/OCD/DS2/PiFUZZ/Range/XAC/Fiman/Pitch/Envelope Wah/Wah），不是 OEM CC 指南的 Drive 1-5 / Boost 1-3 —— 后者是 CC 侧的合并命名，设备上不显示。id 与手册 `N-11` 的产品编号一致（0 起始），真机 CC41 写 0..10 回读 type=1..11 连续无空洞。",
+    "eq 每个类型的参数个数 = 频段数 + 1，末位是 Level（真机实测：3 段 -> 4、6 段 -> 7、8 段 -> 9；写 b6=3 在 3 段下被接受且只改第 4 个值）。手册的 EQ 表只列频段，Level 未给量程。",
+    "fx2 第一个参数名按 pedal 分：Scream/Klone/OCD/DS2/PiFUZZ 是 `Gain`，Range/XAC/Fiman 是 `Boost`（手册 6-11/7-11/8-11 各只列一个 Boost）。此前的 `Drive Gain / Boost` 是把两类合并成一个名字，设备上不显示。"
   ],
   "ranges": {
     "by_type": {

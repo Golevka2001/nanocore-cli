@@ -89,27 +89,27 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 5, name: "Makeup", cc: 56 },
 ]),
 ("fx2", 0, &[
-    ParamInfo { index: 0, name: "Drive Gain / Boost", cc: 57 },
+    ParamInfo { index: 0, name: "Gain", cc: 57 },
     ParamInfo { index: 1, name: "Tone", cc: 58 },
     ParamInfo { index: 2, name: "Level", cc: 59 },
 ]),
 ("fx2", 1, &[
-    ParamInfo { index: 0, name: "Drive Gain / Boost", cc: 57 },
+    ParamInfo { index: 0, name: "Gain", cc: 57 },
     ParamInfo { index: 1, name: "Tone", cc: 58 },
     ParamInfo { index: 2, name: "Level", cc: 59 },
 ]),
 ("fx2", 2, &[
-    ParamInfo { index: 0, name: "Drive Gain / Boost", cc: 57 },
+    ParamInfo { index: 0, name: "Gain", cc: 57 },
     ParamInfo { index: 1, name: "Tone", cc: 58 },
     ParamInfo { index: 2, name: "Level", cc: 59 },
 ]),
 ("fx2", 3, &[
-    ParamInfo { index: 0, name: "Drive Gain / Boost", cc: 57 },
+    ParamInfo { index: 0, name: "Gain", cc: 57 },
     ParamInfo { index: 1, name: "Tone", cc: 58 },
     ParamInfo { index: 2, name: "Level", cc: 59 },
 ]),
 ("fx2", 4, &[
-    ParamInfo { index: 0, name: "Drive Gain / Boost", cc: 57 },
+    ParamInfo { index: 0, name: "Gain", cc: 57 },
     ParamInfo { index: 1, name: "Tone", cc: 58 },
     ParamInfo { index: 2, name: "Level", cc: 59 },
 ]),
@@ -292,15 +292,17 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
     (2, "Gate + Compressor"),
     (3, "Compressor"),
 ]),
+// fx2 的名字是设备/App 的 pedal 名；`Drive 1-5` / `Boost 1-3` 是 CC 指南的合并
+// 命名，设备上不显示。id 与手册 `N-11` 的产品编号一致（0 起始）。
 ("fx2", &[
-    (0, "Drive 1"),
-    (1, "Drive 2"),
-    (2, "Drive 3"),
-    (3, "Drive 4"),
-    (4, "Drive 5"),
-    (5, "Boost 1"),
-    (6, "Boost 2"),
-    (7, "Boost 3"),
+    (0, "Scream"),
+    (1, "Klone"),
+    (2, "OCD"),
+    (3, "DS2"),
+    (4, "PiFUZZ"),
+    (5, "Range"),
+    (6, "XAC"),
+    (7, "Fiman"),
     (8, "Pitch"),
     (9, "Envelope Wah"),
     (10, "Wah"),
@@ -357,11 +359,16 @@ pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 ];
 
 /// `(EQ 类型 ID, 频段参数列表)`。
+/// 每种 EQ = 频段 + 末位 `Level`。
+///
+/// 实测参数个数 = 频段数 + 1（3/6/8 段 -> 4/7/9），在 3 段下写 `b6=3` 被接受
+/// 且只改第 4 个值。手册的 EQ 表只列频段，`Level` 没有量程。
 pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
 (0, &[
     ParamInfo { index: 0, name: "Low", cc: 91 },
     ParamInfo { index: 1, name: "Mid", cc: 92 },
     ParamInfo { index: 2, name: "High", cc: 93 },
+    ParamInfo { index: 3, name: "Level", cc: 94 },
 ]),
 (1, &[
     ParamInfo { index: 0, name: "120 Hz", cc: 91 },
@@ -370,6 +377,7 @@ pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
     ParamInfo { index: 3, name: "1 kHz", cc: 94 },
     ParamInfo { index: 4, name: "2 kHz", cc: 95 },
     ParamInfo { index: 5, name: "4 kHz", cc: 96 },
+    ParamInfo { index: 6, name: "Level", cc: 97 },
 ]),
 (2, &[
     ParamInfo { index: 0, name: "60 Hz", cc: 91 },
@@ -380,6 +388,7 @@ pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
     ParamInfo { index: 5, name: "2 kHz", cc: 96 },
     ParamInfo { index: 6, name: "4 kHz", cc: 97 },
     ParamInfo { index: 7, name: "8 kHz", cc: 33 },
+    ParamInfo { index: 8, name: "Level", cc: 34 },
 ]),
 ];
 
@@ -796,10 +805,16 @@ mod tests {
 
     #[test]
     fn eq_uses_band_tables_per_type() {
-        assert_eq!(params("eq", Some(0)).unwrap().len(), 3);
-        assert_eq!(params("eq", Some(1)).unwrap().len(), 6);
-        assert_eq!(params("eq", Some(2)).unwrap().len(), 8);
+        // 频段 + 末位 Level：3/6/8 段 -> 4/7/9 个参数（真机实测的 count 字节）。
+        assert_eq!(params("eq", Some(0)).unwrap().len(), 4);
+        assert_eq!(params("eq", Some(1)).unwrap().len(), 7);
+        assert_eq!(params("eq", Some(2)).unwrap().len(), 9);
         assert_eq!(eq_bands(0).unwrap()[0].name, "Low");
+        assert_eq!(
+            eq_bands(0).unwrap().last().unwrap().name,
+            "Level",
+            "3 段 EQ 的第 4 个参数是 Level（写 b6=3 会被接受）"
+        );
         assert!(eq_bands(9).is_none());
     }
 
