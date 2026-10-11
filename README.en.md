@@ -51,8 +51,8 @@ nanocore-cli settings show                # settings overview (volume/wireless/p
 nanocore-cli settings usb-volume 90        # USB output volume
 nanocore-cli settings bt-volume 80        # bluetooth volume
 nanocore-cli settings wireless off        # enable / disable wireless
-nanocore-cli settings input-gain -- -3    # input gain (dB, may be negative)
-nanocore-cli settings input-channel 2     # input channel
+nanocore-cli settings input-gain -3        # input gain (dB, may be negative)
+nanocore-cli settings midi-channel 2      # MIDI receive channel
 
 nanocore-cli asset read ir 1 --out out.bin   # pull the slot-1 IR blob
 nanocore-cli asset write amp 29 tone.ead     # write an .ead/.eadl model to an amp slot
