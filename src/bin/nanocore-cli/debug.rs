@@ -15,15 +15,14 @@ use crate::probe::probe;
 /// 把协议旋钮落到连接选项的副本上。
 ///
 /// 旋钮挂在每个叶子变体上（`raw` / `replay` 恰恰只有叶子级才拿得到），
-/// 所以这里克隆一份 `Conn` 再应用，而不是就地改调用方持有的那个——
-/// `Conn` 的其余字段（端口、通道、超时）与旋钮无关，克隆成本可忽略。
+/// 这里克隆一份 `Conn` 再应用，不就地改调用方持有的那个。
 fn conn_with(conn: &Conn, knobs: &ProtocolKnobs) -> Result<Conn, Failure> {
     let mut c = conn.clone();
     c.apply_knobs(knobs).map_err(Failure::error)?;
     Ok(c)
 }
 
-/// 各分支都先完成自己的输入解析，再打开端口——手误不该触碰 MIDI。
+/// 各分支都先完成输入解析，再打开端口。
 pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         DebugCmd::Ping { knobs } => {
@@ -37,8 +36,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             // 端口回显后的分节线由 open_device 统一打（见 common.rs）。
             let mut dev = open_device(conn)?;
             let (k, p) = protocol::request_snapshot();
-            // describe 收到快照帧就渲染完整展开版（unpacked 流 + 字段表），
-            // 所以这里不再另行输出。
+            // describe 已经渲染完整展开版，这里不另行输出。
             let reply = transact_reply(&mut dev, conn, k, p, &[msg_type::SNAPSHOT])?;
             if reply.is_none() {
                 return Err(Failure::error(
@@ -50,8 +48,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
         DebugCmd::Monitor { knobs } => {
             let conn = &conn_with(conn, &knobs)?;
             let mut dev = open_device(conn)?;
-            // 它只被动打印设备**主动发出**的帧（Event / 别人的请求的回包），
-            // 自己不发任何请求——所以设备空闲时这里本来就该是安静的。
+            // 只被动打印设备**主动发出**的帧（Event / 别人的请求的回包），自己不���请求。
             println!("monitoring... (ctrl-c to stop)");
             let mut frames = 0usize;
             loop {
@@ -133,7 +130,7 @@ pub fn cmd_debug(cmd: DebugCmd, conn: &Conn) -> Result<(), Failure> {
             let encoded = protocol::encode_preset_name_field(&name).map_err(Failure::error)?;
             let wire = slot - 1;
             let mut dev = open_device(conn)?;
-            // 与官方抓包一致：先选槽，等设备自发切槽事件，再写名字区。
+            // 先选槽，等设备自发切槽事件，再写名字区。
             let (k, p) = protocol::select_preset(wire);
             let (tx, rx) = dev
                 .transact_with_flags(conn.flags, k, p, &[])

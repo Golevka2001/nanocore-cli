@@ -23,8 +23,8 @@
 //! ## 依据来源
 //!
 //! * `b5` = 块槽位：设备字符串表 ID 14-21 依次对应块 FX1,FX2,AMP,CAB,DEL,MOD,REV,EQ -> 0..7；
-//!   抓包结果一致（FX1 写 `b5=0x00`，FX2 写 `b5=0x01`，音箱启用帧为 `ENABLE slot=2`）。
-//! * `b6` = 参数索引：压缩器抓包（其文件名按调节顺序列出全部六个参数）解码为 `b6 = 0..5`，
+//!   实际写入一致（FX1 写 `b5=0x00`，FX2 写 `b5=0x01`，音箱启用帧为 `ENABLE slot=2`）。
+//! * `b6` = 参数索引：压缩器按调节顺序解码为 `b6 = 0..5`，
 //!   与指南 CC51-56 一致 —— 两个独立来源互相印证。
 //! * `b3` 不参与寻址；它是 [`crate::protocol`] 里 `0x6D sub 0x07` 消息的**还原掩码**
 //!   （记录哪些值字节的 bit7 被剥掉了），见 [`crate::protocol::param_write`]。
@@ -32,7 +32,7 @@
 //! ## 已知空白（出自指南本身，非猜测）
 //!
 //! OEM 指南未给出 FX1 类型 1/2（Auto Gate、Gate + Compressor）和 FX2 类型 5-7（Boost 1-3）的参数名称，
-//! 也没有抓包覆盖它们 —— 因此 [`params`] 对这些情况返回 `None`，而非编造名称。
+//! 也无从得知 —— 因此 [`params`] 对这些情况返回 `None`。
 #![allow(dead_code)]
 
 /// 一个块 / 效果类型的单个参数。
@@ -209,7 +209,7 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ]),
 // reverb 的键是**真实 variant**，不是手册的产品序号 —— 两者对 0..3 一致，
 // 但末三项错位（产品序号 4,5,6 = spring/shimmer/cloud 对应 variant 7,5,6）。
-// 依据是 2026-10-03 真机实测：写 CC47=0..6 回读 variant 得 0,1,2,3,5,6,7。
+// 写 CC47=0..6 回读 variant 得 0,1,2,3,5,6,7。
 // 每类只有 5 个参数 —— CC 指南那 6 个里的第 6 项（CC90）设备并不暴露。
 ("reverb", 0, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
@@ -310,7 +310,7 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
 ]),
 // reverb 的 id 不连续，且**名称顺序与 id 顺序不一致**——这是本表最容易踩的坑。
 //
-// 2026-10-03 真机实测（写 CC47 = 0..6，逐次回读 0x63 快照的 variant 字节）：
+// 写 CC47 = 0..6，逐次回读 0x63 快照的 variant 字节：
 //
 //     CC47 = 0,1,2,3,4,5,6,7  ->  variant = 0,1,2,3,5,6,7,7
 //
@@ -358,7 +358,7 @@ pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 /// `(EQ 类型 ID, 频段参数列表)`。
 /// 每种 EQ = 频段 + 末位 `Level`。
 ///
-/// 实测参数个数 = 频段数 + 1（3/6/8 段 -> 4/7/9），在 3 段下写 `b6=3` 被接受
+/// 参数个数 = 频段数 + 1（3/6/8 段 -> 4/7/9），在 3 段下写 `b6=3` 被接受
 /// 且只改第 4 个值。手册的 EQ 表只列频段，`Level` 没有量程。
 pub const EQ_BANDS: &[(u8, &[ParamInfo])] = &[
 (0, &[
@@ -411,9 +411,9 @@ pub fn effect_type_name(block: &str, type_id: u8) -> Option<&'static str> {
 /// 对 6 个 id 连续的块（fx1 / fx2 / mod / delay / eq）它就是 `variant + 1`。
 /// **reverb 不是**：手册 REV 那栏是**产品顺序**（`5-7 spring`），而存储的
 /// `variant` 是另一套编号，两者对末三项错开 —— variant 7 = spring，在设备上
-/// 是第 5 个类型（`e6d0ddc` 记录了这次实测）。
+/// 是第 5 个类型。
 ///
-/// **amp / cab 返回 `None`**：它们的 `variant` 恒为 0（40 组出厂快照与
+/// **amp / cab 返回 `None`**：它们的 `variant` 恒为 0（内置预设与
 /// 40 组预设 manifest 皆然），型号存在各自 30 项的表里、当前值不在 `0x63`
 /// 快照中。`variant + 1` 会印出 `type=1` 这个凭空编号。
 pub fn type_number(block: &str, variant: u8) -> Option<u8> {
@@ -448,7 +448,7 @@ pub fn type_number(block: &str, variant: u8) -> Option<u8> {
 /// `Threshold` 也有 -100\~0（门）与 -60\~0（压缩）两种。按名字索引必然取错。
 ///
 /// 手册未给量程的参数不在表内（返回 `None`）——例如多数类型末尾的 `Level`、
-/// `auto gate` 的全部参数。宁可少印，不可编一个量程出来。
+/// `auto gate` 的全部参数。
 pub struct Range {
     pub name: &'static str,
     pub lo: f32,
@@ -786,7 +786,7 @@ mod tests {
     }
 
     /// b6 按效果类型区分：FX1 噪声门接受 0,1，FX1 压缩器接受 0..5，
-    /// 两者都在 b5=0。压缩器的顺序由抓包和 CC51-56 共同锁定。
+    /// 两者都在 b5=0。压缩器的顺序由 CC51-56 锁定。
     #[test]
     fn compressor_param_order_matches_capture() {
         let comp = params("fx1", Some(3)).expect("fx1 compressor");
@@ -796,7 +796,7 @@ mod tests {
         );
         assert_eq!(comp.iter().map(|p| p.index).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5]);
         let makeup = param_by_name("fx1", Some(3), "makeup").expect("makeup");
-        assert_eq!(makeup.index, 5); // 抓包中 b6 = 5
+        assert_eq!(makeup.index, 5); // b6 = 5
         assert_eq!(makeup.cc, 56);
 
         // 噪声门是同一块中的另一类型，且只有两个参数。
@@ -844,7 +844,7 @@ mod tests {
 
     #[test]
     fn typed_tables_resolve_by_type() {
-        // 数目取设备实存（40 组出厂快照）：Digital 3 个、BBD 4 个。
+        // 数目取设备实存：Digital 3 个、BBD 4 个。
         // CC 指南的表每行末尾多一列「电平」，设备不存那个 b6。
         assert_eq!(params("delay", Some(1)).unwrap().len(), 3); // Digital
         assert_eq!(params("delay", Some(0)).unwrap().len(), 4); // BBD
@@ -868,7 +868,7 @@ mod tests {
 
     #[test]
     fn eq_uses_band_tables_per_type() {
-        // 频段 + 末位 Level：3/6/8 段 -> 4/7/9 个参数（真机实测的 count 字节）。
+        // 频段 + 末位 Level：3/6/8 段 -> 4/7/9 个参数。
         assert_eq!(params("eq", Some(0)).unwrap().len(), 4);
         assert_eq!(params("eq", Some(1)).unwrap().len(), 7);
         assert_eq!(params("eq", Some(2)).unwrap().len(), 9);
@@ -886,7 +886,7 @@ mod tests {
         assert_eq!(params("amp", None).unwrap().len(), 5);
         assert_eq!(params("amp", Some(7)).unwrap().len(), 5); // 类型被忽略
         // cab 只有 2 个参数：手册「CAB 参数说明」只列 Low Cut / High Cut，设备
-        // 实存也是 2 个（40 组出厂快照 + 真机 `module cab params` 一致）。
+        // 实存也是 2 个。
         assert_eq!(params("cab", Some(3)).unwrap().len(), 2);
     }
 }

@@ -62,26 +62,44 @@ fn module_action(
     }
 }
 
+/// 列出 8 个模块与各自的参数表。不碰设备。
+///
+/// 模块说明取自 clap 的 `about`，与 `module <m> --help` 同源。
 fn cmd_module_list() -> Result<(), Failure> {
-    println!("modules (b5 slot — the device string-table order):");
-    for &(key, slot) in params_data::BLOCKS {
-        let summary = match params_data::params(key, None) {
-            Some(ps) => format!("type-independent: {} parameter(s)", ps.len()),
-            None => "type-dependent: current type read from the device (`--type N` overrides)"
-                .into(),
-        };
-        println!("  {key:<7} b5={slot}  {summary}");
+    let descs = crate::cli::module_descriptions();
+    let rows: Vec<(&str, String, String)> = params_data::BLOCKS
+        .iter()
+        .map(|&(key, _)| {
+            let desc = descs
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            // 查得到多少参数就说多少，查不到就说「跟着效果类型走」——不编一个
+            // 看似确定的数字出来。
+            let params = match params_data::params(key, None) {
+                Some(ps) => format!("{} parameters, the same for every model", ps.len()),
+                None => "parameters follow the effect type".to_string(),
+            };
+            (key, desc, params)
+        })
+        .collect();
+    let width = rows.iter().map(|(_, d, _)| d.len()).max().unwrap_or(0);
+
+    println!("modules:");
+    println!();
+    for (key, desc, params) in &rows {
+        println!("  {key:<7} {desc:<width$}  {params}", width = width);
     }
     println!();
-    // 命令行里用 1 起的位置号（如 `debug enable 3`）指代槽位，这里给出对照。
-    println!("positions: {}", params_data::slot_legend());
-    println!();
-    println!("usage: nanocore-cli module <module> <action>");
-    println!("       module <module> on | off");
-    println!("       module <module> model <N>");
-    println!("       module <module> params [--type N]");
-    println!("       module <module> param <name|b6> [<0..1>] [--type N]");
-    println!("       (omit <0..1> to read the current value from the device)");
+    println!(
+        "Every module chooses its effect type with `module <module> model <N>`:\n\
+         amp and cab take 1-{count}, the others their own type number.\n\
+         `params` and `param` take the same number as `--type N`; without it,\n\
+         they read the one the device is already set to.",
+        count = midicc::AMP_MODEL_COUNT
+    );
     Ok(())
 }
 
@@ -110,7 +128,7 @@ fn type_dependent(key: &str) -> bool {
 /// 读快照并取出该模块的记录。
 ///
 /// 快照记录是**角色序**：下标 == [`protocol::CHAIN_ROLES`] 下标 == `b5` 槽位
-/// （40 组出厂基线与 `.npreset` manifest 对账逐位确认，真机读写实验双向印证）。
+/// 。
 fn module_record(dev: &mut Dev, block: BlockArg) -> Result<SnapshotRecord, Failure> {
     let key = block.key();
     let slot = params_data::block_slot(key)
@@ -203,7 +221,7 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>, conn: &Conn) -> Result<(), Fa
                     ),
                 }
             }
-            // 设备存了、OEM 指南没列的 b6（EQ 实测比指南多一个尾参数）。
+            // 设备存了、OEM 指南没列的 b6（EQ 比指南多一个尾参数）。
             for i in 0..rec.params.len() as u8 {
                 if ps.iter().all(|p| p.index != i) {
                     println!(
@@ -266,7 +284,7 @@ fn cmd_param_action(
     }
 }
 
-/// 读一个参数：`b6` 直接索引快照里的设备数组（真机校准：二者逐位对应）。
+/// 读一个参数：`b6` 直接索引快照里的设备数组。
 fn read_param(
     block: BlockArg,
     key: &str,
@@ -428,7 +446,7 @@ fn cmd_param(
 /// 校验并描述通过标准 CC 进行的 Amp/Cab **型号**选择。
 ///
 /// `CC43`（Amp）与 `CC44`（Cab）在文档中标记为 "Type CC"，但 OEM 指南未给出这两个模块的类型表，并声称型号选择未分配。
-/// 硬件实测表明它们*确实是*覆盖 30 项表的型号选择器，且 wire id `>= 30` 会被静默忽略。
+/// 它们*确实是*覆盖 30 项表的型号选择器，且 wire id `>= 30` 会被静默忽略。
 /// 因此在此处拒绝，而不是让写入无声失效。
 ///
 /// 对其余模块这是空操作：它们的 "type" 是真实的效果类型编号，在 OEM MIDI CC 参考中拥有自己的表。

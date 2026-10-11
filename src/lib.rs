@@ -1,6 +1,6 @@
 //! Nanocore (TPE-S10) 协议库。
 //!
-//! 帧布局（经 MIDI 抓包验证）：
+//! 帧布局：
 //!
 //! ```text
 //! 7D 4E 43 | dir | flags | 02 | seq_lo | seq_hi | type | payload...
@@ -67,7 +67,7 @@ pub mod sub {
 }
 
 /// 设置页字段 id（`0x66` SET_FIELD 写、`0x65` 快照广播读；
-/// 全部由 2026-10-01 的"设置-*.mmon"系列抓包逐一确证）。
+/// 全部与设备实际行为一致）。
 pub mod setting {
     /// 无线开关（0/1）。
     pub const WIRELESS: u8 = 0x01;
@@ -86,7 +86,7 @@ pub mod setting {
 /// [`sub::SET_FIELD`] 及设置类消息使用的字段 id。
 pub mod field {
     /// 预设音量（0-100），App"预设音量"滑条走此字段
-    /// （`调整预设音量.mmon`：`0x6D` SET_FIELD `00 02 00 00 04 <val>`）。
+    /// 。
     pub const PRESET_VOLUME: u8 = 0x04;
     /// 效果 variant / amp 型号。
     pub const VARIANT: u8 = 0x06;

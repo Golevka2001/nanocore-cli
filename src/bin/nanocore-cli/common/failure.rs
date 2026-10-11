@@ -9,8 +9,7 @@ pub type Dev = Nanocore<MidiTransport>;
 /// 命令失败：面向用户的消息，加上它应当产生的进程退出码。
 ///
 /// 处理器只挑选语义，退出码由 `main` 统一定夺——「校验不一致」与「普通失败」
-/// 对脚本是不同的结果（见 README 的退出码约定），不该靠字符串或深处的
-/// `process::exit` 来表达。
+/// 对脚本是不同的结果（见 README 的退出码约定）。
 #[derive(Debug)]
 pub struct Failure {
     /// 写给用户的消息（`main` 只负责加上 `error: ` 前缀）。

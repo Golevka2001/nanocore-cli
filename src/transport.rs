@@ -15,7 +15,7 @@ pub trait Transport {
     fn receive(&mut self) -> Result<Vec<u8>, Self::Error>;
 }
 
-/// 内存中的传输层，适用于测试和重放抓包流量。
+/// 内存中的传输层，适用于测试和重放既定帧序列。
 #[derive(Default)]
 pub struct LoopbackTransport {
     pub sent: Vec<Vec<u8>>,

@@ -58,13 +58,13 @@ pub struct Cli {
     /// Substring of the port name used for auto-detection [default: nanocore]
     #[arg(long, global = true, help_heading = "Global options", value_name = "NAME")]
     pub hint: Option<String>,
-    /// MIDI input port number (see `ports`, 1-based)
+    /// MIDI input port number, 1-based (see `ports`)
     #[arg(long, global = true, help_heading = "Global options", value_name = "N")]
     pub in_port: Option<usize>,
-    /// MIDI output port number (see `ports`, 1-based)
+    /// MIDI output port number, 1-based (see `ports`)
     #[arg(long, global = true, help_heading = "Global options", value_name = "N")]
     pub out_port: Option<usize>,
-    /// MIDI channel for CC/PC commands (1–16, wire = N-1; a cabled 0 device is treated as omni)
+    ///  MIDI channel for CC/PC commands; a cabled 0 device is treated as omni
     #[arg(long, global = true, help_heading = "Global options", value_name = "1-16", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     pub ch: u8,
     /// Initial reply timeout in milliseconds (doubles per retry, hard cap 8x; max 60000)
@@ -93,19 +93,16 @@ pub struct Cli {
 /// 帧，故不挂。
 #[derive(Args, Debug)]
 pub struct ProtocolKnobs {
-    /// Treat only these reply types as valid (comma-separated hex); empty = accept any.
-    /// A malformed value aborts instead of silently degrading to "accept anything"
+    /// Accept only these reply types; empty means any
     #[arg(long, value_name = "HH,HH")]
     pub expect: Option<String>,
     /// Frame flag byte (hex) [default: 00]
     #[arg(long, value_name = "HH")]
     pub flags: Option<String>,
-    /// Send without waiting for a reply (SysEx transactions only; CC/PC commands
-    /// never wait)
+    ///  Send without waiting for a reply; SysEx only
     #[arg(long)]
     pub no_wait: bool,
-    /// Send without the F0...F7 wrapper. The device discards unwrapped frames, so
-    /// this is only useful for byte-exact replays
+    ///  Send without the F0...F7 wrapper; the device discards unwrapped frames
     #[arg(long)]
     pub no_sysex: bool,
 }
@@ -130,9 +127,9 @@ pub enum Command {
 
     /// Show the current device state snapshot in readable form
     ///
-    /// Chain order, active preset, volume, and every module's on/off state, effect
-    /// type and parameters. Modules are listed by slot (= role); the `chain` line
-    /// gives their physical order.
+    ///  Chain order, active preset, volume, and every module's on/off state, effect type and
+    ///  parameters. Modules are listed in slot order; the `chain` line gives their physical
+    ///  order.
     Show {
         /// Skip the preset-name lookup (one extra round trip); the `preset` line
         /// then shows the slot number only
@@ -141,9 +138,8 @@ pub enum Command {
         /// Skip the settings-page block (one extra round trip)
         #[arg(long)]
         no_settings: bool,
-        /// Skip the amp / cab model lookup (about 40 extra round trips — the amp
-        /// table has 38 slots and the cab table 30, each answered only after the
-        /// factory-restore preamble). The `AMP` / `CAB` rows then show no model.
+        ///  Skip the amp / cab model lookup (about 40 extra round trips). The `AMP` / `CAB`
+        ///  rows then show no model
         #[arg(long)]
         no_model: bool,
     },
@@ -153,7 +149,7 @@ pub enum Command {
         #[command(subcommand)]
         cmd: PresetCmd,
     },
-    /// Control effect modules (fx1 fx2 amp cab mod delay reverb eq)
+    /// Control effect modules
     Module {
         #[command(subcommand)]
         cmd: ModuleCmd,
@@ -164,7 +160,7 @@ pub enum Command {
         cmd: Option<ChainCmd>,
     },
 
-    /// Toggle the tuner (its state cannot be read; invoked bare it explains and errors)
+    /// Toggle the tuner; its state cannot be read
     Tuner { state: Option<Power> },
 
     /// Show or modify the device settings-page items
@@ -177,7 +173,7 @@ pub enum Command {
     Models {
         /// List both tables when omitted
         table: Option<ModelTableArg>,
-        /// Query the real device instead of the built-in table (read-only; covers amp/drive slots 1-38)
+        /// Query the device instead of the built-in table (amp/drive slots 1-38)
         #[arg(long)]
         live: bool,
     },
@@ -196,7 +192,7 @@ pub enum Command {
         percent: u8,
     },
 
-    /// Low-level MIDI/protocol tools (raw frames, SysEx, debugging)
+    /// Low-level MIDI and protocol tools
     Debug {
         #[command(subcommand)]
         cmd: DebugCmd,
@@ -256,12 +252,12 @@ pub enum PresetCmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Set the preset volume (0–100, the App's "preset volume" slider)
+    /// Set the preset volume (0–100)
     Volume {
         #[arg(value_parser = clap::value_parser!(u8).range(0..=100))]
         percent: u8,
     },
-    /// Replay the official "DSP-only factory restore" flow (names and contents of 40 presets)
+    /// Replay the DSP-only factory restore flow: the names and contents of 40 presets
     RestoreFactory,
 }
 
@@ -269,48 +265,70 @@ pub enum PresetCmd {
 pub enum ModuleCmd {
     /// List the modules and their parameter tables (no device needed)
     List,
-    /// FX1 slot (noise gate, compressor, ...)
+    /// Noise gate or compressor
     Fx1 {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// FX2 slot (second FX / pedal-type effects)
+    /// Second FX, or a pedal-type effect
     Fx2 {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// Amp slot (amp-simulation models)
+    /// Amp-simulation model
     Amp {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// Cab / IR slot (cabinet / impulse-response models)
+    /// Cabinet / impulse-response model
     Cab {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// Mod slot (chorus, phaser, flanger, ...)
+    /// Chorus, phaser, flanger, ...
     Mod {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// Delay slot (`del`)
+    /// Delay — the device calls it `del`
     #[command(alias = "del")]
     Delay {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// Reverb slot (`rev`)
+    /// Reverb — the device calls it `rev`
     #[command(alias = "rev")]
     Reverb {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
-    /// EQ slot
+    /// Three-band EQ
     Eq {
         #[command(subcommand)]
         action: Option<ModuleAction>,
     },
+}
+
+/// `module <key>` 各子命令的 `about`，供 `module list` 复用。
+///
+/// 从命令树里取，而不是另抄一份：`module <m> --help` 与 `module list` 讲的是
+/// 同一件事，两处手写文案早晚会漂移。
+pub fn module_descriptions() -> Vec<(String, String)> {
+    use clap::CommandFactory;
+
+    let cli = Cli::command();
+    let Some(module) = cli.get_subcommands().find(|s| s.get_name() == "module") else {
+        return Vec::new();
+    };
+    module
+        .get_subcommands()
+        .map(|s| {
+            (
+                s.get_name().to_string(),
+                s.get_about().map(|a| a.to_string()).unwrap_or_default(),
+            )
+        })
+        .collect()
 }
 
 #[derive(Subcommand, Debug)]
@@ -357,7 +375,7 @@ pub enum ModuleAction {
 pub enum ChainCmd {
     /// Write the chain order (exactly 8 roles/numbers, each module once)
     Set {
-        /// 8 positions, each module exactly once (role names, or numbers 1-8; see `module list`)
+        /// Role names or numbers 1-8; see `module list`
         #[arg(add = ArgValueCandidates::new(chain_position_candidates))]
         positions: Vec<String>,
     },
@@ -369,7 +387,7 @@ pub enum ChainCmd {
 /// 与之一致 —— 两处顺序不同会让「输出的第 N 行」对不上「--help 的第 N 项」。
 #[derive(Subcommand, Debug)]
 pub enum SettingsCmd {
-    /// Show all settings items (0x65 snapshot)
+    /// Show all settings items
     Show,
     /// Turn wireless on or off
     Wireless {
@@ -432,9 +450,9 @@ pub enum AssetCmd {
     },
     /// Write a blob to a slot and verify by read-back (IR only)
     ///
-    /// Warning (experimental): an interrupted write may clear the device's preset-name
-    /// table (every slot shows the placeholder name "preset"). Keep the session alive
-    /// until this command prints its final OK/MISMATCH line.
+    ///  Experimental: an interrupted write may clear the device's preset-name table, after
+    ///  which every slot shows the placeholder name "preset". Keep the session alive until
+    ///  this command prints its final OK/MISMATCH line.
     Write {
         region: RegionArg,
         slot: u8,
@@ -458,17 +476,16 @@ pub enum DebugCmd {
     },
     /// Read the current preset's state snapshot
     ///
-    /// Prints the tx/rx frames, the unpacked stream and a field table with the
-    /// offset of every field in that stream.
+    ///  Prints the tx/rx frames, the unpacked stream, and a field table giving each
+    ///  field's offset in that stream.
     Snapshot {
         #[command(flatten)]
         knobs: ProtocolKnobs,
     },
     /// Print every frame the device emits (ctrl-c to stop)
     ///
-    /// Passive: it never transmits, so an idle device produces nothing and the
-    /// command prints a heartbeat instead. Frames the device originates on its
-    /// own are what shows up here.
+    ///  Never transmits. Prints the frames the device originates on its own; an idle
+    ///  device produces nothing but a heartbeat.
     Monitor {
         #[command(flatten)]
         knobs: ProtocolKnobs,
@@ -482,8 +499,9 @@ pub enum DebugCmd {
         value: u8,
     },
     /// Raw slot enable (SysEx; for module on/off prefer `module <m> on/off`)
+    #[command(after_help = format!("Chain position: {}", nanocore::params_data::slot_legend()))]
     Enable {
-        /// Slot number 1–8 (role order = b5+1; see `module list`)
+        /// Slot number 1–8
         #[arg(value_parser = clap::value_parser!(u8).range(1..=8))]
         slot: u8,
         state: Power,

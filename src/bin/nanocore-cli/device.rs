@@ -8,8 +8,7 @@ use crate::common::{Failure, open_device, send_standard, transact};
 
 /// 以可读形式显示当前设备状态快照。
 ///
-/// 快照解码于 2026-09-30 定案（40 组出厂基线验证，见
-/// `docs/protocol/snapshot.md`）：载荷从 `[3]` 起是连续 `[mask][7 data]`
+/// 载荷从 `[3]` 起是连续 `[mask][7 data]`
 /// 打包流，数据流 = 前导 + 8 条链位记录 + 链尾。
 ///
 /// 另有两处补充查询，都可跳过（`--no-name` / `--no-settings`），因为它们
@@ -49,10 +48,9 @@ pub fn cmd_show(
     // 查不到就传 `None` —— 上一版把恒 0 的 `variant` 印成 `type=1` 就是「查不到
     // 就编一个」的结果。
     //
-    // 印 `ModelInfo::name`（`Bogner XTC` / `VOX AC30 2x12`）而不是 `code`：设备侧
-    // 存的是 8 字符定宽码（`BogXTC1` / `AC3021`），不完整也不可读；`models_data`
-    // 里有对应的完整产品名，两条路按槽位号对齐。槽号在表外（用户导入的 NAM 之类）
-    // 时印设备返回的码，不猜名字。
+    // 印 `ModelInfo::name`（`Bogner XTC` / `VOX AC30 2x12`）而非 `code`：
+    // 设备侧存的是 8 字符定宽码（`BogXTC1` / `AC3021`），不完整也不可读。
+    // 槽号在表外（用户导入的 NAM 之类）时印设备返回的码。
     let amp = if no_model {
         None
     } else {
@@ -91,10 +89,7 @@ pub fn cmd_show(
     if !no_settings
         && let Ok(st) = dev.read_settings()
     {
-        // 快照（0x63）与设置页（0x65）来自分处不同的查询，靠横线而不是空行
-        // 标出边界 —— 两节的字段名都是「名字 = 值」，空行分不开哪个是哪来的。
-        // 与端口回显之后那条线同宽同形，那条分的是「进程噪声 vs 正文」，这条
-        // 分的是「正文的两节」。
+        // 两节字段名都是「名字 = 值」，空行分不开边界，用横线。
         crate::common::divider();
         println!("settings:");
         println!("{}", crate::settings::render_settings(&st, "  "));
@@ -111,7 +106,7 @@ pub fn cmd_volume(percent: u8, conn: &Conn) -> Result<(), Failure> {
 
 /// 开关调音表。
 ///
-/// **读取状态不可行**（2026-10-01 真机验证，不是"还没做"）：
+/// **读取状态不可行**（不是"还没做"）：
 /// OEM 指南里 CC80 是只写的，App 侧 `global-tuner` 控制同样是 CC80；
 /// `0x65` 设置查询（13 字节载荷，index 9 = USB 音量）在 `tuner on/off`
 /// 前后逐字节不变，`0x63` 快照同样不变，且设备从不回显写入的 CC。

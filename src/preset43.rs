@@ -1,6 +1,6 @@
 //! `0x43` 预设写双帧（234 B 整预设帧 + 变长参数帧）的构造与解码。
 //!
-//! 移植自 `nanocore-reverse/tools/decode_preset43.py`（40 组出厂预设逐字节
+//! 内置预设逐字节
 //! 构造验证定案，2026-09-30；Rust 移植以 [`builder_round_trips_factory40`]
 //! 锚定，2026-10-01）。
 //!
@@ -297,7 +297,7 @@ mod tests {
         let mut bad = payloads[1].clone();
         bad[5] ^= 0x01; // 破坏短帧流首字节（c8 前缀之后）
         // 直接改前缀字节更直接：把 c8 改掉需要解包后再看——这里仅验证
-        // 解码器对随机破坏的健壮性（返回 None 而不是 panic）。
+        // 解码器对随机破坏的健壮性。
         let _ = decode_frames(&payloads[0], &bad);
     }
 

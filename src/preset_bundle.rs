@@ -1,6 +1,6 @@
 //! `.npreset`（ZIP 容器）：manifest serde 模型 + 打包 / 解包。
 //!
-//! 格式（对照 App 产物 `NanoCore_Preset_Backup_*.npreset`，2026-09-22）：
+//! 格式：
 //! ZIP 内含 `manifest.json` + 引用到的资产（`amp/slot_NN.ead` = 完整 12302 B、
 //! `ir/slot_NN.bin` = 4096 B f32le）。manifest 字段 camelCase；
 //! `schema = "nanocore.preset.bundle"`、`version = 1`、`deviceKind = "nanocore"`。
@@ -23,7 +23,7 @@ pub struct Manifest {
     pub version: u32,
     pub device_kind: String,
     pub exported_at: String,
-    /// App 产物实测 `allValid`；单条导出用 `single`。
+    /// 完整备份用 `allValid`；单条导出用 `single`。
     pub scope: String,
     pub presets: Vec<ManifestPreset>,
     #[serde(default)]
@@ -86,7 +86,7 @@ pub struct AssetRef {
     /// 剥壳负载长度（amp 12242 / ir 4096）。
     pub length: u32,
     pub crc32: u32,
-    /// App 产物实测 `ead` / `f32le`；我方导出的裸负载用 `ead-payload`。
+    /// 完整模型用 `ead` / `f32le`；导出的裸负载用 `ead-payload`。
     pub encoding: String,
 }
 
@@ -152,9 +152,9 @@ pub fn write_bundle(path: &Path, manifest: &Manifest, assets: &BundleAssets) -> 
 
 /// (effectId, variant) → 0x43 参数数（App 侧管理数）。
 ///
-/// 从 `factory_presets.json`（40 组出厂预设，与官方 0x43 逐字节对账）提取的
+/// 从 `factory_presets.json`提取的
 /// 33 个组合，全部一致。设备对参数数超出该表的 `0x43` 短帧回 `00 03` 拒收
-/// （2026-10-01 真机实测：App 备份 manifest 存设备形态计数——eq 恒多 1，
+/// （备份 manifest 存的是设备形态计数——eq 恒多 1，
 /// 部分预设多 1-2 个——不做截断时 26/40 短帧被拒）。
 const APP_PARAM_COUNTS: &[(u8, u8, usize)] = &[
     (1, 0, 5),
@@ -223,7 +223,7 @@ impl PresetSpec {
                     if let Some(count) = app_param_count(s.effect_id, s.variant) {
                         // 双向对齐：超出截断（App 备份多存设备隐藏参数），
                         // 不足补 0.5（设备默认值——App 备份缺尾部参数时，
-                        // 设备对参数数不匹配的短帧整帧丢弃，2026-10-01 实测）。
+                        // 设备对参数数不匹配的短帧整帧丢弃）。
                         params.resize(count, 0.5);
                     }
                     crate::preset43::SlotWrite {
@@ -353,7 +353,7 @@ mod tests {
         assert_eq!(p0.preset.slots[0].params.len(), 6);
         assert_eq!(p0.preset.slots[7].effect_id, 6);
         assert_eq!(p0.preset.slots[7].params.len(), 4);
-        // 与 Rust 构造器交叉验证：manifest → build_frames 必须与 restore 抓包
+        // 与 Rust 构造器交叉验证：manifest → build_frames 必须与 restore
         // 第一组 0x43 对（preset 0 / ClnArp）逐字节一致。
         let (lo, sh) = crate::preset43::build_frames(&p0.preset.to_preset_write())
             .expect("build from manifest");

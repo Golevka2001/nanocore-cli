@@ -3,7 +3,7 @@
 //! 除了即发即忘的 [`Nanocore::send`]，本模块还提供 [`Nanocore::transact`]，
 //! 它将请求与设备应答关联起来，并在超时时重试。
 //!
-//! 重试策略镜像自对官方应用的观察（`liblivtra.so`，`FUN_00483094`）：
+//! 重试策略镜像自对官方应用的观察：
 //!
 //! * 初始应答超时 120 ms
 //! * 每次重试翻倍，上限 600 ms
@@ -143,7 +143,7 @@ impl<T: Transport> Nanocore<T> {
     /// 移除并返回待处理队列中最早的、回显 `seq` 的帧，
     /// 可选择限定为 `kinds` 中的某一类型。
     ///
-    /// 设备在应答时回显主机的序列号（已在抓包中验证：TX `seq=0x0344` -> RX `seq=0x0344`）。
+    /// 设备在应答时回显主机的序列号。
     /// 其*主动（非请求）的*状态帧则携带设备自己的计数器，因此永远不会匹配 —— 这正是我们想要的效果。
     fn take_matching(&mut self, seq: u16, kinds: &[u8]) -> Option<Frame> {
         let pos = self.pending.iter().position(|f| {
@@ -278,8 +278,8 @@ impl<T: Transport> Nanocore<T> {
     /// 每收到一个应答就调用一次 `on_chunk(done, total)`，以便调用方显示进度；不需要时传入一个空闭包即可。
     ///
     /// 读取计划作为参数传入而非在此推导，
-    /// 这样未知区域或槽位会被调用方*在任何 MIDI 发出之前*拒绝，
-    /// 而不是表现为一个虚假的传输层错误。
+    /// 这样未知区域或槽位会在任何 MIDI 发出之前被调用方拒绝，
+    /// 而不会表现成传输层错误。
     pub fn read_asset<F>(
         &mut self,
         plan: &[crate::asset::ChunkRequest],
@@ -356,7 +356,7 @@ impl<T: Transport> Nanocore<T> {
         //    写入会话一旦打开，设备就只接受写入流程。
         //    恒等哈希不会被复用：设备在提交时从 blob 重新计算它，
         //    不匹配时静默拒绝，因此它必须由被写入的内容派生
-        //    （抓包中 16/16 验证通过）。
+        //    。
         let mut name: Vec<u8>;
         match self.transact_expect(
             asset::SLOT_QUERY,
@@ -385,7 +385,7 @@ impl<T: Transport> Nanocore<T> {
         }
         on_progress(&format!("slot name {:?}", String::from_utf8_lossy(&name)));
 
-        // 2. 会话打开，抓包顺序：PING -> 0x49 -> PING -> 0x50。
+        // 2. 会话打开：PING -> 0x49 -> PING -> 0x50。
         //    0x49 和 0x50 的应答都回显我们的 seq。
         //    但设备的写入会话跨连接保留：会话已打开时 0x49 会被忽略（无应答），
         //    且一旦打开，设备会直接跳到写入流程。
@@ -404,7 +404,7 @@ impl<T: Transport> Nanocore<T> {
             .is_ok();
         if session_ok {
             on_progress("session opened");
-            // 在应用的抓包中，0x49 之后的 PING 会得到回显，
+            // 0x49 之后的 PING 会得到回显，
             // 但设备一旦进入写入模式就可能只应答自己的心跳
             // （flags=0x02，自己的 seq）—— 尽力而为，绝不视为致命错误。
             let _ = self.transact_expect(pk, pp, &[crate::msg_type::PING]);
@@ -518,18 +518,18 @@ impl<T: Transport> Nanocore<T> {
 
     /// 将 amp 模型（完整 `.ead`，12302 B）写入设备 amp 槽位，并回读校验 crc32。
     ///
-    /// 会话时序逐帧对齐官方"导入 RESONA"抓包（[`crate::amp_write`] 模块文档）：
+    /// 会话时序逐帧固定（[`crate::amp_write`] 模块文档）：
     /// PING → `0x30` → `0x31`(长度+槽) → `0x32`×N(数据) → `0x33`(提交+crc)
     /// → `0x35`(模型名) → `0x30` → `0x37`(收尾) → `0x30` → `0x36`×38(型号表刷新)。
     /// 无 IR 写的 `0x49`/`0x50` 会话门控。
     ///
     /// * 数据帧编码直接复用 [`crate::asset::encode_data_frame`]（`0x52`/`0x32` 同构，
-    ///   已用两份抓包共 7520 帧全量验证）。
-    /// * `0x33` 提交帧完全可推导（38/38 出厂会话逐字节验证，见 [`crate::amp_write`]）。
+    ///   帧序不能增删）。
+    /// * `0x33` 提交帧完全可推导。
     /// * `name_override` 为新模型名；缺省时先查询当前槽位名并沿用
     ///   （官方 App 在导入时把新模型名发给 `0x35`，设备以此更新型号表）。
     ///
-    /// 与 IR 写一样：写会话有清空预设名表等副作用（见 README），失败后用
+    /// 与 IR 写一样：写会话有清空预设名表等副作用，失败后用
     /// `preset restore-factory` 恢复。
     ///
     /// 返回回读的剥壳负载（12242 B），调用方与 `ead[60..]` 比较。
@@ -544,7 +544,7 @@ impl<T: Transport> Nanocore<T> {
 
         assert_eq!(ead.len(), aw::EAD_TOTAL, "amp blob must be a full .ead");
 
-        // 宽松预算（同 write_ir_slot）：会话/提交应答可能迟到。
+        // 宽松预算：会话/提交应答可能迟到。
         let saved = self.config;
         self.set_config(crate::client::RetryConfig {
             initial_timeout: Duration::from_millis(500),
@@ -628,7 +628,7 @@ impl<T: Transport> Nanocore<T> {
             }
         }
 
-        // 5. 0x33 提交（crc32 尾部，38/38 验证）。状态字节非 0 = 设备拒收
+        // 5. 0x33 提交。状态字节非 0 = 设备拒收
         //    （数据不完整 / crc 不符）——立即报错，不要继续。
         on_progress("xfer commit (0x33)");
         let ack = self
@@ -660,8 +660,8 @@ impl<T: Transport> Nanocore<T> {
             ));
         }
 
-        // 7. 0x30 → 0x37 → 0x30 收尾节拍（时序对齐官方抓包）。
-        //    会话在 0x33+0x35 后已完结：官方流程里 0x37 得到 00，实测我们这边
+        // 7. 0x30 → 0x37 → 0x30 收尾节拍。
+        //    会话在 0x33+0x35 后已完结：0x37 得到 00，而我们这边
         //    回 01（空会话上的收尾空操作）——无害，尽力而为即可。
         let _ = self.transact_expect(aw::XFER_BEGIN, aw::xfer_begin(), &[aw::XFER_BEGIN]);
         on_progress("xfer finalize (0x37)");
@@ -715,8 +715,7 @@ impl<T: Transport> Nanocore<T> {
     /// 查询全部 38 个 amp/drive 型号槽，返回被标记为"活动"的槽位
     /// （即当前预设引用的 amp 型号）。
     ///
-    /// 恰好一个活动槽才返回 `Some`；0 个或多个（含个别槽位查询失败）返回
-    /// `None`，调用方应回退到显式指定。
+    /// 恰好一个活动槽才返回 `Some`；0 个或多个（含个别槽位查询失败）返回 `None`。
     pub fn read_active_amp_slot(&mut self) -> Result<Option<u8>, String> {
         let mut active = Vec::new();
         for idx in 0..38u8 {
@@ -737,11 +736,11 @@ impl<T: Transport> Nanocore<T> {
 
     /// 查询全部 30 个 IR 槽（= CAB 型号），返回被标记为「活动」的那个。
     ///
-    /// 2026-10-03 真机实测：走 [`crate::preset_restore::preamble_frames`] 的
+    /// 需先走 [`crate::preset_restore::preamble_frames`] 的
     /// 前置序列时，其中第 43–72 帧恰好就是 `0x56` 逐槽查询（槽 0..29），每条
     /// 都返回 39 字节，第 7 字节**恰好一个为 `0x01`** —— 那个就是当前预设引用的
     /// CAB 型号。所以这里**复用那 30 条应答，不再发第二轮查询**：第二轮会让
-    /// 设备连续吃 60 条 `0x56`，实测随后自己的查询全部落空。
+    /// 设备连续吃 60 条 `0x56`，随后自己的查询全部落空。
     ///
     /// 与 [`Self::read_active_amp_slot`] 对称：amp 走 `0x36`（38 项，含 FX2
     /// 踏板），cab 走 `0x56`（30 项 IR）。两者都在第 7 字节给出 active 标志。
@@ -784,7 +783,7 @@ impl<T: Transport> Nanocore<T> {
     ///
     /// 输入为 `(目标槽位, 预设内容)` 对；`0x42`/`0x44` 取官方 restore 数据
     /// 同槽位帧（见 [`crate::preset_restore::build_write_group`]）。前置枚举
-    /// 实测是连续提交的前置条件（省略时设备在 ~22-24 组后拒绝提交）。
+    /// 是连续提交的前置条件（省略时设备在 ~22-24 组后拒绝提交）。
     pub fn import_presets(
         &mut self,
         presets: &[(u8, crate::preset43::PresetWrite)],
@@ -818,7 +817,7 @@ impl<T: Transport> Nanocore<T> {
         }
 
         // 写流：以官方 restore 流为模板（PING 位置 / flags 模式原样保留），
-        // 仅替换目标组的 0x43 载荷——合成节奏实测会让设备落表错乱。
+        // 仅替换目标组的 0x43 载荷；合成节奏会让设备落表错乱。
         let stream = pr::build_import_stream(presets)
             .map_err(|e| format!("building import stream: {e}"))?;
         on_progress(&format!(
@@ -872,8 +871,8 @@ impl<T: Transport> Nanocore<T> {
 
     /// 重放官方"仅 DSP 恢复出厂"流程：前置枚举 + 40 组预设写（名字 + 内容，槽位 0–39）。
     ///
-    /// 帧序列来自官方 App 抓包（[`crate::preset_restore`]），跨会话逐字节稳定。
-    /// 前置枚举（型号 / IR / 名表）实测是写入阶段能一次完成 40 组提交的前置条件。
+    /// 帧序列见 [`crate::preset_restore`]。
+    /// 前置枚举（型号 / IR / 名表）是写入阶段能一次完成 40 组提交的前置条件。
     /// 开会话（`0x49`）会清空预设表——这正是流程随后要整体重写的对象。
     ///
     /// 注意：只覆盖预设；资产槽（amp/IR）不在此流程内。
@@ -1024,7 +1023,7 @@ impl<T: Transport> Nanocore<T> {
                 ack_log.push(format!("g{slot}:0x46/{hex} (settled)"));
                 // flash 提交后的沉淀时间。提交触发的扇区擦除窗口内，设备会
                 // ack 但丢弃后续 0x43（内容静默丢失、下一组内容占位——
-                // 2026-10-01 实测 7/40 组确定性复现）；400ms 不够，2s 全量通过。
+                // 7/40 组确定性复现）；400ms 不够，2s 全量通过。
                 std::thread::sleep(Duration::from_millis(2000));
                 continue;
             }
@@ -1040,7 +1039,7 @@ impl<T: Transport> Nanocore<T> {
                 .join(" ");
             ack_log.push(format!("g{slot}:0x{:02x}/{hex}", f.kind));
             // 0x44 之后的 0x43 特别容易在 flash 提交竞争中丢失（ack 正常但
-            // 内容不落表，2026-10-01 实测 7/40 组），加长节拍缓解。
+            // 内容不落表，7/40 组复现），加长节拍缓解。
             let settle = if f.kind == crate::preset_restore::KIND_BULK_DATA {
                 Duration::from_millis(150)
             } else {
@@ -1088,7 +1087,7 @@ impl<T: Transport> Nanocore<T> {
     /// 轮询等待设备的预设切换事件（`0x01`，载荷 `[00, slot]`）。
     ///
     /// field-0x09 选槽是异步的：设备完成切换后会自发一条 `0x01` 事件
-    /// （官方改名抓包：选槽 41 后事件载荷 `00 29`）。
+    /// （选槽 41 后事件载荷 `00 29`）。
     /// 旧槽位的迟到事件会被丢弃。
     pub fn wait_for_preset_switch_event(
         &mut self,
@@ -1173,7 +1172,7 @@ impl<T: Transport> Nanocore<T> {
     /// 设备对一次 `0x40` 预设列表查询每条应答返回 8 条固定大小的记录，
     /// 因此 8 次查询即可覆盖全部 64 个槽位。只需要当前预设的名称时用
     /// [`Self::read_preset_name`]（1 次往返）。
-    /// 解析器是严格的：任何错位都会返回 `None`，整个读取失败，而不是产出移位的名称。
+    /// 解析器是严格的：任何错位都会让整个读取返回 `None`。
     pub fn read_preset_names(&mut self) -> Result<Vec<protocol::PresetEntry>, String> {
         let mut out = Vec::with_capacity(64);
         for base in (0..64).step_by(8) {
@@ -1284,7 +1283,7 @@ impl<T: Transport> Nanocore<T> {
     /// * `Ok(Some(order))` —— 设备已确认。ACK 会把 9 字节链字段镜像回来（以不同的填充索引重新编码），
     ///   因此这是设备报告其接受的链序。
     ///
-    /// 应用抓包中可见的主动（非请求）的 `0x09` 通知，在其出现时还会被额外采集一个短窗口；
+    /// 设备主动发出的（非请求的）`0x09` 通知，出现时还会被额外采集一个短窗口；
     /// 但它携带设备自己的序列号，且**并非每个会话都会到达**，
     /// 因此绝不作为必要条件 —— ACK 才是可靠的回读。
     pub fn write_chain_order(&mut self, order: &[u8]) -> Result<Option<Vec<u8>>, Error<T::Error>> {
@@ -1330,7 +1329,7 @@ impl<T: Transport> Nanocore<T> {
 
 /// `seq` 的下一个值：递增并保持低字节 7-bit 安全（≤ 0x7F，MIDI 数据字节约束）。
 ///
-/// 低字节到达 0x80 时整段跳过到下一个 0x100 边界——官方抓包铁证：
+/// 低字节到达 0x80 时整段跳过到下一个 0x100 边界：
 /// seq `0x237f` 之后是 `0x2400`（跳过 `0x2380-0x23ff`）。不跳的话
 /// （低字节 = 0x80+），设备将不再应答任何帧——这正是重放在 ~125 帧处
 /// 必死的根因。

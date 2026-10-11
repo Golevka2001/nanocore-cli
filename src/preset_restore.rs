@@ -1,17 +1,12 @@
-//! 出厂预设恢复数据：从官方 App"恢复出厂设置"抓包中提取的预设写序列。
+//! 出厂预设恢复数据：一段固定的预设写序列。
 //!
-//! 来源：`nanocore-reverse/data/captures/恢复出厂设置.mmon` 的 TX 侧预设写阶段——
 //! 从首条 `0x42` 到末条 `0x46` 的全部 TX 帧：40 组 × [`0x42` + `0x43`×2 + `0x44` + `0x46`]
 //! 共 200 帧写帧，外加官方客户端按节奏穿插的 18 条 `PING` 心跳（0x68，约每 10 帧一条）。
-//! 该序列已对照 2026-09-30 的第二次恢复出厂抓包逐字节验证为跨会话稳定
-//! （见 `docs/protocol/presets.md` 的"写流程稳定性"）。
 //!
-//! **PING 必须原样重放**：实测剔除 PING 的重放会在组 25 的 `0x46` 处确定性卡死
-//! （设备对该帧完全沉默），而官方序列在同一位置之前恰好有一条心跳——
-//! 设备似乎依赖心跳推进写会话状态机。
+//! **PING 必须原样重放**：剔除 PING 的重放会在组 25 的 `0x46` 处确定性卡死
+//! （设备对该帧完全沉默）——设备似乎依赖心跳推进写会话状态机。
 //!
-//! 用途：当设备的预设表被清空（见资产写会话事故，`docs/protocol/assets.md`）
-//! 时，重放本序列可完整修复 40 个出厂预设的名字与内容，无需官方 App。
+//! 用途：当设备的预设表被清空时，重放本序列可完整修复 40 个出厂预设的名字与内容。
 //!
 //! 数据格式（自定义紧凑二进制，`include_bytes!` 嵌入、零依赖解析）：
 //!
@@ -19,7 +14,7 @@
 //! 记录 := [kind:1][flags:1][len:u16 LE][payload:len]   共 218 条
 //! ```
 //!
-//! `flags` 按抓包原样保存（观测到 `0x00`/`0x02`/`0x20`/`0x22`，随上下文变化），
+//! `flags` 原样保存（`0x00`/`0x02`/`0x20`/`0x22`，随上下文变化），
 //! 重放时逐帧使用，不自行推断。
 
 /// 槽位配置（开门帧，8 B）。
@@ -30,7 +25,7 @@ pub const KIND_PRESET_WRITE: u8 = 0x43;
 pub const KIND_BULK_DATA: u8 = 0x44;
 /// 落槽定位帧（5 B，末字节 = 槽位 0..40）。
 pub const KIND_SLOT_SEEK: u8 = 0x46;
-/// 心跳帧（3 B，官方按节奏穿插，实测不可省略）。
+/// 心跳帧（3 B，官方按节奏穿插，不可省略）。
 pub const KIND_PING: u8 = 0x68;
 
 /// 每组写帧数：`0x42` + `0x43`×2 + `0x44` + `0x46`。
@@ -42,7 +37,7 @@ pub const WRITE_FRAME_COUNT: usize = GROUP_COUNT * FRAMES_PER_GROUP;
 /// 总帧数（含 18 条 PING）。
 pub const FRAME_COUNT: usize = WRITE_FRAME_COUNT + 18;
 
-/// 前置枚举阶段的帧数（来自官方"仅 DSP 恢复"抓包：0x46 定位、PING、
+/// 前置枚举阶段的帧数（0x46 定位、PING、
 /// XFER_BEGIN、38× `0x36` 型号枚举、SYNC、30× `0x56` IR 槽枚举、
 /// 3× 快照、8× `0x40` 名表读、2× QUERY、`0x49`、PING）。
 pub const PREAMBLE_FRAME_COUNT: usize = 87;
@@ -67,7 +62,7 @@ pub fn frames() -> Result<Vec<PresetRestoreFrame>, String> {
 
 /// 解析内嵌的官方前置枚举阶段（"仅 DSP 恢复"流程的 `0x49` 之前的全部 TX）。
 ///
-/// 实测这些读取事务（型号/IR/名表枚举）是写入阶段能一次完成 40 组提交的
+/// 这些读取事务（型号/IR/名表枚举）是写入阶段能一次完成 40 组提交的
 /// 前置条件——跳过它们时重放会在 ~22-24 组处被设备拒绝。
 pub fn preamble_frames() -> Result<Vec<PresetRestoreFrame>, String> {
     let data = include_bytes!("../data/factory_preset_preamble.bin");
@@ -190,10 +185,10 @@ pub fn preset_name_bytes(frames: &[PresetRestoreFrame], slot: usize) -> Option<&
 /// 动态构造导入帧流：以官方 restore 流为**模板**，仅把目标组（组号 = 目标
 /// 槽位，0-39 一一对应）的两条 `0x43` 载荷替换为按内容构造的帧，其余
 /// `0x42`/`0x44`/`0x46`/`PING` 全部原样保留——包括 PING 的精确位置与每组
-/// 的 flags 模式（`0x02/0x22` 与 `0x00/0x20` 两段式，语义未解但实测设备
+/// 的 flags 模式（`0x02/0x22` 与 `0x00/0x20` 两段式，语义未解但设备
 /// 对节奏敏感：合成流的 10/40 落表故障复现 3 次，模板法 40/40）。
 ///
-/// 目标槽位去重且必须 ≤ 39（写入路径不支持 40-63，真机实测：内容可写但
+/// 目标槽位去重且必须 ≤ 39（写入路径不支持 40-63：内容可写但
 /// 名字退化为占位、且前一槽被清）。
 pub fn build_import_stream(
     presets: &[(u8, crate::preset43::PresetWrite)],
@@ -350,7 +345,7 @@ mod import_stream_tests {
         assert_eq!(writes[2].kind, KIND_PRESET_WRITE);
         assert_eq!(writes[4].kind, KIND_SLOT_SEEK);
         assert_eq!(*writes[4].payload.last().unwrap(), 5);
-        // 长帧名字区应是 Ambient（不是模板组 5 的原名）。
+        // 长帧名字区应是 Ambient。
         let name = preset_name_bytes(&stream, 0).expect("name");
         let decoded: String = name
             .iter()

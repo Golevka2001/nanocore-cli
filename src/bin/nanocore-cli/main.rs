@@ -21,16 +21,14 @@
 //!
 //! 所有涉及原始/未公开帧的操作都归入 `debug`；这些命令面向协议研究，
 //! 而非演奏。协议层旋钮（`--expect`、`--flags`、`--no-wait`、`--no-sysex`）
-//! 只挂在 `debug` 下——其他命令一个都用不到，让 `preset list --no-sysex`
-//! 之类通过只会掩盖「此处不该有这个开关」。
+//! 只挂在 `debug` 下。
 //!
 //! 模块布局：[`cli`] 定义 clap 命令树，[`common`] 提供共享的基础辅助代码，
 //! [`device`] 汇集设备级命令（show / volume / tuner），其余模块各对应一个
 //! 命令族（preset / module / chain / asset / models / debug / probe）。
 //!
-//! 本模块只做分发：设备由各命令族自行打开，并且都在打开之前完成参数校验
-//! ——手误不该触碰 MIDI，也不该为一个必然失败的调用占用端口。失败以
-//! [`Failure`]（消息 + 退出码）返回，`main` 是进程唯一的退出点。
+//! 本模块只做分发。设备由各命令族自行打开，都在打开之前完成参数校验。
+//! 失败以 [`Failure`]（消息 + 退出码）返回，`main` 是进程唯一的退出点。
 
 mod asset;
 mod settings;
@@ -73,8 +71,7 @@ fn main() {
 
 /// 解析连接选项并分发命令。
 ///
-/// 设备由各命令族自行打开，并且都在打开之前完成参数校验——手误不该触碰
-/// MIDI，也不该为一个必然失败的调用占用端口。
+/// 设备由各命令族自行打开，都在打开之前完成参数校验。
 fn run(cli: Cli) -> Result<(), Failure> {
     let conn = Conn::from_cli(&cli)?;
     match cli.command {

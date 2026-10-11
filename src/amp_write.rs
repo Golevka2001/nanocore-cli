@@ -1,7 +1,7 @@
 //! amp 槽位写入（`0x30`–`0x37` XFER 体系）的帧构造与输入格式解析。
 //!
 //! 与 IR 写（[`crate::asset`] 的 `0x49`–`0x57`）不同，amp 走独立的 XFER 体系，
-//! 无 `0x49` 会话门控。会话时序（`导入RESONA覆盖Marsup.mmon`，2026-09-22）：
+//! 无 `0x49` 会话门控。会话时序：
 //!
 //! ```text
 //! PING → 0x30(`00 00 00`) → 0x31(长度+槽) → 0x32×N(数据帧) → 0x33(提交+crc)
@@ -10,10 +10,10 @@
 //!
 //! 数据帧复用 [`crate::asset::encode_data_frame`]（`0x52` 与 `0x32` 帧头逐字段
 //! 同构：`p[1]=0x44`、`p[7]=slot`、块索引编码与掩码插位完全一致）。该同构已用
-//! 两份抓包全量验证：`导入RESONA覆盖Marsup.mmon`（193 帧）+ `恢复出厂设置.mmon`
+//! 整套时序固定：
 //! （38 型号 × 193 帧 = 7327 帧），解码后的 blob 长度与 crc 均精确吻合。
 //!
-//! `0x33` 提交帧**完全可推导**（38/38 出厂会话逐字节验证，2026-10-01）：
+//! `0x33` 提交帧**完全可推导**：
 //!
 //! ```text
 //! 00 08 00 [B3] [len_lo] [len_hi] 00 [slot] [c0&7F][c1&7F][c2&7F][c3>>7][c3&7F]
@@ -26,7 +26,7 @@
 //! 输入格式：
 //! * `.ead` —— 12302 B，`SAPF\x01` 魔数 + 60 B 壳 + 12242 B 负载；
 //! * `.eadl` —— `EADL\x01\x00` + u32 LE JSON 长度 + JSON 元数据 + 内嵌完整 `.ead`
-//!   （实测样例 `BL-Recto-Crunch.eadl`，2026-10-01）。
+//!   。
 //!
 //! 壳内字节 24–27 = 负载长度 LE（12242），其余为逐模型变化的摘要
 //! （非 payload 的 md5/sha1/sha256/crc32，无法从负载合成）——
@@ -65,7 +65,7 @@ pub fn xfer_header(slot: u8, total: usize) -> Vec<u8> {
 }
 
 /// `0x33` 的 `B3` 字节：crc32 小端字节 `c0..c2` 被剥掉的高位 + 非标准长度标志。
-/// 与 [`crate::asset::hash_b3`] 同构；已用 38/38 出厂会话验证（bit0 恒 0，
+/// 与 [`crate::asset::hash_b3`] 同构（bit0 恒 0，
 /// len 恒为标准 12302）。
 fn commit_b3(le: &[u8; 4], total: usize) -> u8 {
     let v = ((le[2] >> 7) << 2) | ((le[1] >> 7) << 1) | (le[0] >> 7);
@@ -79,7 +79,7 @@ fn crc_tail(le: &[u8; 4]) -> [u8; 5] {
 
 /// `0x33` 提交帧：`00 08 00 [B3] [len_lo] [len_hi] 00 [slot] <crc tail>`。
 ///
-/// len 与 `0x31` 相同为小端；crc 尾已对 `恢复出厂设置.mmon` 全部 38 个会话
+/// len 与 `0x31` 相同为小端；crc 尾必须为全部 38 个槽位
 /// 逐字节验证。
 pub fn xfer_commit(slot: u8, total: usize, blob: &[u8]) -> Vec<u8> {
     let le = asset::crc32(blob).to_le_bytes();
@@ -94,10 +94,9 @@ pub fn xfer_commit(slot: u8, total: usize, blob: &[u8]) -> Vec<u8> {
 /// `0x35` 模型名：`00 [strlen+1] 00 00 [slot] [name bytes]`。
 ///
 /// `strlen` 只数可打印字符（设备名存储里嵌有 NUL 分片）。
-/// 布局取自 `恢复出厂设置.mmon` 的 38 条 0x35（5 字节头 `00 len 00 00 slot`）；
-/// 注意 `导入RESONA覆盖Marsup.mmon` 的 0x35 少一个 00（4 字节头 `00 len 00 slot`，
-/// 可能是抓包工具吞字节），真机实测 5 字节头被接受、4 字节头被拒
-/// （应答状态字节 `01`，2026-10-01）。
+/// 5 字节头 `00 len 00 00 slot`；
+/// 4 字节头 `00 len 00 slot` 会被设备拒绝
+/// 。
 pub fn xfer_meta(slot: u8, name_fragments: &[u8]) -> Vec<u8> {
     let strlen = name_fragments.iter().filter(|&&b| b != 0x00).count();
     let mut v = vec![0x00, (strlen + 1) as u8, 0x00, 0x00, slot];
@@ -198,7 +197,7 @@ mod tests {
 
     #[test]
     fn xfer_header_matches_resona_capture() {
-        // 导入RESONA覆盖Marsup.mmon：TX 31 00 04 00 00 0e 30 00 1d（槽 29，12302 B）
+        // 槽 29，12302 B：TX 31 00 04 00 00 0e 30 00 1d
         assert_eq!(
             xfer_header(0x1d, 12302),
             vec![0x00, 0x04, 0x00, 0x00, 0x0e, 0x30, 0x00, 0x1d]
@@ -209,7 +208,7 @@ mod tests {
     fn xfer_commit_matches_resona_capture() {
         // 0x33 TX：00 08 00 30 0e 30 00 1d 06 75 44 00 16。
         // 该 blob 的 crc32 LE = 86 f5 44 16（由 0x32 流逐帧解码重组得出）；
-        // commit_b3 / crc_tail 两个纯函数用这组常量直接锚定（见上），
+        // commit_b3 / crc_tail 两个纯函数用这组常量直接锚定，
         // 这里再验证 xfer_commit 的接线（crc 计算 + 字段拼装）。
         let blob = vec![0x42u8; EAD_TOTAL];
         let le = asset::crc32(&blob).to_le_bytes();
@@ -236,7 +235,7 @@ mod tests {
     #[test]
     fn encode_model_name_matches_device_storage() {
         // "NDSP Archetype:" 的设备分片形式，取自 0x36 RX（SLOT29 样例）与
-        // 导入RESONA覆盖Marsup.mmon 的 0x35 TX，两者逐字节一致。
+        // 另一条 0x35 TX，两者逐字节一致。
         assert_eq!(
             encode_model_name("NDSP Archetype:"),
             b"NDSP A\x00rchetyp\x00e:".to_vec()
@@ -250,7 +249,7 @@ mod tests {
 
     #[test]
     fn xfer_meta_length_counts_printable_only() {
-        // 恢复出厂设置.mmon：slot 34 "PiFUZZ v.2"（10 可打印）→
+        // slot 34 "PiFUZZ v.2"（10 可打印）→
         // `00 0b 00 00 22 50 69 46 55 5a 5a 00 20 76 2e 32`。
         let frag = encode_model_name("PiFUZZ v.2");
         assert_eq!(frag, b"PiFUZZ\x00 v.2".to_vec());
@@ -265,7 +264,7 @@ mod tests {
 
     #[test]
     fn frame_plan_is_193_for_standard_ead() {
-        // 12302 B = 192 × 64 + 14 → 193 帧（两份抓包均如此）。
+        // 12302 B = 192 × 64 + 14 → 193 帧。
         assert_eq!(EAD_TOTAL.div_ceil(asset::WRITE_CHUNK_BYTES), 193);
         assert_eq!(EAD_TOTAL % asset::WRITE_CHUNK_BYTES, 14);
     }

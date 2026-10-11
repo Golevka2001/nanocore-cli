@@ -263,7 +263,7 @@ fn parameter_ranges_match_params_json() {
 /// reverb 的 7 个类型落在**不连续**的 id 上：0,1,2,3,5,6,7，variant 4 不使用；
 /// 且**名称顺序与 id 顺序不一致**——这是本表最容易照手册抄错的地方。
 ///
-/// 2026-10-03 真机实测：逐个写 CC47（reverb 的类型 CC）值 0..6，回读 `0x63` 快照的
+/// 逐个写 CC47（reverb 的类型 CC）值 0..6，回读 `0x63` 快照的
 /// `variant` 字节，得 `0,1,2,3,5,6,7`；写 >=7 被钳在 7。名称由两条独立证据交叉确定：
 ///
 /// * CC 指南「CC47 / ID」表：`4=闪烁(shimmer) 5=云雾(cloud) 6=弹簧(spring)`
@@ -290,14 +290,14 @@ fn reverb_effect_type_ids_are_not_contiguous() {
             (6, "Cloud"),
             (7, "Spring"),
         ],
-        "reverb 类型 id / 名称已变——先真机重测 CC47 逐值回读，别照手册产品顺序改"
+        "reverb 类型 id / 名称已变——先在设备上重测 CC47 逐值回读，别照手册产品顺序改"
     );
 }
 
 /// reverb 的参数表键同样是**真实 variant**（0,1,2,3,5,6,7），不是手册产品序号 0..6；
 /// 且每类只有 5 个参数，CC 指南那 6 个里的第 6 项（CC90）设备并不暴露。
 ///
-/// 2026-10-03 真机实测：7 个 reverb 类型的 `param count` 全是 5（40 组出厂快照亦然）。
+/// 7 个 reverb 类型的 `param count` 全是 5。
 /// 产品序号 4,5,6（spring/shimmer/cloud）对应的 variant 是 7,5,6。
 /// `type=` 印的编号必须恒 ≥ 1，且与 `variant + 1` 同一基准。
 ///
@@ -338,7 +338,7 @@ fn type_numbers_are_one_based_and_consistent() {
 
 /// reverb 的 `type=` 是手册产品顺序里的位置（1 起始），与 `variant` 错开。
 ///
-/// 2026-10-03 真机实测：写 CC47 = 0..6 回读 variant 得 0,1,2,3,5,6,7；
+/// 写 CC47 = 0..6 回读 variant 得 0,1,2,3,5,6,7；
 /// 用户在设备/App 上核对 Psych 的 REV 是 spring 而其 variant 是 7。
 /// 手册 `5-7 spring` 说明设备上显示的是产品顺序的位置。
 #[test]
@@ -367,12 +367,12 @@ fn reverb_params_are_keyed_by_real_variant() {
     for (block, ty, ps) in params_data::TYPED.iter().filter(|(b, _, _)| *b == "reverb") {
         let expected: &[u8] = match *ty {
             0 | 1 | 2 | 3 | 5 | 6 | 7 => &[0, 1, 2, 3, 4],
-            other => panic!("reverb 出现未实测的 variant {other}（只应有 0,1,2,3,5,6,7）"),
+            other => panic!("reverb 出现未知 variant {other}（只应有 0,1,2,3,5,6,7）"),
         };
         assert_eq!(
             ps.len(),
             expected.len(),
-            "{block} type {ty} 的参数个数变了——设备实测每类 5 个"
+            "{block} type {ty} 的参数个数变了——设备每类固定 5 个"
         );
         for (p, &idx) in ps.iter().zip(expected) {
             assert_eq!(p.index, idx, "{block} type {ty} 的参数 index 应连续 0..4");
@@ -393,7 +393,7 @@ fn reverb_params_are_keyed_by_real_variant() {
 /// fx2 的 11 个类型名是设备/App 的 pedal 名，不是 CC 指南的 `Drive 1-5` / `Boost 1-3`。
 ///
 /// 设备上核对过：FX2 `type=5` 显示 `PiFUZZ v.2`，而 CC 指南在那一格写的是
-/// `Drive 5`。id 与手册 `N-11` 的产品编号一致（0 起始），真机 CC41 写 0..10
+/// `Drive 5`。id 与手册 `N-11` 的产品编号一致（0 起始），CC41 写 0..10
 /// 回读 `type=1..11` 连续无空洞 —— 错的只是名字。
 #[test]
 fn fx2_effect_types_use_pedal_names() {
@@ -423,9 +423,9 @@ fn fx2_effect_types_use_pedal_names() {
 
 /// amp / cab 的 `variant` 恒为 0，型号不在快照里。
 ///
-/// 40 个出厂预设的 amp 与 cab `variant` 全是 0，且写 `model 1 / 5 / 25 / 34`
+/// amp 与 cab 的 `variant` 全是 0，且写 `model 1 / 5 / 25 / 34`
 /// 后快照的 variant 都不变。用它当 `models_data` 的索引会印出一个与实际型号
-/// 无关的名字（曾把 VXAC30 印成 `Bogner XTC #1`）。型号只能从 `0x36` 应答的
+/// 无关的名字。型号只能从 `0x36` 应答的
 /// per-model `active` 标记查。
 #[test]
 fn amp_and_cab_have_no_variant_name() {
@@ -444,7 +444,7 @@ fn amp_and_cab_have_no_variant_name() {
 /// `3-band EQ` / `6-band EQ` / `8-band EQ` —— 全是自创的。手册「效果列表」节
 /// 写的是 `1-4 gate` / `2-4 auto gate` / `3-4 NG-Comp` / `4-4 compressor` 与
 /// `1-3 eq3` / `2-3 eq6` / `3-3 eq8`；用户核对设备与 App 上也是 `EQ3` 与
-/// `Threshold` 这种写法（2026-10-03）。
+/// `Threshold` 这种写法。
 ///
 /// 参数名同理：`fx1` 两个类型的首参在手册与设备上都叫 `Threshold`，此前 CLI
 /// 给它加了块名前缀（`Gate Threshold`），用户按设备上看到的名字找不到。
@@ -518,14 +518,14 @@ fn no_parameter_name_starts_with_its_block_name() {
     }
 }
 
-/// 参数个数一律等于**设备实存**的个数（40 组出厂快照 + 真机 `module x params`）。
+/// 参数个数一律等于**设备实存**的个数。
 ///
 /// 此前 16 处按 CC 指南的表多列了一个末位「电平」，设备并不存那个 b6；`cab` 还
 /// 多了一个 `Level`(CC67)。写它会被设备拒绝（`not in device storage`），
 /// `params` 列表里则是多印一行不存在的东西。
 #[test]
 fn parameter_counts_match_what_the_device_stores() {
-    // 40 组出厂快照实测的 (块, variant) -> count。
+    // 设备上 (块, variant) -> count 的实际取值。
     const STORED: &[(&str, u8, usize)] = &[
         ("amp", 0, 5),
         ("cab", 0, 2),
@@ -562,7 +562,7 @@ fn parameter_counts_match_what_the_device_stores() {
     ];
     // 有几个类型**故意不在**表里，因为手册没给它们的参数说明：
     //   * `fx1` type 1（auto gate）—— 手册「无手动调节参数」，设备仍存 2 个
-    //     float（40 组快照里都是 `0.5, 0.321`，是内部状态而非可调旋钮）
+    //     float
     //   * `fx1` type 2（NG-Comp）—— 手册有 7 个参数说明，但我们未逐一核对过
     //   * `fx2` type 5/6/7（Range/XAC/Fiman）—— 手册只有一条 `Boost`
     // **「手册说无参数」≠「设备不存值」**，两者别混；本断言只覆盖有表的类型。

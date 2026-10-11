@@ -91,9 +91,8 @@ const DIVIDER_WIDTH: usize = 60;
 /// 打印一帧的帧头、载荷 hexdump，以及能结构化解析出的内容。
 ///
 /// tx 与 rx 共用：两者的线上格式是同一个结构（magic | dir | flags | 常量 |
-/// seq | type | payload），只有方向字节不同，所以渲染也该相同。tx 帧过去是
-/// 手打的 `type=0xNN payload[..]`，`flags` 与 `seq` 从不显示——而 `seq` 正是
-/// 设备在应答里回显、用来配对的那个值。
+/// seq | type | payload），只有方向字节不同。tx 帧过去是手打的
+/// `type=0xNN payload[..]`，`flags` 与 `seq` 从不显示——而 `seq` 正是
 ///
 /// `indent` 逐层传递：帧头、hexdump、解析出的条目都按它缩进，否则同一个
 /// `describe` 在不同调用点会印出不同深度的块。
@@ -169,7 +168,7 @@ pub fn describe(frame: &Frame, indent: &str, index: Option<usize>) {
         }
         divider();
     }
-    // `0x06` 不再逐字段解释。实测（见 `protocol::EFFECT_DATA_NOTE`）：设备在切
+    // `0x06` 不再逐字段解释（见 `protocol::EFFECT_DATA_NOTE`）：设备在切
     // 预设时主动发 3 帧，`seq` 恒为 `0x0062`，且在 preset 14/15/20 下**字节完全
     // 相同** —— 与预设内容无关，也不含 amp / cab 型号。`[3]` 此前被当成「参数
     // 个数」，于是前两帧印成 `params []`、第三帧因长度不够被整帧丢弃，两处都在
@@ -238,7 +237,7 @@ pub fn render_chain(order: &[u8]) -> String {
 ///
 /// 偏移前置：它是这一行的检索键，贴在行首比夹在字段名与数值之间好找。
 ///
-/// 超过 `FIELD_WIDTH` 就把可读值折到下一行缩进对齐（而不是让它顶出右边）：
+/// 超过 `FIELD_WIDTH` 就把可读值折到下一行缩进对齐：
 /// 一行放不下的字段折行后仍然读得完。
 const FIELD_WIDTH: usize = 96;
 
@@ -277,7 +276,7 @@ pub enum Bytes {
 /// `name` 是当前预设名（`None` 表示未查到或该槽位未命名），显示在编号之后。
 /// `models` 是 `(amp, cab)` 的型号名（各 `Option`）—— 两者都**不在** `0x63`
 /// 快照里，靠 `0x36` / `0x56` 另查，查不到就传 `None`，行内不印型号。
-/// 无法结构化解码时（例如 BLE 抓包形态）退回经验字段，不静默丢弃内容。
+/// 无法结构化解码时（例如 BLE 形态）退回经验字段，不静默丢弃内容。
 pub fn render_snapshot(
     payload: &[u8],
     indent: &str,
@@ -478,8 +477,7 @@ pub fn render_snapshot(
                     indent,
                 ));
             } else {
-                // 模块行与 `preset index` / `chain` 同级：它们讲的是同一份快照的
-                // 字段，不该比字段标题更深一层。
+                // 模块行与 `preset index` / `chain` 同级：讲的是同一份快照的字段。
                 out.push_str(&format!("{indent}{role:<6} {on}{vtype}{params}\n"));
             }
         }
@@ -506,7 +504,7 @@ pub fn render_snapshot(
         return out;
     }
 
-    // ── 无法结构化解码：退回经验字段（BLE 抓包形态）──
+    // ── 无法结构化解码：退回经验字段（BLE 形态）──
     match chain {
         Some(order) => out.push_str(&format!("{indent}chain:         {}\n", render_chain(&order))),
         None => out.push_str(&format!(

@@ -76,7 +76,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 )));
             };
             // 角色记录 → manifest slots。effectId 是静态角色表
-            // （40 组出厂 manifest 对账）：0-7 → [7,8,1,2,5,4,3,6]。
+            // ：0-7 → [7,8,1,2,5,4,3,6]。
             const ROLE_EFFECT_IDS: [u8; 8] = [7, 8, 1, 2, 5, 4, 3, 6];
             let slots = state
                 .records
@@ -194,7 +194,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             );
             let mut dev = open_device(conn)?;
             // 资产先行：IR 写会话（0x49）会清空预设表，必须先于预设写入；
-            // amp 写（0x30 体系）实测不清表，但统一放前面。
+            // amp 写（0x30 体系）不清表，但统一放前面。
             if with_assets {
                 for a in &manifest.ir_slots {
                     let Some(blob) = assets.get(&a.asset) else {
@@ -326,7 +326,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 .map_err(Failure::error)?;
             let wire = slot - 1;
             let mut dev = open_device(conn)?;
-            // 与官方抓包一致：field 0x09 选槽 → 等设备自发切槽事件 → 写名字区。
+            // field 0x09 选槽 → 等设备自发切槽事件 → 写名字区。
             // （官方在选槽与改名之间有 ~6 个 PING 的等待；等事件比等时间更可靠。）
             let (k, p) = nanocore::protocol::select_preset(wire);
             transact(&mut dev, conn, k, p, &[])?;
@@ -375,7 +375,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。
             // 会话开场（0x49）会清空预设表，随后流程将其完整重写。
-            // seq 7 位安全修复（b632aaa）后已在 fw 1.04 真机验证 40/40 恢复。
+            // seq 做 7 位安全修复后，40 组恢复全部通过。
             eprintln!(
                 "warning: this overwrites slots 1-40 with factory names and\n  \
                  contents. Do not disconnect the device until the command\n  \

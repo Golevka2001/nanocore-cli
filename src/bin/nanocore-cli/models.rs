@@ -13,8 +13,7 @@ const CAB_HEADER: &str = "CAB / IR models (1-30):";
 
 pub fn cmd_models(table: Option<ModelTableArg>, live: bool, conn: &Conn) -> Result<(), Failure> {
     if live {
-        // 实时查询覆盖设备的 amp/drive 槽位（1-38）；表过滤在此不适用，明确拒绝
-        // 而不是静默忽略。
+        // 实时查询覆盖设备的 amp/drive 槽位（1-38），表过滤在此不适用。
         if table.is_some() {
             return Err(Failure::error(
                 "`models --live` queries the device's amp/drive slots (1-38) and takes \

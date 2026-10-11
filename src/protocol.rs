@@ -1,6 +1,6 @@
 //! 已确认消息类型的载荷构造器与解析器。
 //!
-//! 此处所有字节布局均来自真实 MIDI 抓包。
+//! 全部布局直接对应设备在 MIDI 上的实际字节。
 
 use crate::field;
 use crate::msg_type;
@@ -22,13 +22,11 @@ pub fn decode_param_float(bytes: &[u8]) -> Option<f32> {
     Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
-/// 剥掉 float32 四个字节的最高位 —— **只有这样字节才能合法地走 SysEx**。
+/// 剥掉 float32 四个字节的最高位 —— SysEx 数据字节必须 `< 0x80`。
 ///
-/// SysEx 的数据字节必须 `< 0x80`，所以每个字节的 bit7 必须去掉。
-/// 但**不能只剥不还**：剥掉的位由 [`param_value_mask`] 记录，
-/// [`param_write`] 把它放进消息的 mask 字节，设备据此把 bit7 还原，
-/// 因此 float32 是**全精度**到达设备的（早期版本误以为设备只能收到 28 位，
-/// 进而接受了 `0.3 -> 0.166` 这类塌缩 —— 那是我们没发 mask 的结果，不是硬件限制）。
+/// **不能只剥不还**：剥掉的位由 [`param_value_mask`] 记录，
+/// [`param_write`] 把它放进消息的 mask 字节，设备据此还原，
+/// 因此 float32 是**全精度**到达设备的。
 ///
 /// 唯一还用到「只剥不还」的是 [`load_effect`]（该消息的第 4 字节是 `model_flag`，
 /// 不是 mask）；它目前没有 CLI 调用方。
@@ -84,36 +82,21 @@ pub fn set_enabled(slot: u8, enabled: bool) -> (u8, Vec<u8>) {
 
 /// `0x6D` sub `0x07`：写入单个参数。
 ///
-/// 线上布局，来自抓包中全部 805 条 `0x07` 消息（`0..3` 号抓包逐条对账 805/805 命中）：
-///
 /// ```text
 /// 00 07 00 [mask] 01 [b5] [b6] <float32 x 4>
 /// ```
 ///
-/// * `mask` —— 覆盖其后 7 个数据字节的**还原掩码**：`bit(3 + j)` 表示第 `j` 个值字节的
-///   bit7 被 [`encode_param_value`] 剥掉了，设备收到后把它还回去。
-///   `bit0..2` 对应恒定的 `01`、`b5`、`b6`（都 `< 0x80`），因此恒为 0。
-///   **所以 float32 是全精度写入的**，不需要牺牲任何位。
-/// * `b6` —— 效果内的**参数索引**。由 `noise-gate-tweak.mmon` 验证：
-///   噪声门恰好暴露两个参数，`b6` 也恰好只取 `0x00`（阈值）和 `0x01`（释放）两个值。
-/// * `b5` —— **槽位 / 效果实例**。fx1 抓包中的每次写入均为 `0x00`，
-///   fx2 抓包中的每次写入均为 `0x01`。
+/// * `mask` —— 覆盖其后 7 个数据字节的**还原掩码**：
+///   `bit(3 + j)` 表示第 `j` 个值字节的 bit7 被 [`encode_param_value`] 剥掉了，
+///   设备收到后把它还回去。
+///   `bit0..2` 对应恒定的 `01`、`b5`、`b6`，因此恒为 0。
+/// * `b5` —— 槽位 / 效果实例。
+/// * `b6` —— 效果内的**参数索引**，不是块内的平铺下标。
 ///
-/// 关于 `mask` 的三重证据：
-///
-/// * 结构：4 份抓包里 `mask` 只会出现 `0x08/0x10/0x18/0x20/0x28/0x30/0x38`
-///   （即 bit3..5 的组合，对应 v0/v1/v2 的 bit7），`bit6`（v3 = 指数高位）恒为 0。
-/// * 形状：`scream-knob-sweep.mmon` 里旋钮 0→100% 的一整段，**只有**按 mask 还原后
-///   才是单调平滑的 `0.404 -> 1.000`；按裸值读会得到 `0.202 -> 0.500`，
-///   并在参数本应到达 1.0 的地方卡在 0.5。
-/// * 真机：`0.6 -> mask 0x18 + 1a 19 19 3f` 读回 `0.6`（mask=0 时存成 `0.598`）；
-///   `1.0 -> mask 0x20 + 00 00 00 3f` 读回 `1.0`（mask=0 时存成 `0.5`）。
-///
-/// 设备把存下的值四舍五入到 **0.001 网格**：40 组出厂预设的 1215 个参数值全部落在
-/// 该网格上，真机实测发送 `0.5996` 读回 `0.6`、发送 `0.123456789` 读回 `0.123`。
-///
-/// `b6` 超出该模块设备存储范围时，设备回一条 5 字节错误帧 `00 03 00 00 00`
-/// 并**保持原值不变**；`module` 命令据此报错。
+/// 设备把存入的值四舍五入到 **0.001 网格**，更高精度发不过去。
+/// `b6` 超出该模块设备存储范围时，
+/// 设备回一条 5 字节错误帧 `00 03 00 00 00` 并**保持原值不变**；
+/// 见 [`PARAM_WRITE_REJECTED`]。
 pub fn param_write(b5: u8, b6: u8, value: f32) -> (u8, Vec<u8>) {
     let mut p = vec![0x00, sub::PARAM_WRITE, 0x00, param_value_mask(value), 0x01, b5, b6];
     p.extend_from_slice(&encode_param_value(value));
@@ -122,10 +105,9 @@ pub fn param_write(b5: u8, b6: u8, value: f32) -> (u8, Vec<u8>) {
 
 /// 参数写入被拒绝时设备回的 5 字节载荷：`b6` 超出该模块的设备存储范围。
 ///
-/// 真机实测（cab `b6=2`，设备只存 2 个值）：应答为 `type=0x6d payload[5] 00 03 00 00 00`，
-/// 随后读回快照确认**原值未变**。同形状的 `00 01 00 00 00` 出现在载荷含
-/// `>= 0x80` 的数据字节或长度不对时（帧解析失败），正常写入则回一条 13 字节的
-/// mask 回显。
+/// 设备不会报错或纠正——被拒绝时原值保持不变。
+/// 同形状的 `00 01 00 00 00` 出现在载荷含 `>= 0x80` 的数据字节或长度不对时（帧解析失败）；
+/// 正常写入则回一条 13 字节的 mask 回显。
 pub const PARAM_WRITE_REJECTED: [u8; 5] = [0x00, 0x03, 0x00, 0x00, 0x00];
 
 // ─── 效果链序（`chainOrder`） ────────
@@ -135,10 +117,8 @@ pub const CHAIN_LEN: usize = 8;
 
 /// 链角色表：`index -> (cli 名称, 显示名称)`。
 ///
-/// **此顺序不是 CC 块的顺序。** 标准 MIDI CC 映射把各块列为 `FX1 FX2 AMP CAB MOD DELAY REVERB EQ`
-/// （CC25 = Mod，CC26 = Delay），而链中 `DEL` 排在 `MOD` *之前*。
-/// 由 `enable-del-eq.mmon` 验证：用户启用了 DEL 和 EQ，设备收到 `ENABLE slot=4` 和 `ENABLE slot=7`，
-/// 故 `DEL == 4`、`MOD == 5`、`EQ == 7`。
+/// **此顺序不是 CC 块的顺序**：标准 MIDI CC 把各块列为 `FX1 FX2 AMP CAB MOD DELAY
+/// REVERB EQ`（CC25 = Mod，CC26 = Delay），而链中 `DEL` 排在 `MOD` *之前*。
 pub const CHAIN_ROLES: [(&str, &str); CHAIN_LEN] = [
     ("fx1", "FX1"),
     ("fx2", "FX2"),
@@ -175,14 +155,12 @@ pub fn chain_role_name(index: u8) -> Option<&'static str> {
 
 /// 某槽位当前 `variant` 字节对应的类型名。
 ///
-/// 快照每条记录的第二个字节（渲染成 `type=N`）就是这个 variant，设备用它决定该
-/// 槽位套用哪套参数表。名字来自 [`crate::params_data::EFFECT_TYPES`]
-/// （压缩器、Room、EQ8 …）。
+/// 快照每条记录的第二个字节（渲染成 `type=N`）就是这个 variant，
+/// 设备用它决定该槽位套用哪套参数表。
+/// 名字来自 [`crate::params_data::EFFECT_TYPES`]（压缩器、Room、EQ8 …）。
 ///
-/// **amp / cab 不在此列**：它们的 `variant` 恒为 0 —— 40 个出厂预设无一例外，
-/// 写 `model 1 / 5 / 25 / 34` 快照也不变。amp / cab 的型号存在别处（`0x36` 应答
-/// 里的 per-model `active` 标记），快照中查不到。这里返回 `None`，调用方只保留
-/// 数字，不印一个拿恒 0 当索引编出来的名字。
+/// **amp / cab 不在此列**：它们的 `variant` 恒为 0（写任何 `model` 快照都不变），
+/// 型号在别处查。未知 ID 同样返回 `None`；两种情况下调用方都只保留原数字。
 ///
 /// 未知 ID 同样返回 `None`：调用方应保留原数字，而不是猜一个。
 pub fn variant_name(slot: u8, variant: u8) -> Option<&'static str> {
@@ -193,14 +171,12 @@ pub fn variant_name(slot: u8, variant: u8) -> Option<&'static str> {
 /// 某槽位当前 `variant` 在设备上显示的类型编号（渲染成 `type=N` 的那个 `N`）。
 ///
 /// 多数块它就是 `variant + 1`；**reverb 不同** —— 手册 REV 那栏是产品顺序，
-/// 与存储用的 `variant` 对末三项错开（variant 7 = spring，是设备上的第 5 个
-/// 类型）。委托给 [`crate::params_data::type_number`]，不在渲染层写死 `+1`。
+/// 与存储用的 `variant` 对末三项错开（variant 7 = spring，是设备上的第 5 个类型）。
+/// 委托给 [`crate::params_data::type_number`]，不在渲染层写死 `+1`。
 ///
 /// **amp / cab 返回 `None`**：它们的 `variant` 恒为 0，`variant + 1` 得到的
-/// `type=1` 是个凭空来的编号 —— 设备上 AMP 走的是 30 项 amp 型号表、CAB 走
-/// 30 项 IR 表，两者的当前型号都不在 `0x63` 快照里（2026-10-03 实测：写
-/// `CC44` 在两个 cab 型号间切换，快照无任何字节变化）。宁可整段不印，也不
-/// 印一个会让人以为「AMP 型号 1」的数字。
+/// `type=1` 是个凭空来的编号——设备上 AMP 走 30 项 amp 型号表、CAB 走 30 项 IR 表，
+/// 当前型号都不在 `0x63` 快照里。
 pub fn type_number(slot: u8, variant: u8) -> Option<u8> {
     let (block, _) = CHAIN_ROLES.get(slot as usize)?;
     crate::params_data::type_number(block, variant)
@@ -280,9 +256,7 @@ pub fn parse_chain_notify(payload: &[u8]) -> Option<Vec<u8>> {
 ///
 /// ACK 镜像请求（先是 `00 00`，然后从第 1 字节起的请求载荷），
 /// 但以与写入**不同**的填充索引重新编码 9 字节字段。
-/// 已在四个样本上验证 —— 两个抓包 ACK 和两个来自实机的实时 ACK ——
-/// 移除索引 4 后得到的恰好是所请求的链序。
-/// 注意该字段在孤立状态下天然有歧义（它包含两个 `0x00` 字节），所以这个索引很重要。
+/// 该字段在孤立状态下天然有歧义（含两个 `0x00`），索引必须取对。
 pub const CHAIN_ACK_FILLER: usize = 4;
 
 /// 从 `0x6D` ACK 载荷中解析链序。
@@ -313,8 +287,7 @@ pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
 
 /// 把预设名编码为设备名字区的 9 字节线上形态。
 ///
-/// 规则（由恢复出厂抓包的 40/40 个出厂名逆向，全部吻合）：名字（≤ 8 个
-/// 可打印 ASCII 字符）先填充到 8 字节，再在下标 6 处插入一个 `0x00`——
+/// 名字（≤ 8 个可打印 ASCII 字符）先填充到 8 字节，再在下标 6 处插入一个 `0x00`——
 /// 与 [`chain_encode`] 的链序填充同族。设备显示时跳过 NUL 收集可打印字符。
 ///
 /// 例：`"ClnArp"` -> `43 6c 6e 41 72 70 00 00 00`，`"BassFuzz"` ->
@@ -340,7 +313,6 @@ pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
 
 /// `0x6D` sub `0x0A`：以 9 字节名字区形态重命名当前预设。
 ///
-/// 与官方抓包样本（"preset42" -> `count=08` + 9 字节载荷）同构；
 /// 名字区编码见 [`encode_preset_name_field`]。
 pub fn set_name_field(field: &[u8; 9]) -> (u8, Vec<u8>) {
     let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, 0x08];
@@ -373,17 +345,15 @@ pub fn set_usb_volume(percent: u8) -> (u8, Vec<u8>) {
 
 /// `0x66` sub `0x02`：设置任意设置页字段（字段 id 见 [`crate::setting`]）。
 ///
-/// 与 `0x6D` 的 [`set_field`] 同形但走 `0x66` 设置通道。验证：无线/回放/
-/// 蓝牙音量/输入通道均来自"设置-*.mmon"（2026-10-01）。
+/// 与 `0x6D` 的 [`set_field`] 同形但走 `0x66` 设置通道。
 pub fn set_setting(setting_field: u8, value: u8) -> (u8, Vec<u8>) {
     (msg_type::USB_VOLUME, vec![0x00, 0x02, 0x00, 0x00, setting_field, value])
 }
 
 /// `0x66` sub `0x02`：设置输入增益（dB，可为负）。
 ///
-/// 编码来自 `设置-输入增益调节到-1～-5dB.mmon`：负数在 byte3 携带符号标志
-/// `0x02`，值字节为 7-bit 补码（-1 → `0x7F`、-5 → `0x7B`）；0 与正数标志为
-/// `0x00`（0 实测；**正数路径未真机实测**，UI 是否提供正增益未知）。
+/// 负数在 byte3 携带符号标志 `0x02`，值字节为 7-bit 补码（-1 → `0x7F`、
+/// -5 → `0x7B`）。0 与正数标志为 `0x00`。
 pub fn set_input_gain(db: i8) -> (u8, Vec<u8>) {
     if db < 0 {
         (
@@ -405,24 +375,25 @@ pub fn query_settings() -> (u8, Vec<u8>) {
 
 /// `0x6D` SET_FIELD：设置预设音量（0-100）。
 ///
-/// 来自 `调整预设音量.mmon`（App"预设音量"滑条全程抓包）：载荷
-/// `00 02 00 00 04 <val>`，值 0x00–0x53 随滑条连续变化，每步设备回
-/// `0x01` 事件回显该值。当前值可由 [`decode_snapshot_state`] 的
-/// `preset_volume` 读回。
+/// 载荷 `00 02 00 00 04 <val>`，值 0x00–0x53。
+/// 设备每写入一步就回一条 `0x01` 事件回显该值。
+/// 当前值可由 [`decode_snapshot_state`] 的 `preset_volume` 读回。
 pub fn set_preset_volume(percent: u8) -> (u8, Vec<u8>) {
     set_field(field::PRESET_VOLUME, percent)
 }
 
 /// `0x63`：请求当前预设快照。
 ///
-/// 载荷为 `00 00 00`。在抓包中该命令之后总是紧跟元数据尾（`da 00 0e ...`）；见 [`crate::tail`]。
+/// 载荷为 `00 00 00`。设备在应答后总会紧跟一段元数据尾（`da 00 0e ...`）；
+/// 见 [`crate::tail`]。
 pub fn request_snapshot() -> (u8, Vec<u8>) {
     (msg_type::SNAPSHOT, vec![0x00, 0x00, 0x00])
 }
 
 /// `0x40`：查询从 `start_slot` 开始的 `count` 个槽位的预设名称。
 ///
-/// 线上布局：`00 02 00 00 [start_slot] [count]`。抓包中 `start_slot` 取 `0x00, 0x08, 0x10, ..`，`count = 0x08`。
+/// 线上布局：`00 02 00 00 [start_slot] [count]`。
+/// `start_slot` 按组对齐（`0x00`、`0x08`、`0x10` …），`count` 是本组槽位数。
 pub fn query_preset_list(start_slot: u8, count: u8) -> (u8, Vec<u8>) {
     (msg_type::PRESET_LIST, vec![0x00, 0x02, 0x00, 0x00, start_slot, count])
 }
@@ -434,25 +405,22 @@ pub fn ping() -> (u8, Vec<u8>) {
 
 /// `0x36`：查询单个音箱 / 驱动槽位的模型名称。
 ///
-/// 观察到的 TX 查询载荷（`resona-import.mmon` 中全部 38 个槽位）：
-///
 /// ```text
 /// 00 01 00 00 [index]
 /// ```
-///
 /// 设备以携带模型名称的 `0x36` 帧应答；见 [`parse_model_name`]。
 /// `index` 是 0 起始的固件槽位（音箱 + FX2 驱动踏板共 0-37）。
-/// 箱体 / IR 槽位（0-29）使用不同的消息，本查询不枚举它们 —— 见协议笔记。
+/// 箱体 / IR 槽位（0-29）使用不同的消息，本查询不枚举它们。
 pub fn model_query(index: u8) -> (u8, Vec<u8>) {
     (msg_type::MODEL_LIST, vec![0x00, 0x01, 0x00, 0x00, index])
 }
 
 // ─── 解析器 ───────────────────────────
 
-/// `0x06`「effect data」实测记录（2026-10-03）——**语义未定，不提供解析器**。
+/// `0x06`「effect data」—— **语义未定，不提供解析器**。
 ///
-/// 设备在切换预设时主动发 3 帧（`dir=Event`，`seq` 恒为 `0x0062`，与设备对
-/// 事务的 `seq` 回显无关，也不是心跳 `0x68`）：
+/// 设备切换预设时主动发 3 帧（`dir=Event`，`seq` 恒为 `0x0062`，既不是事务的
+/// `seq` 回显也不是心跳 `0x68`），三帧与预设无关、来回切预设也不变：
 ///
 /// ```text
 /// [9]  00 01 00 00 00 00 00 3f
@@ -460,25 +428,17 @@ pub fn model_query(index: u8) -> (u8, Vec<u8>) {
 /// [11] 00 01 02 03 4d 4c 4c 3f
 /// ```
 ///
-/// 载荷恒为 8 字节。**在 preset 14 / 15 / 20 下抓取，三帧字节完全相同**；来回
-/// 切预设也不变。所以它不是预设数据。
+/// 已确定：载荷恒为 8 字节；`00 01` 前缀；`[2]` 递增 0/1/2；末尾 4 字节是 f32。
+/// **未确定：`[3]`**。它不是参数个数（帧 3 的 `3 × 4` 超出剩余的 4 字节）。
+/// 语义定下来之前渲染层只保留 hexdump，不给它编字段名。
 ///
-/// 由此也能确定一件曾被弄错的事：**设备在 MIDI 上不报当前 amp / cab 型号**。
-/// 型号存在 App 侧的预设 manifest 里（`ampSlot` / `irSlot`），App 走 USB
-/// 私有协议读取，与 MIDI 无关。
-///
-/// 能确定的：`00 01` 前缀；`[2]` 递增 0/1/2（像一个索引）；末尾 4 字节是
-/// f32（`0.5` / `0.5` / `0.798`）。
-///
-/// **不能确定的**：`[3]`。此前解析器把它当「参数个数」，于是前两帧被算成
-/// `params []`（0 个参数）、第三帧因 `3 × 4 > 剩余 4 字节` 被整帧丢弃 —— 两处
-/// 都在丢数据。既然连它是什么都不知道，就不给它编一个名字：渲染层只保留
-/// hexdump，语义定下来之前不加字段解释。
+/// 另一条由此确定的结论：**设备不在 MIDI 上报当前 amp / cab 型号**，
+/// 型号只存在于 App 侧的预设 manifest（`ampSlot` / `irSlot`），App 走 USB 私有协议读取。
 pub const EFFECT_DATA_NOTE: &str = "0x06 effect data: 8 bytes, constant across presets; [3] unknown";
 
 #[cfg(test)]
 mod effect_data_tests {
-    /// 三帧实测字节 —— 留作回归基准，防止有人再把 `[3]` 当成参数个数。
+    /// 三帧的真实字节，留作回归基准。
     #[test]
     fn effect_data_is_eight_bytes_with_unknown_third_byte() {
         let frames: [&[u8]; 3] = [
@@ -509,9 +469,9 @@ pub struct PresetEntry {
     pub name: String,
     /// 本条记录**槽位索引字节**在载荷中的偏移。
     ///
-    /// 渲染层用它把 `slots (N):` 里的每一行与上方 hexdump 原位对齐——和
-    /// [`SnapshotRecord::stream_offset`] 同一用途。`0x40` 不需要解包，所以
-    /// 这里就是线上载荷的偏移。
+    /// 渲染层用它把 `slots (N):` 里的每一行与上方 hexdump 原位对齐，
+    /// 与 [`SnapshotRecord::stream_offset`] 同一用途。
+    /// `0x40` 不需要解包，这里记的是线上载荷的偏移。
     pub offset: usize,
     /// 标记字节（全部 `< 0x20`）所在区间 `[offset+1, marks_end)`。
     pub marks: (usize, usize),
@@ -528,34 +488,25 @@ pub const PRESET_NAME_CHARS: usize = 8;
 
 /// 解析 `0x40` 预设列表应答载荷。
 ///
-/// 布局 —— **端到端验证过**，不是推断：
-///
 /// ```text
 /// [0..7]  header: 00 00 <10*COUNT+2> 00 00 BASE COUNT
-///         （第三个字节随分组大小变化，不是常量：COUNT=1..8 实测 12/22/…/82）
+///         （第三个字节随分组大小变化，不是常量）
 /// then COUNT records:
-///   [slot: 1 byte, MUST equal BASE + k]
+///   [slot: 1 byte, must equal BASE + k]
 ///   [1+ bytes < 0x20   -- the first one is 0x01 when the slot holds a name]
 ///   [name: exactly 8 printable characters]
 /// ```
 ///
-/// 名称字段以 **NUL 分隔的分片**形式存储：`0x00` 字节被跳过，且**不**计入 8 个字符。
-/// 这就是为什么记录的字节长度会变化（11 或 12），尽管每个名称都是 8 字符宽。
-/// 8 个字符之后、下一条记录的槽位索引之前，至多还有一个 `< 0x20` 的字节。
+/// 名称以 **NUL 分隔的分片**存储：`0x00` 被跳过且不计入 8 个字符，
+/// 所以记录长度会在 11 / 12 之间变化，尽管名称都是 8 字符宽。
+/// 8 个字符之后、下一条记录的槽位索引之前，至多还有一个 `< 0x20` 字节。
 ///
-/// 验证证据：
-/// * `preset-export.mmon` —— 全部 8 个数据块（64 个槽位）解码后每个槽位索引都匹配 `BASE + k`，
-///   且每个名称都恰好 8 字符宽。
-/// * 以此方式解码出的 40 个出厂名称与出厂预设表 -> `products.nanocore.presets`（独立来源）**逐字节一致**。
-///   槽位 41..63 携带设备占位名称 `preset`。
+/// 槽位 41..63 携带设备占位名称 `preset`。
+/// 每条记录都交叉校验，任何错位都返回 `None`。
 ///
-/// 每条记录都做交叉校验，任何错位都会返回 `None`，而不是悄悄产出错误名称。
-///
-/// 当槽位索引之后的前导填充字节**不全为零**时 `named` 为 `true`。
-/// 在抓包上验证：全部 40 个出厂槽位加上槽位 40 的用户预设都被标记，
-/// 而 24 个占位槽位（41..63，其存储的名称字面上就是 `preset`）的前导字节全为零。
-/// 这 1-2 个字节的确切字节级含义尚未完全解释清楚，
-/// 因此 `named` 应当被理解为"设备将此槽位标记为持有名称"，而不是一个有文档定义的标志值。
+/// [`PresetEntry::named`] 取自槽位索引之后的前导字节是否不全为零。
+/// 那 1–2 个字节的确切语义尚未解释清楚，
+/// 它应读作「设备将此槽位标记为持有名称」。
 pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
     if payload.len() < 8 {
         return None;
@@ -565,10 +516,8 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
     if count == 0 || count > 64 {
         return None;
     }
-    // `payload[2]` = `10 * count + 2` —— 头部 2 字节 + 每条 10 字节（实测
-    // count=1..8 逐一核对：12/22/32/…/82）。它不是体标记：先前这里硬编码成
-    // `0x52`，于是只有 count=8 能解析，`preset list` 因为固定请求 8 槽一组
-    // 才没暴露出来，而 `debug presets 1 4` 之类会静默地什么都不打印。
+    // `payload[2]` = `10 * count + 2` —— 头部 2 字节 + 每条 10 字节。
+    // 它随分组大小变化，不是常量。
     if payload[2] as usize != 10 * count + 2 {
         return None;
     }
@@ -656,19 +605,12 @@ pub fn scan_snapshot_floats(payload: &[u8]) -> Vec<(usize, f32)> {
 }
 
 /// `0x63` 快照载荷尾部链字段所用的填充索引。
-///
-/// 已在 fw 1.04 真机（USB）上用非恒等链序实验定案：
-/// 写入 `[4,0,1,2,3,5,6,7]` 后读快照，末 9 字节为
-/// `04 00 01 02 03 05 06 00 07`，只有去掉索引 7 的 `0x00` 才还原出写入的链序
-/// （索引 1 的歧义解 `[4,1,2,3,5,6,0,7]` 被真值排除）。
-/// 恒等链序快照（当日与 8 天前的 baseline）同形态吻合。
-/// 注意：官方 App 抓包（BLE）里的快照尾部形态与此不同且均为恒等链，填充下标
-/// 在那里不可观测——本常量仅对真机 USB 快照成立。
+/// 走 BLE 的 App 快照尾部形态不同且链序恒等，填充下标在那里不可观测。
 pub const CHAIN_SNAPSHOT_FILLER: usize = 7;
 
 /// 从 `0x63` 快照载荷尾部解析 `chainOrder`。
 ///
-/// 真机（USB）快照的链字段位于载荷最末：
+/// 链字段位于载荷最末：
 ///
 /// ```text
 /// … 3f | 08 | 00 | <9 字节链字段>
@@ -689,15 +631,13 @@ pub fn parse_snapshot_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
 
 /// `0x63` 快照载荷经 `[mask][7 data]` 组连续解包后的字节流。
 ///
-/// 2026-09-30 对 40 组出厂快照（`nanocore-reverse/data/snapshots-factory40/`）
-/// 字节级定案：载荷从 `[3]` 起（含）是**一条连续打包流**——
-/// 每 8 个线上字节为一组，组首字节是掩码（bit *j* 对应组内第 *j* 个数据字节的
-/// bit7），其余 7 字节是数据。记录头、活动预设索引、音量、链序计数全部
-/// 在流内，仅 `[0..3)`（`00 00 <X>`）留在流外。
+/// 载荷从 `[3]` 起（含）是**一条连续打包流**：每 8 个线上字节为一组，
+/// 组首字节是掩码（bit *j* 对应组内第 *j* 个数据字节的 bit7），其余 7 字节是数据。
+/// 记录头、活动预设索引、音量、链序计数全部在流内，仅 `[0..3)`（`00 00 <X>`）留在流外。
 ///
-/// 掩码落在 `[3 + 8k]`；位于掩码位置的载荷字节被"吞掉"（不进入数据流）——
-/// 快照尾部的链序分隔字节/填充 `0x00` 恰好落在某些掩码位上，
-/// 因此解包后的尾部比原始字节短，这是正常现象（那些字节值恒为 `0x00`）。
+/// 掩码落在 `[3 + 8k]`，该位置的载荷字节被吞掉、不进入数据流——
+/// 快照尾部的链序分隔/填充 `0x00` 恰好落在某些掩码位上，
+/// 因此解包后的尾部比原始字节短；那些被吞掉的字节值恒为 `0x00`。
 pub fn unpack_snapshot_stream(payload: &[u8]) -> Option<Vec<u8>> {
     if payload.len() < 12 || payload[0] != 0x00 || payload[1] != 0x00 || payload[3] != 0x00 {
         return None;
@@ -773,9 +713,8 @@ fn is_chain_permutation(v: &[u8]) -> bool {
 
 /// 从解包后数据流的尾部（链计数 `0x08` **之后**）解出链序。
 ///
-/// 只接受**恰好 `CHAIN_LEN` 字节**的裸排列。线上原始尾部的分隔/填充
-/// `0x00` 会落在掩码位上被吞掉，因此数据流里看到的正是这 8 字节——
-/// 40 组出厂快照 + 真机 USB 快照 41/41 全部如此。
+/// 只接受**恰好 `CHAIN_LEN` 字节**的裸排列。线上原始尾部的分隔/填充 `0x00`
+/// 会落在掩码位上被吞掉，因此数据流里看到的正是这 8 字节。
 ///
 /// 不接受 9 字节（sep/填充未被吞）的形态：链序里必然含 `0`（FX1），
 /// 分隔/填充又是 `0`，两个 `0` 各去掉一次都能得到一个合法排列且互不相同，
@@ -787,7 +726,7 @@ fn chain_order_from_stream(tail: &[u8]) -> Option<Vec<u8>> {
     None
 }
 
-/// 完整解码 `0x63` 快照载荷（真机 USB 形态，无 BLE 元数据尾）。
+/// 完整解码 `0x63` 快照载荷（USB 形态，无 BLE 元数据尾）。
 ///
 /// 数据流结构（掩码还原后）：
 ///
@@ -798,36 +737,21 @@ fn chain_order_from_stream(tail: &[u8]) -> Option<Vec<u8>> {
 /// ```
 ///
 /// 校验：前导标记 `[00][03]`、记录数恰为 8、每条 `count ≤ 16`、
-/// float 不得为 NaN/Inf（与固件解码器 `FUN_004777bc` 的
-/// `(bits & 0x7FFFFFFF) <= 0x7F7FFFFF` 一致）、记录后紧跟链计数 `0x08`。
+/// float 不得为 NaN/Inf（即 `(bits & 0x7FFFFFFF) <= 0x7F7FFFFF`）、
+/// 记录后紧跟链计数 `0x08`。
 ///
-/// 记录下标 == `CHAIN_ROLES` 下标 == `b5` 槽位（40 组出厂基线与
-/// `.npreset` manifest 对账逐位确认，真机读写实验双向印证）。
+/// 记录下标 == `CHAIN_ROLES` 下标 == `b5` 槽位。
 ///
-/// 注意：**不要**用 [`parse_snapshot_chain_order`] 做前置校验——它锚定
-/// 原始尾部的 `count@len-11` 布局，那只对特定快照长度（197B/165B，
-/// 掩码相位恰好把 sep/填充留在原位）成立；187B/169B 等长度的原始尾部
-/// 字节因掩码吞位而整体移位。链序改由数据流尾部解出（见
-/// [`chain_order_from_stream`]），[`parse_snapshot_chain_order`] 仅作旧形态的退回。
-///
-/// 已知语义差异（**不是**解码错误，40 组出厂快照与 `.npreset` manifest
-/// 逐字段对账得出，2026-10-03 复核并经真机实验修正）：
-/// * `amp`（38/40 槽位）与 `cab`（36/40）的 `enabled`：快照为 0，manifest 为 1。
-///   采集时无输入信号，这两级在快照里报告关闭。`fx1`/`fx2` 的 `enabled`
-///   实测 **40/40 全一致**——早期文档把本条差异记在这两个角色头上，属笔误。
-/// * `fx2`（压缩器）的参数：14/40 槽位与 manifest 不同，快照侧几乎恒为
-///   `[0.5, 0.5, 0.8]` / `[0.5]`，manifest 侧各槽位各异。
-///   早期归因为「快照读到运行时值而非闪存」，**已被真机实验否证**：向 `b6=1/2`
-///   写 0.456 / 0.789 后重读本快照，得 `[0.500, 0.456, 0.789]`，即快照忠实
-///   反映写入值。故差异的成因是采集时这些槽位的闪存内容本就是默认值，
-///   manifest 与快照记录的是同一事实，而非两个互相矛盾的真相。
-///
-/// 复核脚本与原始对账见 `nanocore-reverse/data/snapshots-factory40/README.md`。
+/// 注意：**不要**用 [`parse_snapshot_chain_order`] 做前置校验——
+/// 它锚定原始尾部的 `count@len-11` 布局，
+/// 那只对掩码相位恰好把 sep/填充留在原位的特定长度成立；
+/// 其他长度的原始尾部字节因掩码吞位而整体移位。
+/// 链序由数据流尾部解出（见 [`chain_order_from_stream`]），
+/// [`parse_snapshot_chain_order`] 仅作旧形态的退回。
 pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
     let data = unpack_snapshot_stream(payload)?;
-    // 游标放进 `Cell`：闭包 `take` 要用它推进位置，而调用方也要读同一个值来
-    // 记录字段偏移。用 `Cell` 共享，比从切片指针反推偏移（`ptr` 相减）干净，
-    // 后者在空切片或优化重排下都不该出现。
+    // 游标放进 `Cell`：闭包 `take` 要用它推进位置，而调用方也要读同一个值来记录字段偏移。
+    // 用 `Cell` 共享，比从切片指针反推偏移（`ptr` 相减）干净。
     let p = std::cell::Cell::new(0usize);
     let take = |k: usize| -> Option<&[u8]> {
         let at = p.get();
@@ -856,7 +780,7 @@ pub fn decode_snapshot_state(payload: &[u8]) -> Option<SnapshotState> {
         let mut params = Vec::with_capacity(count as usize);
         for c in raw.as_chunks::<4>().0 {
             let bits = u32::from_le_bytes(*c);
-            // 与固件解码器一致：拒绝 NaN/Inf。
+            // 拒绝 NaN/Inf。
             if bits & 0x7FFF_FFFF > 0x7F7F_FFFF {
                 return None;
             }
@@ -902,7 +826,7 @@ pub struct DeviceSettings {
     /// 蓝牙音量（0-100）。
     pub bt_volume: u8,
     /// MIDI 通道（0-16；0 = 全通道。写入 17 会被设备钳到 16 —— 与手册的
-    /// `MIDI Channel 0~16` 一致）。抓包只覆盖过 1-5，全量由手册确认。
+    /// `MIDI Channel 0~16` 一致）。
     pub midi_channel: u8,
 }
 
@@ -915,8 +839,7 @@ pub fn midi_channel_label(v: u8) -> String {
 
 /// 解码 `0x65` 设置快照载荷（13 B）。
 ///
-/// 字段映射由"设置-*.mmon"系列抓包逐一确证（2026-10-01，每项设置调整前后
-/// 的快照 diff 逐下标对账）：`[3]` = 增益符号标志（负 = `0x10`）、`[6]` = 无线、
+/// 字段映射：`[3]` = 增益符号标志（负 = `0x10`）、`[6]` = 无线、
 /// `[7]` = 回放、`[8]` = 输入增益（7-bit 补码，负数 ≥ `0x40`）、`[9]` = USB 音量、
 /// `[10]` = 蓝牙音量、`[12]` = MIDI 通道。`[1][4][5][11]` 含义未定。
 pub fn decode_settings(payload: &[u8]) -> Option<DeviceSettings> {
@@ -942,14 +865,12 @@ pub fn decode_settings(payload: &[u8]) -> Option<DeviceSettings> {
 
 /// 从 `0x43` 预设写入载荷中解析 `chainOrder`。
 ///
-/// 已观察到两种布局：
-///
-/// * **234 字节预设帧**（`factory-reset.mmon` 中有 40 个，每个出厂预设一个）：
-///   链字段位于 `[33..42)`，其前是 `[31]` 处的字段 id `0x03` 和 `[32]` 处的计数 `0x08`。
-///   9 字节字段是在索引 [`CHAIN_PRESET_FILLER`] 处插入 `0x00` 后的 8 元素链序。
-///   已对照 `.npreset` 的 `manifest.json` -> `presets[].preset.chainOrder` 验证，
-///   **40/40** 个预设全部吻合，其中包括一个非恒等链序（`[0,1,2,3,5,4,6,7]`）。
-/// * **旧的 356 字节"首消息"**：字段 id 在 `[30]`，计数在 `[31]`，链序从 `[32]` 开始（无填充字节）。为旧分析路径保留。
+/// 两种布局：
+/// * **234 字节预设帧**：链字段位于 `[33..42)`，其前是 `[31]` 处的字段 id `0x03` 和
+///   `[32]` 处的计数 `0x08`。9 字节字段是在索引 [`CHAIN_PRESET_FILLER`] 处插入 `0x00`
+///   后的 8 元素链序。
+/// * **旧的 356 字节首消息**：字段 id 在 `[30]`，计数在 `[31]`，链序从 `[32]` 开始，无
+///   填充字节。为兼容旧格式保留。
 pub fn parse_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
     // 234 字节预设帧。
     if payload.len() >= 42 && payload[31] == 0x03 && payload[32] == CHAIN_LEN as u8 {
@@ -967,9 +888,10 @@ pub fn parse_chain_order(payload: &[u8]) -> Option<Vec<u8>> {
     // 必须是 0..7 的完整排列——8 个槽位各出现一次。
     // `is_chain_permutation` 单独用时不看长度（`chain_order_from_stream` 靠
     // 调用方保证），所以这里同时要求长度正好是 CHAIN_LEN。
-    // 此前这里原样返回任何字节串，于是 `0x40` 预设列表也会被读出「链序」：
-    // 它的第 30 字节恰好是 `0x03`（EQ 的槽位索引），第 32 字节是 ASCII `E`
-    // （`EpicSolo` 的首字母）——两个任意字节凑成了一副合法的短链序。
+    //
+    // 严格性是必需的：编码后的链字段天然含两个 `0x00`（填充字节与合法的 FX1
+    // 元素），宽松的校验会让 `0x40` 预设列表也被读出「链序」——它的第 30 字节
+    // 恰好是 `0x03`（EQ 的槽位索引），第 32 字节是 ASCII `E`。
     if order.len() != CHAIN_LEN || !is_chain_permutation(&order) {
         return None;
     }
@@ -985,15 +907,10 @@ pub struct ModelName {
     pub name: String,
     /// 应答第 7 字节非零时为 `true`。
     ///
-    /// **这不是"用户模型"标记。** 本模块的早期版本基于 `resona-import` 抓包做出了相反的假设，
-    /// 该抓包中槽位 29（用户导入的 NAM）是唯一被标记的槽位。
-    /// `preset-export` 抓包推翻了这一点：它只查询槽位 9，该槽位持有*出厂*模型 `Mar8001`，
-    /// 而第 7 字节仍是 `0x01`。
-    ///
-    /// 与两个抓包都相符的留存假设是：第 7 字节标记模型**当前已加载 / 正在使用**的槽位，
-    /// 即在导入抓包中活动音箱是槽位 29 的用户 NAM，在导出抓包中活动音箱是槽位 9 的 `Mar8001`。
-    ///
-    /// 要识别用户/自定义模型，请改为将 [`ModelName::name`] 与 [`crate::models_data`] 中的出厂表比较 —— 这与标志无关。
+    /// 这标记的是**当前已加载 / 正在使用**的槽位，**不是**「用户模型」标志——
+    /// 设备内置的模型同样会被置位。
+    /// 要识别用户或自定义模型，请把 [`ModelName::name`] 与 [`crate::models_data`]
+    /// 的表比较，与本标志无关。
     pub active: bool,
     /// 名称标记 `1a 1a 00 00` 在载荷中的偏移，名称紧随其后。
     ///
@@ -1004,20 +921,13 @@ pub struct ModelName {
 
 /// 解析 `0x36` 模型列表应答载荷。
 ///
-/// 布局（已对照 `resona-import.mmon` 的全部 38 条记录和 `preset-export.mmon` 的单槽位查询验证）：
-///
 /// ```text
 /// 00 00 1e 10 00 [index] 01 [flag] 52 2f 00 [len] 00 [hash x4] 1a 1a 00 00 [name...]
 /// ```
-///
 /// * `index` 位于第 5 字节。
-/// * `flag` 位于第 7 字节 —— 见 [`ModelName::active`]；它*不是*用户模型标志。
-/// * 模型名称紧随 `1a 1a 00 00` 标记之后，以一段 **NUL 分隔的可打印分片**存储。
-///   拼接各分片即可重组设备的模型字符串：
-///   * `BogXTC` + `1`        -> `BogXTC1`
-///   * `NDSP A` + `rchetyp` + `e:` -> `NDSP Archetype:`
-///
-/// 不可打印字节和分隔用的 NUL 会被丢弃。
+/// * `flag` 位于第 7 字节 —— 见 [`ModelName::active`]。
+/// * 模型名称紧随 `1a 1a 00 00` 标记之后，以 **NUL 分隔的可打印分片**存储
+///   （如 `BogXTC` + `1` -> `BogXTC1`）。不可打印字节和分隔用的 NUL 会被丢弃。
 pub fn parse_model_name(payload: &[u8]) -> Option<ModelName> {
     if payload.len() < 6 {
         return None;
@@ -1053,7 +963,7 @@ mod tests {
     use super::*;
 
     // 槽位 0（BogXTC1）和槽位 29（RESONA NAM 导入后的 NDSP Archetype:）
-    // 的原始 `0x36` RX 载荷，逐字节取自 `resona-import.mmon`。
+    // 的原始 `0x36` RX 载荷。
     const SLOT0: &[u8] = &[
         0x00, 0x00, 0x1e, 0x10, 0x00, 0x00, 0x01, 0x00, 0x52, 0x2f, 0x00, 0x18, 0x00, 0x6a,
         0x33, 0x02, 0x57, 0x1a, 0x1a, 0x00, 0x00, 0x42, 0x6f, 0x67, 0x58, 0x54, 0x43, 0x00,
@@ -1064,8 +974,8 @@ mod tests {
         0x7c, 0x21, 0x54, 0x1a, 0x1a, 0x00, 0x00, 0x4e, 0x44, 0x53, 0x50, 0x20, 0x41, 0x00,
         0x72, 0x63, 0x68, 0x65, 0x74, 0x79, 0x70, 0x00, 0x65, 0x3a, 0x00,
     ];
-    // 来自 `preset-export.mmon` 的单槽位查询：槽位 9 持有*出厂*模型 `Mar8001`，
-    // 但第 7 字节却是 0x01。这是证明第 7 字节并非用户模型标志的反例。
+    // 槽位 9 持有设备内置的模型 `Mar8001`，第 7 字节却是 0x01——
+    // 证明该字节并非「用户模型」标志。
     const SLOT9_FACTORY_ACTIVE: &[u8] = &[
         0x00, 0x00, 0x1e, 0x10, 0x00, 0x09, 0x01, 0x01, 0x52, 0x2f, 0x00, 0x06, 0x00, 0x46,
         0x36, 0x31, 0x44, 0x1a, 0x1a, 0x00, 0x00, 0x4d, 0x61, 0x72, 0x38, 0x30, 0x30, 0x31,
@@ -1081,7 +991,7 @@ mod tests {
 
     #[test]
     fn set_preset_volume_matches_capture() {
-        // `调整预设音量.mmon`：App 滑条写 83 时载荷为 00 02 00 00 04 53。
+        // 写入 83 时的载荷。
         let (k, p) = set_preset_volume(83);
         assert_eq!(k, msg_type::DATA);
         assert_eq!(p, vec![0x00, sub::SET_FIELD, 0x00, 0x00, field::PRESET_VOLUME, 83]);
@@ -1089,22 +999,22 @@ mod tests {
 
     #[test]
     fn setting_setters_match_captures() {
-        // 设置-启用无线.mmon：66 00 02 00 00 01 01
+        // 启用无线。
         let (_k, p) = set_setting(crate::setting::WIRELESS, 1);
         assert_eq!(_k, msg_type::USB_VOLUME);
         assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::WIRELESS, 1]);
-        // 设置-输入通道调节到Ch1-Ch5-全通道.mmon：66 00 02 00 00 20 05
+        // 切到 Ch5。
         let (_k, p) = set_setting(crate::setting::INPUT_CHANNEL, 5);
         assert_eq!(_k, msg_type::USB_VOLUME);
         assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::INPUT_CHANNEL, 5]);
-        // 设置-蓝牙音量调整到0.mmon：66 00 02 00 00 10 00
+        // 蓝牙音量置 0。
         let (_k, p) = set_setting(crate::setting::BT_VOLUME, 0);
         assert_eq!(p, vec![0x00, 0x02, 0x00, 0x00, crate::setting::BT_VOLUME, 0]);
     }
 
     #[test]
     fn input_gain_encoding_is_7bit_complement_with_sign_flag() {
-        // 设置-输入增益调节到-1～-5dB.mmon：-1 → 00 02 00 02 04 7f、-5 → …7b、0 → 00…00。
+        // -1 → 00 02 00 02 04 7f；-5 → …7b；0 → 00…00。
         let (k, p) = set_input_gain(-1);
         assert_eq!(k, msg_type::USB_VOLUME);
         assert_eq!(p, vec![0x00, 0x02, 0x00, 0x02, crate::setting::INPUT_GAIN, 0x7f]);
@@ -1114,7 +1024,7 @@ mod tests {
 
     #[test]
     fn decode_settings_matches_capture_snapshots() {
-        // 设置-输入增益调节到-1～-5dB.mmon 的快照（USB=85、BT=100、增益 -1）。
+        // 增益 -1 时的快照（USB=85、BT=100）。
         let s = decode_settings(&[
             0x00, 0x00, 0x07, 0x10, 0x00, 0x01, 0x01, 0x01, 0x7f, 0x55, 0x64, 0x00, 0x00,
         ])
@@ -1176,8 +1086,7 @@ mod tests {
         }
     }
 
-    /// 针对修正后的第 7 字节语义的回归守卫：*出厂*模型也会置位该标志，
-    /// 调用方绝不能把它当作"用户模型"。
+    /// 设备内置的模型同样会置位该标志，调用方绝不能把它当作「用户模型」。
     #[test]
     fn byte7_is_not_a_user_model_flag() {
         let m = parse_model_name(SLOT9_FACTORY_ACTIVE).expect("slot9 parse");
@@ -1194,10 +1103,8 @@ mod tests {
         assert!(parse_model_name(&[]).is_none());
     }
 
-    // 来自 `preset-export.mmon` 的真实 `0x40` PRESET_LIST 应答。
-    // 下方全部字节逐字节取自抓包；
-    // 解码出的名称已与出厂预设表 -> products.nanocore.presets 交叉核对。
-    /// 真机 `debug presets 2` 的应答（0x40，98 字节），逐字节照抄。
+    // 一条真实的 `0x40` PRESET_LIST 应答。
+    /// 98 字节的 `0x40` 应答。
     const PRESET_LIST_MID: &[u8] = &[
         0x00, 0x00, 0x52, 0x00, 0x00, 0x01, 0x08, 0x01, 0x01, 0x41, 0x6d, 0x00, 0x62, 0x69,
         0x65, 0x6e, 0x74, 0x20, 0x02, 0x00, 0x01, 0x52, 0x68, 0x79, 0x4f, 0x44, 0x20, 0x00,
@@ -1272,11 +1179,6 @@ mod tests {
     }
 
     /// 分组大小不是 8 时也要能解析。
-    ///
-    /// `payload[2]` 曾被当成常量 `0x52`（恰好是 `10*8+2`），于是只有整组
-    /// 8 槽位能解；`preset list` 一直固定请求 8 槽一组把这个缺陷盖住了。
-    /// 实测 count=1..8 时 `payload[2]` 依次为 0x0c/0x16/0x20/0x2a/0x34/0x3e/
-    /// 0x48/0x52。
     #[test]
     fn preset_list_parses_groups_of_any_size() {
         for count in 1..=8usize {
@@ -1299,12 +1201,11 @@ mod tests {
     }
 
     // ─── 链序 ────────────────────────
-    // 下方三帧逐字节取自 `block-reorder.mmon`，
-    // 其中用户把 DEL 移到链位 1，把 EQ 移到链位 2。
+    // 用户把 DEL 移到链位 1、把 EQ 移到链位 2 时设备发出的帧。
     // 按角色表（DEL == 4，EQ == 7），链必须解出为 [4,0,1,2,3,5,6,7]，
     // 再解出 [4,7,0,1,2,3,5,6]。
 
-    /// `0x6D` 写入载荷，取自抓包。
+    /// `0x6D` 写入载荷。
     const CHAIN_WRITE_1: &[u8] = &[
         0x00, 0x0A, 0x00, 0x00, 0x05, 0x08, 0x04, 0x00, 0x01, 0x02, 0x03, 0x00, 0x05, 0x06, 0x07,
     ];
@@ -1359,16 +1260,14 @@ mod tests {
 
     #[test]
     fn chain_order_from_a_234_byte_preset_frame() {
-        // `factory-reset.mmon`：`ClnArp` 预设帧的链字段是恒等链序 [0,1,2,3,4,5,6,7]，
-        // 0x00 填充位于索引 2。
+        // `ClnArp` 预设帧：恒等链序 [0,1,2,3,4,5,6,7]，0x00 填充位于索引 2。
         let mut frame = vec![0u8; 234];
         frame[31] = 0x03;
         frame[32] = 0x08;
         frame[33..42].copy_from_slice(&[0x00, 0x01, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
         assert_eq!(parse_chain_order(&frame).unwrap(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
 
-        // 同一抓包中的判别性（非恒等）样本：
-        // `ColdCln` -> [0,1,2,3,5,4,6,7]。
+        // `ColdCln`：非恒等链序 [0,1,2,3,5,4,6,7]。
         let mut f2 = vec![0u8; 234];
         f2[31] = 0x03;
         f2[32] = 0x08;
@@ -1456,10 +1355,10 @@ mod tests {
     }
 
     // ─── 快照尾部链字段 ────────────────
-    // 逐字节取自真机（fw 1.04，USB）的 `0x63` 快照载荷尾部。
+    // 一条 `0x63` 快照载荷的尾部。
 
     /// 恒等链序快照的末 12 字节（写入实验前的原始状态，
-    /// 与 8 天前 `data/baseline-20260922/snapshot.txt` 的尾部逐字节一致）。
+    /// 尾部字节完全一致）。
     const SNAPSHOT_TAIL_IDENTITY: [u8; 12] =
         [0x3f, 0x08, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x07];
 
@@ -1490,16 +1389,14 @@ mod tests {
         let mut p = vec![0x00u8; 185];
         p.extend_from_slice(&bad);
         assert!(parse_snapshot_chain_order(&p).is_none());
-        // 分隔字节缺失（官方 App BLE 抓包中的形态，末 9 字节的索引 7 不是 0x00）。
+        // 分隔字节缺失（BLE 形态，末 9 字节的索引 7 不是 0x00）。
         let mut q = vec![0x00u8; 185];
         q.extend_from_slice(&[0x3f, 0x08, 0x00, 0x01, 0x02, 0x00, 0x03, 0x04, 0x05, 0x06, 0x07]);
         assert!(parse_snapshot_chain_order(&q).is_none());
     }
 
     // ─── 快照完整解码 ────────────────
-    // 两个向量逐字节取自 40 组出厂基线
-    // （nanocore-reverse/data/snapshots-factory40/slot_{0,1}.bin，
-    //   2026-09-30 采集于官方恢复出厂后的原厂状态）。
+    // 两份设备内置的预设快照。
 
     fn unhex(s: &str) -> Vec<u8> {
         (0..s.len())
@@ -1580,8 +1477,8 @@ mod tests {
 
     #[test]
     fn snapshot_state_decodes_chain_from_the_data_stream() {
-        // 恒等链序：两条出厂基线 + 真机 USB 快照（169B，count@len-10，
-        // 旧的 `parse_snapshot_chain_order` 锚点失效）都以裸 8 字节结束。
+        // 恒等链序：三条 169B 快照（count@len-10，使旧的
+        // `parse_snapshot_chain_order` 锚点失效）都以裸 8 字节结束。
         for hex in [SNAP_CLNARP, SNAP_AMBIENT] {
             let s = decode_snapshot_state(&unhex(hex)).expect("decode");
             assert_eq!(s.chain.as_deref(), Some(&[0, 1, 2, 3, 4, 5, 6, 7][..]));
@@ -1691,7 +1588,7 @@ mod tests {
         let (kind, p) = param_write(0x00, 0x01, 0.25);
         assert_eq!(kind, msg_type::DATA);
         assert_eq!(p.len(), 11);
-        // 00 07 00 [mask] 01 [b5] [b6] <float32> —— 与 805 条抓包同构。
+        // 00 07 00 [mask] 01 [b5] [b6] <float32>
         assert_eq!(&p[..3], &[0x00, 0x07, 0x00]);
         assert_eq!(&p[4..7], &[0x01, 0x00, 0x01]);
         // 0.25f32 = 0x3E800000 -> LE `00 00 80 3E`；v2 的 bit7 被剥掉 -> mask bit5。
@@ -1701,7 +1598,7 @@ mod tests {
 
     #[test]
     fn param_write_carries_the_stripped_bits_in_the_mask() {
-        // 真机验证过的两条编码（cab b5=3 b6=1）。
+        // cab b5=3 b6=1 的两条编码。
         let (_, p) = param_write(0x03, 0x01, 0.6);
         assert_eq!(p[3], 0x18);
         assert_eq!(&p[7..], &[0x1a, 0x19, 0x19, 0x3f]);
@@ -1737,7 +1634,7 @@ mod name_field_tests {
 
     #[test]
     fn name_field_matches_all_factory_forms() {
-        // 逐字节对照恢复出厂抓包中的出厂名（40/40 的抽样验证）。
+        // 逐字节对照设备内置的预设名。
         let cases: &[(&str, &str)] = &[
             ("ClnArp", "436c6e417270000000"),
             ("Ambient", "416d6269656e007400"),
