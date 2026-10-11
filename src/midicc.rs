@@ -117,7 +117,7 @@ pub fn block_type(channel: u8, block: Block, type_id: u8) -> Vec<u8> {
     control_change(channel, block.type_cc(), type_id)
 }
 
-/// 音箱块中可选模型的数量（有效索引 `0..=29`）。
+/// 音箱块中可选模型的数量（有效索引 `0..=29`）；31–38 是 FX2 drive pedals。
 pub const AMP_MODEL_COUNT: u8 = 30;
 
 /// 箱体 / IR 块中可选模型的数量（有效索引 `0..=29`）。
@@ -237,5 +237,14 @@ mod tests {
     fn amp_and_cab_model_tables_share_the_30_slot_bound() {
         assert_eq!(AMP_MODEL_COUNT, CAB_MODEL_COUNT);
         assert_eq!(AMP_MODEL_COUNT, 30);
+    }
+
+    /// CC43 只覆盖 38 个音箱槽里的前 30 个。
+    #[test]
+    fn cc_selectable_amp_models_are_the_first_30_of_38_slots() {
+        assert_eq!(crate::asset::AMP_SLOTS, 38);
+        assert_eq!(crate::models_data::AMP.len(), usize::from(AMP_MODEL_COUNT) + 8);
+        assert_eq!(AMP_MODEL_COUNT, crate::asset::AMP_SLOTS - 8);
+        assert_eq!(CAB_MODEL_COUNT, crate::asset::IR_SLOTS);
     }
 }
