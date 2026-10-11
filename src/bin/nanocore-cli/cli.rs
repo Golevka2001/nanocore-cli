@@ -128,17 +128,9 @@ pub enum Command {
     ///  parameters. Modules are listed in slot order; the `chain` line gives their physical
     ///  order.
     Show {
-        /// Skip the preset-name lookup (one extra round trip); the `preset` line
-        /// then shows the slot number only
+        /// Also query the amp / cab models (about 40 extra round trips)
         #[arg(long)]
-        no_name: bool,
-        /// Skip the settings-page block (one extra round trip)
-        #[arg(long)]
-        no_settings: bool,
-        ///  Skip the amp / cab model lookup (about 40 extra round trips). The `AMP` / `CAB`
-        ///  rows then show no model
-        #[arg(long)]
-        no_model: bool,
+        full: bool,
     },
 
     /// Manage presets

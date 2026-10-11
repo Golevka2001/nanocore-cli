@@ -46,6 +46,7 @@ nanocore-cli tuner on / off               # 调音表开关
 nanocore-cli models / models --live       # 内置模型表 / 真机查询
 
 nanocore-cli show                         # 状态快照：链序、预设、音量、各模块
+nanocore-cli show --full                  # 追加 amp / cab 型号（约 40 次往返）
 
 nanocore-cli settings show                # 设置页全览（音量/无线/回放/增益/通道）
 nanocore-cli settings usb-volume 90        # USB 输出音量

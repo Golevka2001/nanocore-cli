@@ -11,39 +11,28 @@ use crate::common::{Failure, open_device, send_standard, transact};
 /// 载荷从 `[3]` 起是连续 `[mask][7 data]`
 /// 打包流，数据流 = 前导 + 8 条链位记录 + 链尾。
 ///
-/// 另有两处补充查询，都可跳过（`--no-name` / `--no-settings`），因为它们
-/// 都不是 `0x63` 的内容，缺了不影响其余字段：
-/// * 预设名：一次 `0x40`（只查当前槽位所在的那一批，1 次往返）
-/// * 设置页：一次 `0x65`
+/// 另有两处补充查询各 1 次往返，缺了不影响其余字段：预设名（`0x40`，
+/// 只查当前槽位所在的那一批）与设置页（`0x65`）。
 ///
-/// `--no-model` 跳过第三处补充查询：amp / cab 型号。它们**不在** `0x63` 里
-/// （那两个块的 `variant` 恒为 0），要各查一张表 —— amp 走 `0x36`（38 项）、
-/// cab 走 `0x56`（30 项 IR，且必须先走工厂恢复的前置序列才应答），合计约 40 次
-/// 往返。查不到就整段不印型号，不让 `show` 因此失败。
+/// `--full` 加第三处：amp / cab 型号。它们**不在** `0x63` 里（那两个块的
+/// `variant` 恒为 0），要各查一张表 —— amp 走 `0x36`（38 项）、cab 走 `0x56`
+/// （30 项 IR，且必须先走工厂恢复的前置序列才应答），合计约 40 次往返。
+/// 查不到就整段不印型号，不让 `show` 因此失败。
 ///
 /// 渲染由 [`crate::common::render_snapshot`] 与
 /// [`crate::settings::render_settings`] 承担，`debug snapshot` 与
 /// `settings show` 分别复用同一份实现。
-pub fn cmd_show(
-    no_name: bool,
-    no_settings: bool,
-    no_model: bool,
-    conn: &Conn,
-) -> Result<(), Failure> {
+pub fn cmd_show(full: bool, conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
-    let name = if no_name {
-        None
-    } else {
-        // 名字是补充信息：查不到就让 `preset` 行只显示编号，不因此让整个命令失败。
-        protocol::decode_snapshot_state(&s.payload).and_then(|st| {
-            dev.read_preset_name(st.preset_index)
-                .ok()
-                .flatten()
-                .filter(|e| e.named)
-                .map(|e| e.name)
-        })
-    };
+    // 名字是补充信息：查不到就让 `preset` 行只显示编号，不因此让整个命令失败。
+    let name = protocol::decode_snapshot_state(&s.payload).and_then(|st| {
+        dev.read_preset_name(st.preset_index)
+            .ok()
+            .flatten()
+            .filter(|e| e.named)
+            .map(|e| e.name)
+    });
     // amp 型号（`0x36` 的 active 槽）与 cab 型号（`0x56` 的 active 槽）。两者都
     // 查不到就传 `None` —— 上一版把恒 0 的 `variant` 印成 `type=1` 就是「查不到
     // 就编一个」的结果。
@@ -51,27 +40,25 @@ pub fn cmd_show(
     // 印 `ModelInfo::name`（`Bogner XTC` / `VOX AC30 2x12`）而非 `code`：
     // 设备侧存的是 8 字符定宽码（`BogXTC1` / `AC3021`），不完整也不可读。
     // 槽号在表外（用户导入的 NAM 之类）时印设备返回的码。
-    let amp = if no_model {
-        None
+    let (amp, cab) = if full {
+        (
+            dev.read_active_amp_slot()
+                .ok()
+                .flatten()
+                .map(|idx| match nanocore::models_data::lookup_amp(idx) {
+                    Some(m) => m.name.to_string(),
+                    None => format!("slot {idx}"),
+                }),
+            dev.read_active_ir_slot()
+                .ok()
+                .flatten()
+                .map(|s| match nanocore::models_data::lookup_cab(s.index) {
+                    Some(m) => m.name.to_string(),
+                    None => s.name_str(),
+                }),
+        )
     } else {
-        dev.read_active_amp_slot()
-            .ok()
-            .flatten()
-            .map(|idx| match nanocore::models_data::lookup_amp(idx) {
-                Some(m) => m.name.to_string(),
-                None => format!("slot {idx}"),
-            })
-    };
-    let cab = if no_model {
-        None
-    } else {
-        dev.read_active_ir_slot()
-            .ok()
-            .flatten()
-            .map(|s| match nanocore::models_data::lookup_cab(s.index) {
-                Some(m) => m.name.to_string(),
-                None => s.name_str(),
-            })
+        (None, None)
     };
     // 分节标题而非一句总起——`show` 现在有三段（快照 / 名称来源 / 设置页），
     // 顶格说明一句反而多余。各节自带标题，读者扫一眼就知道边界在哪。
@@ -86,13 +73,14 @@ pub fn cmd_show(
         )
     );
     // 同理：设置页读不到就整段略过，不让 `show` 因此失败。
-    if !no_settings
-        && let Ok(st) = dev.read_settings()
-    {
+    if let Ok(st) = dev.read_settings() {
         // 两节字段名都是「名字 = 值」，空行分不开边界，用横线。
         crate::common::divider();
         println!("settings:");
         println!("{}", crate::settings::render_settings(&st, "  "));
+    }
+    if !full {
+        eprintln!("hint: `show --full` adds the amp / cab model (about 40 round trips)");
     }
     Ok(())
 }

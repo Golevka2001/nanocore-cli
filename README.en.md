@@ -46,6 +46,7 @@ nanocore-cli tuner on / off               # tuner on/off
 nanocore-cli models / models --live       # built-in model tables / live query
 
 nanocore-cli show                         # state snapshot: chain, preset, volume, modules
+nanocore-cli show --full                  # add the amp / cab models (~40 round trips)
 
 nanocore-cli settings show                # settings overview (volume/wireless/playback/gain/channel)
 nanocore-cli settings usb-volume 90        # USB output volume
