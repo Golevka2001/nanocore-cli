@@ -175,6 +175,14 @@ impl ReadTarget {
                 slots
             ));
         }
+        // CLI 的槽号是 1-based，且与 `.npreset` 包内的 `slot_NN` 命名**同号**。
+        //
+        // 这一条是被真机实验纠正的：README / docs 里的说法是"CLI 槽 = 包内 NN + 1"
+        // （`resources/models.json` 的 note 也这么写），据此 `asset write amp 2 amp/slot_01.ead`
+        // 会写到固件 index 1，而那其实是包内 `slot_02.ead` 的内容——写错槽且无法察觉。
+        //
+        // 实测依据（2026-10-11）：把 `amp/slot_01.ead` 写进 CLI 槽 2，读回 DDPP 的
+        // crc32 = 0x44bc5f64，与该槽写入前的原始内容**逐字节相同**，证明它写对了。
         let (total, plan) = asset::read_plan(region_byte, slot - 1)
             .ok_or_else(|| format!("internal: no plan for {} slot {slot}", region.name()))?;
         Ok(Self {
