@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 
 pub const MANIFEST_SCHEMA: &str = "nanocore.preset.bundle";
 pub const DEVICE_KIND: &str = "nanocore";
+/// `fx2_slot` 的「无」取值。
+pub const FX2_SLOT_NONE: u8 = 255;
 
 /// manifest 顶层。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +54,7 @@ pub struct PresetSpec {
     pub slots: Vec<SlotSpec>,
     pub amp_slot: u8,
     pub ir_slot: u8,
-    /// fx2 踏板槽引用（30-37，255 = 无）。
+    /// fx2 踏板槽引用（30-37，`FX2_SLOT_NONE` = 无）。
     pub fx2_slot: u8,
     pub preset_volume: u8,
     #[serde(default)]
@@ -73,6 +75,21 @@ pub struct SlotSpec {
     pub params: Vec<f32>,
     #[serde(default)]
     pub tempo_sync: Vec<serde_json::Value>,
+}
+
+impl PresetSpec {
+    /// 0x43 写不了、会被丢弃的非空透传字段及条目数。
+    pub fn passthrough_counts(&self) -> Vec<(&'static str, usize)> {
+        let mut v = vec![
+            ("fx2Slot", usize::from(self.fx2_slot != FX2_SLOT_NONE)),
+            ("expressionMappings", self.expression_mappings.len()),
+            ("extraTlvs", self.extra_tlvs.len()),
+            ("runtimeEffects", self.runtime_effects.len()),
+            ("tempoSync", self.slots.iter().map(|s| s.tempo_sync.len()).sum()),
+        ];
+        v.retain(|(_, n)| *n > 0);
+        v
+    }
 }
 
 /// 资产引用条目。
@@ -264,6 +281,7 @@ fn iso8601_now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn manifest_round_trips_through_json() {
@@ -328,6 +346,40 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
+    /// fx2_slot 为「无」时不该报；映射 / tempoSync 按条目数汇总。；映射 / tempoSync 按条目数汇总。
+    #[test]
+    fn passthrough_counts_skips_empty_fields() {
+        let mut p = PresetSpec {
+            version: 7,
+            name: "X".into(),
+            chain_order: [0, 1, 2, 3, 4, 5, 6, 7],
+            slots: vec![SlotSpec {
+                effect_id: 7,
+                variant: 0,
+                enabled: true,
+                params: vec![],
+                tempo_sync: vec![json!({}), json!({})],
+            }],
+            amp_slot: 5,
+            ir_slot: 4,
+            fx2_slot: FX2_SLOT_NONE,
+            preset_volume: 84,
+            expression_mappings: vec![json!({})],
+            extra_tlvs: vec![],
+            runtime_effects: vec![json!({}), json!({}), json!({})],
+        };
+        assert_eq!(
+            p.passthrough_counts(),
+            vec![
+                ("expressionMappings", 1),
+                ("runtimeEffects", 3),
+                ("tempoSync", 2)
+            ]
+        );
+        p.fx2_slot = 30;
+        assert_eq!(p.passthrough_counts()[0], ("fx2Slot", 1));
+    }
+
     #[test]
     fn parses_the_app_produced_manifest() {
         // App 产物（ToneCommand 1.3.1 全量备份）的 manifest.json 原样 fixture：
@@ -353,6 +405,30 @@ mod tests {
         assert_eq!(p0.preset.slots[0].params.len(), 6);
         assert_eq!(p0.preset.slots[7].effect_id, 6);
         assert_eq!(p0.preset.slots[7].params.len(), 4);
+        // fx2Slot 是真实槽引用（出厂 30–36，另有 3 条为 255=无），其余透传字段全空。
+        assert_eq!(p0.preset.passthrough_counts(), vec![("fx2Slot", 1)]);
+        assert!(m
+            .presets
+            .iter()
+            .all(|p| p.preset.expression_mappings.is_empty()
+                && p.preset.extra_tlvs.is_empty()
+                && p.preset.runtime_effects.is_empty()
+                && p.preset.slots.iter().all(|s| s.tempo_sync.is_empty())));
+        assert_eq!(
+            m.presets
+                .iter()
+                .filter(|p| p.preset.passthrough_counts().is_empty())
+                .count(),
+            3
+        );
+        assert!(m
+            .presets
+            .iter()
+            .filter_map(|p| match p.preset.fx2_slot {
+                FX2_SLOT_NONE => None,
+                v => Some(v),
+            })
+            .all(|v| (30..=36).contains(&v)));
         // 与 Rust 构造器交叉验证：manifest → build_frames 必须与 restore
         // 第一组 0x43 对（preset 0 / ClnArp）逐字节一致。
         let (lo, sh) = crate::preset43::build_frames(&p0.preset.to_preset_write())

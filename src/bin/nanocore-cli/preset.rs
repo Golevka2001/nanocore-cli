@@ -1,6 +1,9 @@
 //! `preset` 命令：选择 / 步进 / 列出预设槽位 / 恢复出厂预设。
 
+use std::collections::BTreeMap;
+
 use nanocore::midicc;
+use nanocore::preset_bundle::FX2_SLOT_NONE;
 
 use crate::cli::{Conn, PresetCmd};
 use crate::common::{Failure, open_device, progress, send_standard, transact};
@@ -105,7 +108,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 },
             };
             let ir = match ir_slot {
-                None | Some(0) => 255,
+                None | Some(0) => FX2_SLOT_NONE,
                 Some(v) => v - 1,
             };
             let spec = nanocore::preset_bundle::PresetSpec {
@@ -115,7 +118,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 slots,
                 amp_slot: amp,
                 ir_slot: ir,
-                fx2_slot: 255,
+                fx2_slot: FX2_SLOT_NONE,
                 preset_volume: state.preset_volume,
                 expression_mappings: vec![],
                 extra_tlvs: vec![],
@@ -141,6 +144,10 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 slot_disp(amp),
                 slot_disp(ir)
             );
+            println!(
+                "note: expressionMappings / extraTlvs / runtimeEffects / fx2Slot / \
+                 tempoSync are written empty — the snapshot does not carry them"
+            );
             Ok(())
         }
         PresetCmd::Import { file, slot, with_assets, dry_run } => {
@@ -148,6 +155,23 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 .map_err(Failure::error)?;
             if manifest.presets.is_empty() {
                 return Err(Failure::error("the bundle contains no presets"));
+            }
+            let dropped: BTreeMap<&str, usize> = manifest
+                .presets
+                .iter()
+                .flat_map(|e| e.preset.passthrough_counts())
+                .fold(BTreeMap::new(), |mut m, (k, n)| {
+                    *m.entry(k).or_default() += n;
+                    m
+                });
+            if !dropped.is_empty() {
+                let list: Vec<String> =
+                    dropped.iter().map(|(k, n)| format!("{k}×{n}")).collect();
+                eprintln!(
+                    "warning: the bundle carries {}; 0x43 cannot express them, importing \
+                     will drop them",
+                    list.join(", ")
+                );
             }
             if manifest.presets.len() > 40 {
                 return Err(Failure::error(format!(
