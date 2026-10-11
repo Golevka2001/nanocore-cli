@@ -26,6 +26,7 @@ nanocore-cli preset next / prev           # 切换到下/上一个预设
 nanocore-cli preset volume 80             # 预设音量
 nanocore-cli preset rename 5 MyRig        # 重命名预设槽
 nanocore-cli preset export 5 --out rig.npreset        # 导出预设为 .npreset
+nanocore-cli preset export 5 --out rig.npreset --with-assets   # 同时嵌入引用的 IR / 音箱模型
 nanocore-cli preset import rig.npreset --with-assets  # 从 .npreset 导入（含 IR/amp 资产）
 nanocore-cli preset restore-factory       # 重放官方"仅 DSP 恢复出厂"（覆盖 1-40 槽）
 

@@ -26,6 +26,7 @@ nanocore-cli preset next / prev           # step to the next / previous preset
 nanocore-cli preset volume 80             # preset volume
 nanocore-cli preset rename 5 MyRig        # rename a preset slot
 nanocore-cli preset export 5 --out rig.npreset        # export a preset as .npreset
+nanocore-cli preset export 5 --out rig.npreset --with-assets   # embed the referenced IR / amp models too
 nanocore-cli preset import rig.npreset --with-assets  # import from .npreset (with IR/amp assets)
 nanocore-cli preset restore-factory       # replay the official DSP-only factory restore (overwrites slots 1-40)
 

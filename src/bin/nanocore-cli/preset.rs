@@ -2,11 +2,12 @@
 
 use std::collections::BTreeMap;
 
+use nanocore::asset;
 use nanocore::midicc;
-use nanocore::preset_bundle::FX2_SLOT_NONE;
+use nanocore::preset_bundle::{AssetRef, BundleAssets, FX2_SLOT_NONE};
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{Failure, open_device, progress, send_standard, transact};
+use crate::common::{Dev, Failure, open_device, progress, send_standard, transact};
 
 /// wire 槽位（0 起，`255` = unknown）→ 用户编号显示（1 起 / `unknown`）。
 fn slot_disp(v: u8) -> String {
@@ -15,6 +16,73 @@ fn slot_disp(v: u8) -> String {
     } else {
         format!("#{}", v + 1)
     }
+}
+
+/// 读取引用到的 amp / IR 槽，返回 manifest 的资产条目与 ZIP 资产内容。
+///
+/// IR 读回的是 4096 B f32le，`import --with-assets` 能原样写回。
+/// amp 读回的是设备内部 DDBP 格式而非 `.ead`（转换发生在设备写入时），
+/// 因此标 `ead-payload` 由导入侧跳过 —— DDBP 详情仍未解。
+fn collect_assets(
+    dev: &mut Dev,
+    amp: u8,
+    ir: u8,
+) -> Result<(Vec<AssetRef>, Vec<AssetRef>, BundleAssets), Failure> {
+    fn read_one(
+        dev: &mut Dev,
+        assets: &mut BundleAssets,
+        region: u8,
+        wire: u8,
+        path: String,
+        encoding: &str,
+    ) -> Result<AssetRef, Failure> {
+        let label = if region == asset::REGION_AMP { "amp" } else { "ir" };
+        let (total, plan) = asset::read_plan(region, wire)
+            .ok_or_else(|| Failure::error(format!("no read plan for {label} slot {}", wire + 1)))?;
+        println!("reading {label} slot {}…", wire + 1);
+        let blob = dev
+            .read_asset(&plan, total, |done, n| {
+                eprint!("\r  chunk {done}/{n}");
+            })
+            .map_err(|e| e.to_string())?;
+        eprintln!();
+        let crc = asset::crc32(&blob);
+        println!("  {} bytes, crc32 {crc:08x}", blob.len());
+        assets.insert(path.clone(), blob);
+        Ok(AssetRef {
+            slot: wire,
+            name: String::new(),
+            asset: path,
+            length: total,
+            crc32: crc,
+            encoding: encoding.to_string(),
+        })
+    }
+
+    let mut assets = BundleAssets::new();
+    let mut amp_slots = Vec::new();
+    let mut ir_slots = Vec::new();
+    if amp != FX2_SLOT_NONE {
+        amp_slots.push(read_one(
+            dev,
+            &mut assets,
+            asset::REGION_AMP,
+            amp,
+            format!("amp/slot_{amp:02}.bin"),
+            "ead-payload",
+        )?);
+    }
+    if ir != FX2_SLOT_NONE {
+        ir_slots.push(read_one(
+            dev,
+            &mut assets,
+            asset::REGION_IR,
+            ir,
+            format!("ir/slot_{ir:02}.bin"),
+            "f32le",
+        )?);
+    }
+    Ok((amp_slots, ir_slots, assets))
 }
 
 pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
@@ -42,7 +110,13 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             }
             Ok(())
         }
-        PresetCmd::Export { slot, out, amp_slot, ir_slot } => {
+        PresetCmd::Export {
+            slot,
+            out,
+            amp_slot,
+            ir_slot,
+            with_assets,
+        } => {
             // 用户编号 1–64 → wire 槽位 0–63。
             let wire = slot - 1;
             let mut dev = open_device(conn)?;
@@ -132,10 +206,19 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     preset: spec,
                 }],
             );
+            let mut manifest = manifest;
+            let assets = if with_assets {
+                let (amp_slots, ir_slots, assets) = collect_assets(&mut dev, amp, ir)?;
+                manifest.amp_slots = amp_slots;
+                manifest.ir_slots = ir_slots;
+                assets
+            } else {
+                Default::default()
+            };
             nanocore::preset_bundle::write_bundle(
                 std::path::Path::new(&out),
                 &manifest,
-                &Default::default(),
+                &assets,
             )
             .map_err(Failure::error)?;
             println!(
@@ -232,6 +315,14 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     eprintln!();
                 }
                 for a in &manifest.amp_slots {
+                    if a.encoding == "ead-payload" {
+                        eprintln!(
+                            "note: amp slot {} is a device-internal DDBP blob; skipping \
+                             (its .ead source is not recoverable)",
+                            a.slot + 1
+                        );
+                        continue;
+                    }
                     let Some(blob) = assets.get(&a.asset) else {
                         eprintln!(
                             "note: bundle references {} without embedded data; \

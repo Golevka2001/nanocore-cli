@@ -225,6 +225,9 @@ pub enum PresetCmd {
         /// Override the IR slot reference (1–30, 0 = unknown; default: 0, limited App compatibility)
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=30))]
         ir_slot: Option<u8>,
+        /// Also read the referenced amp / IR slots from the device and embed them
+        #[arg(long)]
+        with_assets: bool,
     },
     /// Import a preset from a .npreset bundle (overwrites the target slot)
     Import {
