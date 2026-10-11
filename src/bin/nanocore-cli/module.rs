@@ -469,8 +469,8 @@ fn report_model_selection(block: Block, id: u8, wire: u8) -> Result<(), Failure>
     if wire >= count {
         return Err(Failure::error(format!(
             "{label} model number must be 1-{count} (device has {count} models); \
-             {id} would be silently ignored — drive pedals 31-38 belong to FX2 and \
-             need `debug variant`, not the {label} module"
+             {id} would be silently ignored — drive pedals 31-38 are outside CC \
+             range and belong to FX2, not the {label} module"
         )));
     }
     match name {

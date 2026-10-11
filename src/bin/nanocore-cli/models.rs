@@ -7,7 +7,7 @@ use nanocore::protocol;
 use crate::cli::{Conn, ModelTableArg};
 use crate::common::{Dev, Failure, open_device};
 
-/// 表标题：打印的编号即用户可直接填入 `module amp model` / `debug variant` 的编号（1 起）。
+/// 表标题：打印的编号即 `module amp model` / `module cab model` 的编号（1 起）。
 const AMP_HEADER: &str = "AMP models (1-38):";
 const CAB_HEADER: &str = "CAB / IR models (1-30):";
 

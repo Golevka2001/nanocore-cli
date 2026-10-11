@@ -32,8 +32,7 @@ fn chain_position_candidates() -> Vec<CompletionCandidate> {
 /// 编号的含义随模块而变（amp/cab 是 1–30 的型号表，其余模块是各自的效果类型
 /// 编号），而 clap 的候选项是静态的——拿不到同一命令行的模块名。因此这里只给
 /// 中性提示：候选必须对任何模块都成立，标注音箱名会对非 amp/cab 模块产生误导。
-/// 31–38 不在候选内：amp/cab 的 CC 路径会拒绝它们，那几个槽位只对
-/// `debug variant` 有意义。
+/// 31–38（FX2 drive pedals）不在候选内：CC 路径只能寻址 1–30。
 fn model_id_candidates() -> Vec<CompletionCandidate> {
     (1u8..=30)
         .map(|i| {
@@ -43,8 +42,6 @@ fn model_id_candidates() -> Vec<CompletionCandidate> {
         .collect()
 }
 
-/// `debug variant <N>` 的补全候选：完整的音箱 / 踏板槽位表（1–38），
-/// 该命令正是唯一能寻址 31–38 的路径，因此这里标注型号名是准确的。
 // ─── CLI 定义 ─────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
@@ -340,7 +337,8 @@ pub enum ModuleAction {
     /// Choose the model / effect type
     ///
     /// `amp` and `cab` take 1–30; the other modules take their own effect type
-    /// number. 31–38 (FX2 drive pedals) are not reachable here — use `debug variant`.
+    /// number. 31–38 (FX2 drive pedals) are out of CC range — read them with
+    /// `asset read amp`.
     Model {
         #[arg(add = ArgValueCandidates::new(model_id_candidates), value_parser = clap::value_parser!(u8).range(1..=255))]
         id: u8,
@@ -404,6 +402,7 @@ pub enum SettingsCmd {
     /// Set the input gain (-20 to +20 dB)
     InputGain {
         /// Gain value, e.g. `-3` or `0`
+        #[arg(allow_negative_numbers = true)]
         db: i8,
     },
     /// Set the USB output volume (0–100)
