@@ -18,7 +18,7 @@
 //! 硬件实测（固件 1.04）表明该说法**对音箱和箱体块不成立**：
 //! `CC43 = n` 选择音箱槽位 `n`，`CC44 = n` 选择箱体槽位 `n`，
 //! 二者都作用于 [`crate::models_data`] 中的 30 项表。值 `>= 30` 会被忽略。
-//! 使用 [`amp_model`] / [`cab_model`]。
+//! 使用 [`block_type`]。
 //! 这意味着普通第三方 MIDI 控制器即可切换音箱/箱体模型——无需 SysEx。
 
 /// 在 `channel`（0–15）通道上 Control Change 的 MIDI 状态字节。
@@ -113,6 +113,12 @@ pub fn block_enable(channel: u8, block: Block, on: bool) -> Vec<u8> {
 }
 
 /// 发送块类型/效果/模型选择（标准 CC）。
+///
+/// amp / cab 的实测行为：OEM 指南未给出这两块的类型表，并声称模型选择未分配，
+/// 但硬件上 CC43 / CC44 确实在选槽位 —— `CC43 = 20` → `RoJC120`、`CC43 = 29` →
+/// 用户导入的 NAM、`CC44 = 14` → `Og412`、`CC44 = 29` → `Mar412`；`= 30` 与 `= 37`
+/// 均无变化。索引 `>= 30` 被静默忽略，调用方应先行校验。
+/// `models_data::AMP[30..38]` 的踏板条目在此不可达，属 FX2 块。
 pub fn block_type(channel: u8, block: Block, type_id: u8) -> Vec<u8> {
     control_change(channel, block.type_cc(), type_id)
 }
@@ -122,47 +128,6 @@ pub const AMP_MODEL_COUNT: u8 = 30;
 
 /// 箱体 / IR 块中可选模型的数量（有效索引 `0..=29`）。
 pub const CAB_MODEL_COUNT: u8 = 30;
-
-/// 按从 0 开始的固件槽位（`0..=29`）选择音箱块模型。
-///
-/// 它借助标准的 **CC43**——OEM 指南将其列为音箱块的"类型 CC"。
-/// 指南随后声称 *"此处未分配模型/配置与 IR 槽位选择。"*，
-/// 并且**没有**给出音箱或箱体的类型表。**该说法对音箱块不成立。**
-///
-/// 已在硬件上验证（`Nanocore`，固件 1.04），方法为只读快照对比，
-/// 并辅以对设备显示屏的目视确认：
-///
-/// | 发送 | 设备显示 |
-/// |------|----------------|
-/// | `CC43 = 20` | `RoJC120` (Roland JC-120) |
-/// | `CC43 = 29` | 槽位 29（用户导入的 NAM 模型） |
-/// | `CC43 = 30` | **无变化**——超出范围，被拒绝 |
-/// | `CC43 = 37` | **无变化**——超出范围，被拒绝 |
-///
-/// 因此 `CC43 = n` 从与 SysEx `SET_FIELD(VARIANT, n)` 路径相同的 30 项表中选择音箱槽位 `n`
-/// （参见 `models_data::AMP`）。索引 `>= 30` 会被设备静默忽略，调用方应先行校验。
-/// 注意 `models_data::AMP[30..38]` 处的踏板效果条目**无法**在此访问——
-/// 它们属于 FX2 块。
-pub fn amp_model(channel: u8, index: u8) -> Vec<u8> {
-    control_change(channel, Block::Amp.type_cc(), index)
-}
-
-/// 按从 0 开始的固件槽位（`0..=29`）选择箱体 / IR 块模型。
-///
-/// 借助标准的 **CC44**，情况与 [`amp_model`] 相同：OEM 指南
-/// 未给出箱体类型表，并声称模型选择未分配，但在硬件上
-/// `CC44 = n` 选择箱体槽位 `n`。
-///
-/// | 发送 | 设备显示 |
-/// |------|----------------|
-/// | `CC44 = 14` | `Og412` (Orange Vintage30 4x12) |
-/// | `CC44 = 29` | `Mar412` (Marshall 4x12) |
-/// | `CC44 = 30` | **无变化**——超出范围，被拒绝 |
-///
-/// 索引 `>= 30` 会被静默忽略，调用方应先行校验。
-pub fn cab_model(channel: u8, index: u8) -> Vec<u8> {
-    control_change(channel, Block::Cab.type_cc(), index)
-}
 
 /// 全局控制（参见 `midi_cc_reference.md`）。
 pub mod global {
@@ -221,13 +186,19 @@ mod tests {
     /// 下面的值与硬件上验证的值完全一致（设备显示屏经目视读取）。
     #[test]
     fn amp_and_cab_model_use_cc43_cc44() {
-        assert_eq!(amp_model(0, 20), vec![0xB0, 43, 20]); // -> RoJC120
-        assert_eq!(cab_model(0, 14), vec![0xB0, 44, 14]); // -> Og412
-        assert_eq!(amp_model(0, AMP_MODEL_COUNT - 1), vec![0xB0, 43, 29]);
-        assert_eq!(cab_model(0, CAB_MODEL_COUNT - 1), vec![0xB0, 44, 29]);
+        assert_eq!(block_type(0, Block::Amp, 20), vec![0xB0, 43, 20]); // -> RoJC120
+        assert_eq!(block_type(0, Block::Cab, 14), vec![0xB0, 44, 14]); // -> Og412
+        assert_eq!(
+            block_type(0, Block::Amp, AMP_MODEL_COUNT - 1),
+            vec![0xB0, 43, 29]
+        );
+        assert_eq!(
+            block_type(0, Block::Cab, CAB_MODEL_COUNT - 1),
+            vec![0xB0, 44, 29]
+        );
         // 通道号被遵循，数据字节保持 7 比特。
-        assert_eq!(amp_model(3, 5), vec![0xB3, 43, 5]);
-        assert_eq!(cab_model(0, 200), vec![0xB0, 44, 200 & 0x7F]);
+        assert_eq!(block_type(3, Block::Amp, 5), vec![0xB3, 43, 5]);
+        assert_eq!(block_type(0, Block::Cab, 200), vec![0xB0, 44, 200 & 0x7F]);
     }
 
     /// 两个模型表都恰好覆盖 30 个槽位——
