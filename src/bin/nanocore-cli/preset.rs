@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use nanocore::midicc;
 use nanocore::preset_bundle::FX2_SLOT_NONE;
 
 use crate::cli::{Conn, PresetCmd};
@@ -58,7 +57,7 @@ fn wait_preset_settled(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure>
             if idx == want {
                 return Ok(());
             }
-        } else if last == Some(idx) && stable_since.elapsed() >= Duration::from_millis(400) {
+        } else if last == Some(idx) && stable_since.elapsed() >= Duration::from_millis(2000) {
             return Ok(());
         } else if last != Some(idx) {
             stable_since = Instant::now();
@@ -429,74 +428,86 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             }
             Ok(())
         }
-        PresetCmd::Rename { slot, name } => {
-            let field = nanocore::protocol::encode_preset_name_field(&name)
-                .map_err(Failure::error)?;
-            let wire = slot - 1;
-            let mut dev = open_device(conn)?;
-            // field 0x09 选槽 → 确认设备已切过去 → 写名字区。
-            //
-            // ⚠️ 真机实测（2026-10-11，fw 1.04）：设备对 `select_preset` **只回
-            // status 00 的应答，从不发自发切槽事件**（5 s 内 drain 到的流量是
-            // "nothing arrived"）。所以原先"等事件"是硬依赖，`preset rename`
-            // 必然超时失败（exit 2），哪怕选槽本身已经成功。
-            //
-            // 真正的把关在最后读名字表的校验上，等事件只是保险，所以这里改成
-            // 事件超时 → 退化为轮询 0x63 快照看 preset_index → 仍未变就继续，
-            // 让末尾的名字校验来定夺成败。
-            let (k, p) = nanocore::protocol::select_preset(wire);
-            transact(&mut dev, conn, k, p, &[])?;
-            match dev.wait_for_preset_switch_event(wire, 2_000) {
-                Ok(f) => println!("switch event: {}", crate::common::hex(&f.payload)),
-                Err(_) => {
-                    let _ = dev.drain_frames(300);
-                    if !wait_preset_settled(&mut dev, Some(wire)).is_ok() {
-                        eprintln!(
-                            "note: no switch event and the snapshot still shows another \
-                             preset; writing the name anyway (the name table check decides)"
-                        );
-                    }
-                }
-            }
-            let (k, p) = nanocore::protocol::set_name_field(&field);
-            transact(&mut dev, conn, k, p, &[])?;
-
-            // flash 落盘异步生效，稍候验证。
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            let entries = dev.read_preset_names()?;
-            let got = entries
-                .iter()
-                .find(|e| e.slot == wire)
-                .map(|e| e.name.clone())
-                .unwrap_or_default();
-            let want: String = name.chars().filter(|&c| c != '\0').collect();
-            println!("slot #{slot}: {got:?} (expected {want:?})");
-            if got == want {
-                Ok(())
-            } else {
-                Err(Failure::mismatch(format!(
-                    "rename did not stick: got {got:?}, expected {want:?}"
-                )))
-            }
-        }
         PresetCmd::Set { index } => {
             let mut dev = open_device(conn)?;
             // 不用裸 program change：它不等应答，设备异步提交，导致紧随其后的
-            // `preset show` 读到上一个槽。select_preset_checked 走 0x66 SET_FIELD
-            // 并等待确认，再用快照复核一次。
+            // `preset show` 读到上一个槽。
             dev.select_preset_checked(index - 1)
                 .map_err(|e| Failure::error(e.to_string()))?;
             wait_preset_settled(&mut dev, Some(index - 1))
         }
         PresetCmd::Next => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::global::next_preset(conn.channel))?;
+            send_standard(&mut dev, &nanocore::midicc::global::next_preset(conn.channel))?;
             wait_preset_settled(&mut dev, None)
         }
         PresetCmd::Prev => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::global::prev_preset(conn.channel))?;
+            send_standard(&mut dev, &nanocore::midicc::global::prev_preset(conn.channel))?;
             wait_preset_settled(&mut dev, None)
+        }
+        PresetCmd::Rename { slot, name } => {
+            let field = nanocore::protocol::encode_preset_name_field(&name)
+                .map_err(Failure::error)?;
+            let wire = slot - 1;
+            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            let mut dev = open_device(conn)?;
+
+            // 设备只接受"**切换进入**该预设"之后的改名（真机反复验证）：选当前已
+            // 激活的槽不算一次切换，改名会静默不生效。所以先跳到别的槽、再跳回来，
+            // 制造一次真正的切换。
+            //
+            // 之后是三帧序列（对齐 ToneCommand，见
+            // data/captures/预设重命名P14 Psych改Psycn-re.mmon）：
+            //   1) 0x6D sub 0x01       —— 改名会话前置帧
+            //   2) 0x6D sub 0x0A       —— 9 字节名字区
+            //   3) 0x46 `01 00 00 0d`  —— 提交
+            // 第 3 帧是成败关键：只发前两帧时设备照样回显改名后的名字区，看着像收下了，
+            // 但 0x40 名表纹丝不动——这正是本命令此前一直失败的原因。
+            //
+            // 这条通路本身是抖的：同样的字节有时要试几次才落盘，所以整体重试。
+            let mut last_seen = String::new();
+            for attempt in 1..=2u32 {
+                let hop = if wire == 0 { 1 } else { 0 };
+                let (k, p) = nanocore::protocol::select_preset(hop);
+                transact(&mut dev, conn, k, p, &[])?;
+                wait_preset_settled(&mut dev, Some(hop))?;
+                std::thread::sleep(std::time::Duration::from_secs(3));
+
+                let (k, p) = nanocore::protocol::select_preset(wire);
+                transact(&mut dev, conn, k, p, &[])?;
+                wait_preset_settled(&mut dev, Some(wire))?;
+                std::thread::sleep(std::time::Duration::from_secs(3));
+
+                for (k, p) in [
+                    nanocore::protocol::name_session_begin(),
+                    nanocore::protocol::set_name_field(&field),
+                    nanocore::protocol::name_commit(),
+                ] {
+                    transact(&mut dev, conn, k, p, &[])?;
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                }
+
+                // flash 落盘异步生效，稍候再读名表。
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                last_seen = dev
+                    .read_preset_names()?
+                    .iter()
+                    .find(|e| e.slot == wire)
+                    .map(|e| e.name.clone())
+                    .unwrap_or_default();
+                if last_seen == want {
+                    println!("slot #{slot}: renamed to {want:?}");
+                    return Ok(());
+                }
+                eprintln!(
+                    "attempt {attempt}: the name table still says {last_seen:?}; retrying"
+                );
+            }
+            Err(Failure::mismatch(format!(
+                "rename did not stick after 2 attempts: the name table says {last_seen:?}, \
+                 wanted {want:?}"
+            )))
         }
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。

@@ -61,6 +61,8 @@ pub mod sub {
     pub const ENABLE: u8 = 0x03;
     /// 写入单个参数值（float32）。
     pub const PARAM_WRITE: u8 = 0x07;
+    /// 改名会话的前置帧（载荷 3 字节 0）。
+    pub const NAME_PREPARE: u8 = 0x01;
     /// 预设命名。
     pub const NAME: u8 = 0x0A;
     // 效果类型切换使用 `4 * (param_count + 1)`。

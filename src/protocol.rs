@@ -297,10 +297,20 @@ pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
 pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
     let bytes = name.as_bytes();
     if bytes.is_empty() || bytes.len() > 8 {
-        return Err(format!("preset name must be 1-8 characters, got {}", bytes.len()));
+        return Err(format!(
+            "preset name must be 1-8 characters, got {}",
+            bytes.len()
+        ));
     }
-    if !bytes.iter().all(|&b| (0x20..=0x7E).contains(&b)) {
-        return Err("preset name must be printable ASCII".to_string());
+    // 设备端只能显示键盘上打得出的半角字符。真机逐个试过：
+    // 字母、数字、以及 `- _ . , ! ? + = * / : ; ' " ( ) [ ] { } < > @ # $ % ^ & | ~ \`
+    // 都可以；中文、日文、全角标点、以及任何非 ASCII 字节都写不进去。
+    if let Some(bad) = bytes.iter().find(|&&b| !b.is_ascii_graphic()) {
+        return Err(format!(
+            "preset names are limited to 1-8 keyboard-reachable ASCII characters \
+             (letters, digits and common half-width punctuation); \
+             byte 0x{bad:02x} is not allowed"
+        ));
     }
     let mut padded = [0x00u8; 8];
     padded[..bytes.len()].copy_from_slice(bytes);
@@ -311,13 +321,32 @@ pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
     Ok(out)
 }
 
-/// `0x6D` sub `0x0A`：以 9 字节名字区形态重命名当前预设。
+/// 改名第一步：`0x6D` sub `0x01`，载荷 3 字节全 0。
 ///
-/// 名字区编码见 [`encode_preset_name_field`]。
+/// 官方 App 改名时先发这一帧再发 [`set_name_field`]；设备对它回一个 10 字节的应答
+/// （`00 00 05 08 00 00 04 7f 03 08`）。**去掉这一步改名不会生效。**
+pub fn name_session_begin() -> (u8, Vec<u8>) {
+    (msg_type::DATA, vec![0x00, sub::NAME_PREPARE, 0x00, 0x00, 0x00])
+}
+
+/// `0x6D` sub `0x0A`：以 9 字节名字区形态重命名**当前**预设。
+///
+/// 名字区编码见 [`encode_preset_name_field`]。设备应答会把 NUL 重排到别的位置
+/// （出厂名表里 NUL 位置本来就每条不同：`Am\0bient`、`T\0ightRhy`、`Epi\0cSolo`），
+/// 所以回显不必逐字节相同，按"跳过 NUL 收集可打印字符"比较即可。
 pub fn set_name_field(field: &[u8; 9]) -> (u8, Vec<u8>) {
     let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, 0x08];
     p.extend_from_slice(field);
     (msg_type::DATA, p)
+}
+
+/// 改名第三步：`0x46` 载荷 `01 00 00 0d` —— 提交。
+///
+/// **这一步是成败关键。** 只发前两帧时设备会回显改名后的名字区，看上去收下了，
+/// 但 `0x40` 名表纹丝不动；补上这一帧名字才真正落盘。
+/// 官方 App 的改名序列是这三帧（`data/captures/预设重命名P14 Psych改Psycn-re.mmon`）。
+pub fn name_commit() -> (u8, Vec<u8>) {
+    (0x46, vec![0x01, 0x00, 0x00, 0x0d])
 }
 
 /// `0x6D` 效果类型切换。
