@@ -468,7 +468,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             // 这条通路本身是抖的：同样的字节有时要试几次才落盘，所以整体重试。
             let mut last_seen = String::new();
             for attempt in 1..=2u32 {
-                let hop = if wire == 0 { 1 } else { 0 };
+                let hop = if wire == 4 { 5 } else { 4 };
                 let (k, p) = nanocore::protocol::select_preset(hop);
                 transact(&mut dev, conn, k, p, &[])?;
                 wait_preset_settled(&mut dev, Some(hop))?;
@@ -479,18 +479,21 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 wait_preset_settled(&mut dev, Some(wire))?;
                 std::thread::sleep(std::time::Duration::from_secs(3));
 
+                // 改名三帧各自开一条新连接（官方 App 每条消息一条连接）。
                 for (k, p) in [
                     nanocore::protocol::name_session_begin(),
                     nanocore::protocol::set_name_field(&field),
                     nanocore::protocol::name_commit(),
                 ] {
-                    transact(&mut dev, conn, k, p, &[])?;
-                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    let mut d = open_device(conn)?;
+                    transact(&mut d, conn, k, p, &[])?;
+                    drop(d);
+                    std::thread::sleep(std::time::Duration::from_millis(600));
                 }
 
                 // flash 落盘异步生效，稍候再读名表。
                 std::thread::sleep(std::time::Duration::from_secs(3));
-                last_seen = dev
+                last_seen = open_device(conn)?
                     .read_preset_names()?
                     .iter()
                     .find(|e| e.slot == wire)
