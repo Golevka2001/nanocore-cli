@@ -470,25 +470,35 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let field = nanocore::protocol::encode_preset_name_field(&name)
                 .map_err(Failure::error)?;
             let wire = slot - 1;
-            let want = name.clone();
             let mut dev = open_device(conn)?;
 
-            // 先读一遍完整名表。抓包 `预设14改名为1 2 3 4.mmon` 里 App 是在读完
-            // 8 组名表之后才发改名帧的，不确定这是不是前提，但按官方顺序走最稳妥。
-            dev.read_preset_names()?;
+            // **改名只作用于当前活动的那个预设**，设备不接受"改第 N 槽"的寻址——帧里
+            // 根本没有槽位字段。之前我一直在改一个非活动的槽：设备照样接受、照样回显
+            // 正确的名字区，但名表纹丝不动，看上去像"改名不生效"，其实名字写到别处去了
+            // （`preset show` 能看到活动预设已经变成新名字）。
+            let active = dev
+                .read_snapshot()
+                .ok()
+                .and_then(|s| nanocore::protocol::decode_snapshot_state(&s.payload))
+                .map(|st| st.preset_index)
+                .unwrap_or(wire);
+            if active != wire {
+                return Err(Failure::mismatch(format!(
+                    "slot #{slot} is not the active preset (the device is on #{});                      run `preset set {slot}` first",
+                    active + 1
+                )));
+            }
 
+            // 官方序列（见 `docs/protocol/inventory.md`）：前置帧 + 一帧名字，**不切预设、
+            // 不提交**。7 份 `预设1改名*.mmon` 抓包里的改名就是孤零零一帧。
             let (k, p) = nanocore::protocol::name_session_begin();
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name session")?;
 
-            // 主路径：sub 0x0A 定长名字区 + 0x46 提交（真机实测唯一落盘的一条）。
             let (k, p) = nanocore::protocol::set_name_field(&field);
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name field")?;
+
             let (k, p) = nanocore::protocol::name_commit();
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name commit")?;
-
-            // 抓包 `预设14改名为1 2 3 4.mmon` 里 App 还走了一条 sub 0x09 变长字段、
-            // 无提交帧。那条真机实测单发不落盘，所以默认走上面的 0x0A；协议层保留了
-            // 编码函数供继续研究。
 
             // flash 落盘异步生效，稍候再读名表复核。
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -568,72 +578,6 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let mut dev = open_device(conn)?;
             send_standard(&mut dev, &nanocore::midicc::global::prev_preset(conn.channel))?;
             wait_preset_settled(&mut dev, None)
-        }
-        PresetCmd::Rename { slot, name } => {
-            let field = nanocore::protocol::encode_preset_name_field(&name)
-                .map_err(Failure::error)?;
-            let wire = slot - 1;
-            let want = name.clone();
-            let mut dev = open_device(conn)?;
-
-            // 设备只接受"**切换进入**该预设"之后的改名（真机反复验证）：选当前已
-            // 激活的槽不算一次切换，改名会静默不生效。所以先跳到别的槽、再跳回来，
-            // 制造一次真正的切换。
-            //
-            // 之后是三帧序列（对齐 ToneCommand，见
-            // data/captures/预设重命名P14 Psych改Psycn-re.mmon）：
-            //   1) 0x6D sub 0x01       —— 改名会话前置帧
-            //   2) 0x6D sub 0x0A       —— 9 字节名字区
-            //   3) 0x46 `01 00 00 0d`  —— 提交
-            // 第 3 帧是成败关键：只发前两帧时设备照样回显改名后的名字区，看着像收下了，
-            // 但 0x40 名表纹丝不动——这正是本命令此前一直失败的原因。
-            //
-            // 这条通路本身是抖的：同样的字节有时要试几次才落盘，所以整体重试。
-            let mut last_seen = String::new();
-            for attempt in 1..=2u32 {
-                let hop = if wire == 4 { 5 } else { 4 };
-                let (k, p) = nanocore::protocol::select_preset(hop);
-                transact(&mut dev, conn, k, p, &[])?;
-                wait_preset_settled(&mut dev, Some(hop))?;
-                std::thread::sleep(std::time::Duration::from_secs(3));
-
-                let (k, p) = nanocore::protocol::select_preset(wire);
-                transact(&mut dev, conn, k, p, &[])?;
-                wait_preset_settled(&mut dev, Some(wire))?;
-                std::thread::sleep(std::time::Duration::from_secs(3));
-
-                // 改名三帧各自开一条新连接（官方 App 每条消息一条连接）。
-                for (k, p) in [
-                    nanocore::protocol::name_session_begin(),
-                    nanocore::protocol::set_name_field(&field),
-                    nanocore::protocol::name_commit(),
-                ] {
-                    let mut d = open_device(conn)?;
-                    transact(&mut d, conn, k, p, &[])?;
-                    drop(d);
-                    std::thread::sleep(std::time::Duration::from_millis(600));
-                }
-
-                // flash 落盘异步生效，稍候再读名表。
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                last_seen = open_device(conn)?
-                    .read_preset_names()?
-                    .iter()
-                    .find(|e| e.slot == wire)
-                    .map(|e| e.name.clone())
-                    .unwrap_or_default();
-                if last_seen == want {
-                    println!("slot #{slot}: renamed to {want:?}");
-                    return Ok(());
-                }
-                eprintln!(
-                    "attempt {attempt}: the name table still says {last_seen:?}; retrying"
-                );
-            }
-            Err(Failure::mismatch(format!(
-                "rename did not stick after 2 attempts: the name table says {last_seen:?}, \
-                 wanted {want:?}"
-            )))
         }
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。
