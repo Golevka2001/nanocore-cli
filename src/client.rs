@@ -195,6 +195,20 @@ impl<T: Transport> Nanocore<T> {
         // 0x63 快照请求连续 8 s 全部超时，而另开一个连接读同一状态完全正常。
         self.transport().set_sysex(true);
 
+        // 应答帧与请求帧**类型相同**（抓包逐条核对：6d→6d、40→40、36→36、68→68、
+        // 46→46、32→32）。所以调用方没给 `expect` 时，用请求自身的类型兜底。
+        //
+        // 不这么做会踩一个很难查的坑：`expect` 为空时 `take_matching` 只比 seq，
+        // 而 seq 只是本进程的递增计数器——换一条 MIDI 连接就从头再来。于是**上一条
+        // 请求迟到的应答**（例如 `read_preset_names()` 的 0x40 名表）会被下一条
+        // 请求当成自己的回复吞掉。设备根本没收到那条请求，但我们照样"成功"了。
+        let kinds: Vec<u8> = if expect.is_empty() {
+            vec![kind]
+        } else {
+            expect.to_vec()
+        };
+        let expect = kinds.as_slice();
+
         let started = Instant::now();
         let mut timeout = self.config.initial_timeout;
         let mut attempts = 0u32;
