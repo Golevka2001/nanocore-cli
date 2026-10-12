@@ -486,9 +486,9 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let (k, p) = nanocore::protocol::name_commit();
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name commit")?;
 
-            // 抓包 `预设14改名为1 2 3 4.mmon` 里 App 走的是另一条：sub 0x09 变长字段、
-            // 只有两帧、没有提交。那条设备会接受并回显，但真机上**不落盘**（0x40 名表
-            // 不变），所以这里不用它。协议层保留了编码函数供继续研究。
+            // 抓包 `预设14改名为1 2 3 4.mmon` 里 App 还走了一条 sub 0x09 变长字段、
+            // 无提交帧。那条真机实测单发不落盘，所以默认走上面的 0x0A；协议层保留了
+            // 编码函数供继续研究。
 
             // flash 落盘异步生效，稍候再读名表复核。
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -498,9 +498,8 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 .find(|e| e.slot == wire)
                 .map(|e| e.name.clone())
                 .unwrap_or_default();
-            let want = name.clone();
-            if got == want {
-                println!("slot #{slot}: renamed to {want:?}");
+            if got == name {
+                println!("slot #{slot}: renamed to {name:?}");
                 Ok(())
             } else {
                 Err(Failure::mismatch(format!(
