@@ -304,16 +304,29 @@ impl<T: Transport> Nanocore<T> {
             //
             // 真机实测（2026-10-12）：38 槽全量读里出现过 1 次这种"长度 12242 但
             // 内容错误"的读回，crc32 照样打印，读侧无从察觉。
-            let c = crate::asset::parse_chunk(&reply.payload).ok_or_else(|| {
-                Error::Protocol(format!(
-                    "asset read: chunk {}/{n} (slot {} addr {}) replied with an \
-                     undecodable payload ({} bytes)",
-                    i + 1,
-                    req.slot,
-                    req.addr,
-                    reply.payload.len()
-                ))
-            })?;
+            //
+            // 但"解析失败"不能一律当错误：读计划恒按该区域的**标称**长度构造
+            // （IR = 4096），而设备上确实存在变长 IR（实测槽 12 = 2780 B、槽 16 =
+            // 3764 B）。对超出实际数据的地址，设备回的是空应答。旧代码正是靠
+            // 静默丢弃这些尾部块才"碰巧"读出正确长度——这是巧合，不是设计。
+            // 这里把尾部空应答显式当作"数据到此为止"，并且只允许出现在已经拿到
+            // 至少一块之后；第一块就读不到数据仍然报错。
+            let c = match crate::asset::parse_chunk(&reply.payload) {
+                Some(c) => c,
+                None if i > 0 => {
+                    on_chunk(i + 1, n);
+                    break;
+                }
+                None => {
+                    return Err(Error::Protocol(format!(
+                        "asset read: chunk 1/{n} (slot {} addr {}) replied with an \
+                         undecodable payload ({} bytes)",
+                        req.slot,
+                        req.addr,
+                        reply.payload.len()
+                    )));
+                }
+            };
             if c.slot != req.slot || c.addr != req.addr {
                 return Err(Error::Protocol(format!(
                     "asset read: chunk {}/{n} answered for slot {} addr {} but slot {} \
@@ -321,19 +334,43 @@ impl<T: Transport> Nanocore<T> {
                     i + 1, c.slot, c.addr, req.slot, req.addr
                 )));
             }
+            // 每块解码后应恰好是一个数据块；末块是 `req.len` 字节。
+            // 应答没有块级校验和，所以长度是唯一能发现"帧被截断/错位"的廉价信号 ——
+            // 而错位的数据块会带着**正确的** slot/addr 通过上面的检查，内容却是错的。
+            let want_len = if i + 1 == n {
+                req.len as usize
+            } else {
+                crate::asset::CHUNK_BYTES
+            };
+            if c.data.len() != want_len {
+                return Err(Error::Protocol(format!(
+                    "asset read: chunk {}/{n} (slot {} addr {}) decoded to {} bytes, \
+                     expected {want_len} — the frame is truncated or misaligned",
+                    i + 1,
+                    req.slot,
+                    req.addr,
+                    c.data.len()
+                )));
+            }
             chunks.push(c);
             on_chunk(i + 1, n);
         }
         let blob = crate::asset::assemble(&chunks);
-        // 计划是按标准数据块大小构建的；裁掉多余的余量。
+        if blob.is_empty() {
+            return Err(Error::Protocol(format!(
+                "asset read: no data chunks came back for slot {}",
+                plan[0].slot
+            )));
+        }
+        // 计划是按标称长度构建的；裁掉多余的余量。
         let out = if blob.len() > total as usize {
             blob[..total as usize].to_vec()
         } else {
             blob
         };
-        if out.len() != total as usize {
+        if out.len() > total as usize {
             return Err(Error::Protocol(format!(
-                "asset read: reassembled {} of {total} bytes — a chunk went missing",
+                "asset read: reassembled {} bytes for a {total}-byte asset",
                 out.len()
             )));
         }

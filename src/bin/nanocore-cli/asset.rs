@@ -117,11 +117,15 @@ fn cmd_write_ir(
 ) -> Result<(), Failure> {
     // 用户编号 1 起 → wire 槽位 0 起。槽位范围已由 `cmd_asset` 校验。
     let wire = slot - 1;
-    if blob.len() as u32 != asset::IR_TOTAL {
+    // 设备本身就会存**变长** IR（实测槽 12 = 2780 B、槽 16 = 3764 B，其余 28 槽 = 4096 B），
+    // 写路径也一直按 `blob.len()` 走：`write_begin` 带真实长度、`hash_b3` 的 bit0 就是
+    // "长度非标准 4096"。所以这里不该硬性要求 4096 —— 那样会让槽 12/16 事实上只读，
+    // 导出后无法写回。
+    let len = blob.len();
+    if len == 0 || len > asset::IR_TOTAL as usize || len % 4 != 0 {
         return Err(Failure::error(format!(
-            "IR blob must be exactly {} bytes (got {})",
-            asset::IR_TOTAL,
-            blob.len()
+            "IR blob must be 4-byte aligned and between 4 and {} bytes (got {len})",
+            asset::IR_TOTAL
         )));
     }
     println!("asset write ir slot {slot} — {} bytes", blob.len());

@@ -450,7 +450,9 @@ pub enum AssetCmd {
     Write {
         region: RegionArg,
         slot: u8,
-        /// File holding the blob (must be the standard IR size, 4096 bytes)
+        /// File holding the blob. IR must be 4-byte aligned and at most 4096 bytes
+        /// (the device itself stores shorter IRs; most slots are the full 4096).
+        /// Amp must be a full 12302-byte `.ead` (or an `.eadl` wrapping one).
         file: String,
         /// Slot name written alongside the blob (default: keep the current name)
         #[arg(long, value_name = "NAME")]
