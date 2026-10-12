@@ -48,12 +48,26 @@ fn collect_assets(
             if pass == 2 {
                 println!("  re-reading to confirm…");
             }
-            let blob = dev
-                .read_asset(&plan, total, |done, n| {
-                    eprint!("\r  chunk {done}/{n}");
-                })
-                .map_err(|e| e.to_string())?;
-            eprintln!();
+            let blob = match dev.read_asset(&plan, total, |done, n| {
+                eprint!("\r  chunk {done}/{n}");
+            }) {
+                Ok(b) => {
+                    eprintln!();
+                    b
+                }
+                Err(e) if pass == 1 => {
+                    eprintln!();
+                    println!("  pass failed ({e}); retrying once");
+                    dev.read_asset(&plan, total, |done, n| {
+                        eprint!("\r  chunk {done}/{n}");
+                    })
+                    .map_err(|e| e.to_string())?
+                }
+                Err(e) => {
+                    eprintln!();
+                    return Err(Failure::error(e.to_string()));
+                }
+            };
             if pass == 2 && blob != last {
                 return Err(Failure::mismatch(format!(
                     "{label} slot {} read differently on two consecutive passes — \

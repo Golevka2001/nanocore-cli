@@ -224,21 +224,42 @@ fn asset_read(
         plan.len(),
         total
     );
-    // 协议对读应答**没有块级校验和**，而实测设备/传输会间歇性把单个数据块的内容弄坏
-    // （2026-10-12：38 槽全量读里约 1% 的读回 crc32 正常但内容错误，同一槽重读又
-    // 会得到第三个不同的结果）。所以只要允许，就多读几遍并要求彼此一致。
+    // 协议对读应答**没有块级校验和**，而实测设备/传输是间歇性出错的：既会返回
+    // 长度正确、内容却错的 blob（约 1%，同一槽连读三次能得到三个不同结果），
+    // 也会整遍读直接失败。所以每一遍都重试到成功，再用重复读互相印证。
     let mut attempts: Vec<Vec<u8>> = Vec::new();
-    for attempt in 1..=recheck.max(1) {
+    let mut last_err: Option<String> = None;
+    let passes = recheck.max(1);
+    for attempt in 1..=passes {
         if attempt > 1 {
-            println!("re-check pass {attempt} of {recheck}...");
+            println!("re-check pass {attempt} of {passes}...");
         }
-        let blob = dev
-            .read_asset(&plan, total, |done, n| {
-                eprint!("\r  chunk {done}/{n}");
-            })
-            .map_err(|e| e.to_string())?;
-        eprintln!();
-        attempts.push(blob);
+        match dev.read_asset(&plan, total, |done, n| {
+            eprint!("\r  chunk {done}/{n}");
+        }) {
+            Ok(blob) => {
+                eprintln!();
+                attempts.push(blob);
+                last_err = None;
+            }
+            // 设备/传输是间歇性出错的：一次坏帧、一次错位、一次超时都会让整遍读失败。
+            // 还有剩余遍数就重来，最后一遍才把错误交出去。
+            Err(e) => {
+                eprintln!();
+                let msg = e.to_string();
+                if attempt < passes {
+                    println!("  pass {attempt} failed ({msg}); retrying");
+                    last_err = Some(msg);
+                    continue;
+                }
+                return Err(Failure::error(msg));
+            }
+        }
+    }
+    if attempts.is_empty() {
+        return Err(Failure::error(
+            last_err.unwrap_or_else(|| "asset read produced no data".into()),
+        ));
     }
     if attempts.windows(2).any(|w| w[0] != w[1]) {
         let crcs: Vec<String> = attempts

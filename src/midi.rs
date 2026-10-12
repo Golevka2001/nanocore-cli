@@ -36,7 +36,7 @@ pub type PortInfo = (usize, String);
 
 /// 枚举可用的 MIDI 输入端口。
 pub fn input_ports() -> io::Result<Vec<PortInfo>> {
-    let mi = MidiInput::new(CLIENT_NAME).map_err(io_err)?;
+    let mi = init_with_retry(MidiInput::new)?;
     mi.ports()
         .iter()
         .enumerate()
@@ -46,12 +46,34 @@ pub fn input_ports() -> io::Result<Vec<PortInfo>> {
 
 /// 枚举可用的 MIDI 输出端口。
 pub fn output_ports() -> io::Result<Vec<PortInfo>> {
-    let mo = MidiOutput::new(CLIENT_NAME).map_err(io_err)?;
+    let mo = init_with_retry(MidiOutput::new)?;
     mo.ports()
         .iter()
         .enumerate()
         .map(|(i, p)| Ok((i, mo.port_name(p).map_err(io_err)?)))
         .collect()
+}
+
+/// CoreMIDI 的客户端/端口对象有系统级上限。脚本里连续快速拉起本 CLI
+/// （例如 `for i in $(seq 1 38); do nanocore-cli asset read amp $i; done`）
+/// 会在枚举阶段撞上 `midir::InitError`("MIDI support could not be initialized")，
+/// 于是一批命令里会有几条莫名失败。
+///
+/// 这与设备无关——单独重跑同一条命令总是成功——所以这里做几次退避重试。
+fn init_with_retry<T>(make: impl Fn(&'static str) -> Result<T, midir::InitError>) -> io::Result<T> {
+    let mut waited = std::time::Duration::from_millis(0);
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(waited);
+            waited = std::cmp::min(waited * 2, std::time::Duration::from_millis(800));
+        }
+        match make(CLIENT_NAME) {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt == 4 => return Err(io_err(e)),
+            Err(_) => {}
+        }
+    }
+    unreachable!("the loop either returns a value or an error")
 }
 
 /// 名称包含 `hint`（不区分大小写）的第一个端口的索引。
