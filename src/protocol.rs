@@ -316,14 +316,24 @@ pub fn encode_preset_name_field(name: &str) -> Result<Vec<u8>, String> {
     // 名字**可以含空格**——7 份官方抓包里 4 份写的名字都带空格（`1 2 3 4`、
     // `1 234567`、`1 2 3456`），全部成功。
     //
-    // 名字区 = `名字字节` + **恰好 1 个 NUL**，NUL 插在下标 5；不足 6 字符时 NUL
-    // 直接跟在末尾。8 个官方样本逐条吻合（见 set_name_field）。
+    // 名字区 = 名字字节本身，**恰好 6 字符及以上**时在下标 5 插一个 NUL。
+    //
+    // 9 份官方抓包逐条吻合：
+    //   `1`       (1)  → `31`                          没有 NUL
+    //   `abcde`   (5)  → `61 62 63 64 65`              没有 NUL
+    //   `1 2 3 4` (7)  → `31 20 32 20 33 00 20 34`     NUL 在下标 5
+    //   `abcdefgh`(8)  → `61 62 63 64 65 00 66 67 68`  NUL 在下标 5
+    //
+    // 我曾对所有名字都追加一个尾随 NUL，于是短名字发成 `31 00`（数据区 2 字节、
+    // 长度字节却是 1），设备以 status `0x01` 拒收。
     let bytes = name.as_bytes();
+    if bytes.len() < 6 {
+        return Ok(bytes.to_vec());
+    }
     let mut area = Vec::with_capacity(bytes.len() + 1);
-    let cut = bytes.len().min(5);
-    area.extend_from_slice(&bytes[..cut]);
+    area.extend_from_slice(&bytes[..5]);
     area.push(0x00);
-    area.extend_from_slice(&bytes[cut..]);
+    area.extend_from_slice(&bytes[5..]);
     Ok(area)
 }
 
