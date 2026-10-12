@@ -489,12 +489,19 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 )));
             }
 
-            // 官方序列（见 `docs/protocol/inventory.md`）：前置帧 + 一帧名字，**不切预设、
-            // 不提交**。7 份 `预设1改名*.mmon` 抓包里的改名就是孤零零一帧。
-            // 官方序列：**只有一帧**。7 份 `预设1改名*.mmon` 抓包里，改名就是
-            // 孤零零一帧 `0x6D`，前后只有 `0x68` 心跳——没有前置帧、没有 `0x46` 提交。
+            // 改名一帧 + 保存一帧。抓包 `预设重命名P14 Psych改Psycn-re.mmon`：
+            //   96.3601  6d 00 0a …<名字区>
+            //   98.8239  46 00 01 00 00 0d      ← 手动点的保存
+            //   99.2257  46 00 00 01 00 00 0d    status 00
+            // 那 2.5 秒是**用户手动点保存**的间隔，不是协议要求；收到改名的确认应答后
+            // 立刻发保存即可。我曾因为它"晚到"就断定与改名无关，于是砍掉保存帧——
+            // 结果设备只回显、不落盘。
             let (k, p) = nanocore::protocol::set_name_field(&field);
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name field")?;
+
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+            let (k, p) = nanocore::protocol::name_commit(wire);
+            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name save")?;
 
             // flash 落盘异步生效，稍候再读名表复核。
             std::thread::sleep(std::time::Duration::from_secs(3));
