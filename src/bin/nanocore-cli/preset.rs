@@ -35,12 +35,24 @@ fn wait_preset_settled(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure>
     let mut stable_since = Instant::now();
 
     loop {
-        let snap = dev
-            .read_snapshot()
-            .map_err(|e| Failure::error(e.to_string()))?;
-        let idx = nanocore::protocol::decode_snapshot_state(&snap.payload)
-            .map(|s| s.preset_index)
-            .ok_or_else(|| Failure::error("the 0x63 snapshot did not decode"))?;
+        // 刚发出切槽指令后设备往往还在忙，0x63 会偶发超时。真机实测：
+        // `preset next` / `preset prev` 发的是 CC81/CC82（无应答），紧接着的第一次
+        // 快照请求就可能连超时 4 次。因此单次读失败不该直接判失败——预算内继续重试，
+        // 只有最后一次仍读不到才报错。
+        let idx = match dev.read_snapshot() {
+            Ok(snap) => nanocore::protocol::decode_snapshot_state(&snap.payload)
+                .map(|s| s.preset_index),
+            Err(_) => None,
+        };
+        let Some(idx) = idx else {
+            if Instant::now() >= deadline {
+                return Err(Failure::error(
+                    "the device stopped answering the snapshot request".to_string(),
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(150));
+            continue;
+        };
 
         if let Some(want) = expect {
             if idx == want {

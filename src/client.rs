@@ -186,6 +186,14 @@ impl<T: Transport> Nanocore<T> {
         let seq = self.next_seq();
         let tx = Frame::new(Direction::Tx, flags, seq, kind, payload);
         let wire = tx.encode();
+        // 每次发 SysEx 帧前都确保传输层回到 SysEx 模式。
+        //
+        // 裸 MIDI 控制面（CC / Program Change）要把 sysex 置 false 才能让设备把它当
+        // 3 字节包接受（见 `send_raw` 的文档），但那是**有状态**的：置 false 之后若没人
+        // 改回来，后续所有 SysEx 帧都会裸发出去，设备根本收不到 —— 表现为"发完就没应答"。
+        // 真机实测：`preset next` / `preset prev` 发的是 CC81/CC82，紧随其后的
+        // 0x63 快照请求连续 8 s 全部超时，而另开一个连接读同一状态完全正常。
+        self.transport().set_sysex(true);
 
         let started = Instant::now();
         let mut timeout = self.config.initial_timeout;

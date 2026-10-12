@@ -166,6 +166,7 @@ impl MidiTransport {
         self.sysex = on;
     }
 
+
     /// 当前从设备缓冲的字节数。
     pub fn buffered(&self) -> usize {
         self.rx.lock().map(|q| q.len()).unwrap_or(0)
@@ -195,5 +196,9 @@ impl Transport for MidiTransport {
     fn receive(&mut self) -> Result<Vec<u8>, io::Error> {
         let mut q = self.rx.lock().map_err(io_err)?;
         Ok(q.drain(..).collect())
+    }
+
+    fn set_sysex(&mut self, on: bool) {
+        self.sysex = on;
     }
 }
