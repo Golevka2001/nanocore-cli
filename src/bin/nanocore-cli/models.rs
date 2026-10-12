@@ -63,6 +63,7 @@ fn query_models_live(dev: &mut Dev) -> Result<(), Failure> {
                 format!("timeout on slot {} after {attempts} attempt(s) in {elapsed:?}", i + 1)
             }
             Error::Transport(t) => t.to_string(),
+            Error::Protocol(m) => m,
         })?;
         match protocol::parse_model_name(&reply.payload) {
             Some(mn) => {

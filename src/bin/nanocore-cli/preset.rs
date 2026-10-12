@@ -85,6 +85,55 @@ fn collect_assets(
     Ok((amp_slots, ir_slots, assets))
 }
 
+/// 等待设备报告的预设槽位稳定在期望值。
+///
+/// 背景（2026-10-11 真机发现）：`preset set` 原先只发一条**裸 MIDI program change**
+/// 就返回，不等任何应答。设备是异步提交的，于是紧接着跑 `preset show` 会稳定地读到
+/// **上一个**预设（一位延迟），要等 2 s 才对。`RestoreFactory` 分支早就知道这个行为
+///（"flash 落盘异步生效，观察到提交后 ~2.4 s 的过期读"）并用固定 sleep 兜住，
+/// 但 set / next / prev 一直没有。
+///
+/// 现在改用 `select_preset_checked`（`0x66 SET_FIELD` + 等应答）并轮询快照复核，
+/// 让返回值可信。`expect = None`（next/prev）只要求读数稳定下来。
+fn wait_preset_settled(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure> {
+    use std::time::{Duration, Instant};
+
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let mut last: Option<u8> = None;
+    let mut stable_since = Instant::now();
+
+    loop {
+        let snap = dev
+            .read_snapshot()
+            .map_err(|e| Failure::error(e.to_string()))?;
+        let idx = nanocore::protocol::decode_snapshot_state(&snap.payload)
+            .map(|s| s.preset_index)
+            .ok_or_else(|| Failure::error("the 0x63 snapshot did not decode"))?;
+
+        if let Some(want) = expect {
+            if idx == want {
+                return Ok(());
+            }
+        } else if last == Some(idx) && stable_since.elapsed() >= Duration::from_millis(400) {
+            return Ok(());
+        } else if last != Some(idx) {
+            stable_since = Instant::now();
+        }
+        last = Some(idx);
+
+        if Instant::now() >= deadline {
+            return Err(Failure::mismatch(match expect {
+                Some(want) => format!(
+                    "the device still reports preset #{} after 8 s (expected #{want})",
+                    last.unwrap_or(0) as u32 + 1
+                ),
+                None => "the preset index never settled after 8 s".into(),
+            }));
+        }
+        std::thread::sleep(Duration::from_millis(120));
+    }
+}
+
 pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
         PresetCmd::Show => {
@@ -131,11 +180,20 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 }
             };
             // 切到目标预设，让快照与"活动型号"都指向它。
+            //
+            // ⚠️ 设备对 `select_preset` 只回 status 00 的应答，**从不发自发切槽事件**
+            // （真机实测 fw 1.04，5 s drain 结果为 "nothing arrived"）。原先把等事件
+            // 当硬依赖，导致 `preset export` 在任何槽上都必然超时失败。
+            // 改为：事件只是加速手段，拿不到就退化为轮询 0x63 快照确认 preset_index，
+            // 那才是权威判据。
             let (k, p) = nanocore::protocol::select_preset(wire);
             transact(&mut dev, conn, k, p, &[])?;
-            dev.wait_for_preset_switch_event(wire, 5_000)
-                .map_err(Failure::error)?;
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            if let Ok(f) = dev.wait_for_preset_switch_event(wire, 1_500) {
+                let _ = f;
+            } else {
+                let _ = dev.drain_frames(300);
+            }
+            wait_preset_settled(&mut dev, Some(wire))?;
             let snap = dev.read_snapshot().map_err(|e| e.to_string())?;
             let state = nanocore::protocol::decode_snapshot_state(&snap.payload)
                 .ok_or_else(|| {
@@ -441,17 +499,28 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 .map_err(Failure::error)?;
             let wire = slot - 1;
             let mut dev = open_device(conn)?;
-            // field 0x09 选槽 → 等设备自发切槽事件 → 写名字区。
-            // （官方在选槽与改名之间有 ~6 个 PING 的等待；等事件比等时间更可靠。）
+            // field 0x09 选槽 → 确认设备已切过去 → 写名字区。
+            //
+            // ⚠️ 真机实测（2026-10-11，fw 1.04）：设备对 `select_preset` **只回
+            // status 00 的应答，从不发自发切槽事件**（5 s 内 drain 到的流量是
+            // "nothing arrived"）。所以原先"等事件"是硬依赖，`preset rename`
+            // 必然超时失败（exit 2），哪怕选槽本身已经成功。
+            //
+            // 真正的把关在最后读名字表的校验上，等事件只是保险，所以这里改成
+            // 事件超时 → 退化为轮询 0x63 快照看 preset_index → 仍未变就继续，
+            // 让末尾的名字校验来定夺成败。
             let (k, p) = nanocore::protocol::select_preset(wire);
             transact(&mut dev, conn, k, p, &[])?;
-            match dev.wait_for_preset_switch_event(wire, 5_000) {
+            match dev.wait_for_preset_switch_event(wire, 2_000) {
                 Ok(f) => println!("switch event: {}", crate::common::hex(&f.payload)),
-                Err(e) => {
-                    let traffic = dev.drain_frames(3_000);
-                    return Err(Failure::error(format!(
-                        "{e}; device traffic during 3s drain: {traffic}"
-                    )));
+                Err(_) => {
+                    let _ = dev.drain_frames(300);
+                    if !wait_preset_settled(&mut dev, Some(wire)).is_ok() {
+                        eprintln!(
+                            "note: no switch event and the snapshot still shows another \
+                             preset; writing the name anyway (the name table check decides)"
+                        );
+                    }
                 }
             }
             let (k, p) = nanocore::protocol::set_name_field(&field);
@@ -477,15 +546,22 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
         }
         PresetCmd::Set { index } => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::program_change(conn.channel, index - 1))
+            // 不用裸 program change：它不等应答，设备异步提交，导致紧随其后的
+            // `preset show` 读到上一个槽。select_preset_checked 走 0x66 SET_FIELD
+            // 并等待确认，再用快照复核一次。
+            dev.select_preset_checked(index - 1)
+                .map_err(|e| Failure::error(e.to_string()))?;
+            wait_preset_settled(&mut dev, Some(index - 1))
         }
         PresetCmd::Next => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::global::next_preset(conn.channel))
+            send_standard(&mut dev, &midicc::global::next_preset(conn.channel))?;
+            wait_preset_settled(&mut dev, None)
         }
         PresetCmd::Prev => {
             let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &midicc::global::prev_preset(conn.channel))
+            send_standard(&mut dev, &midicc::global::prev_preset(conn.channel))?;
+            wait_preset_settled(&mut dev, None)
         }
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。

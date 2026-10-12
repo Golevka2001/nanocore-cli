@@ -57,6 +57,8 @@ pub enum Error<E> {
     Transport(E),
     /// 设备在超时预算内始终未应答。
     Timeout { attempts: u32, elapsed: Duration },
+    /// 设备应答了，但内容与请求对不上（重组后会静默产出错误数据）。
+    Protocol(String),
 }
 
 impl<E: fmt::Display> fmt::Display for Error<E> {
@@ -67,6 +69,7 @@ impl<E: fmt::Display> fmt::Display for Error<E> {
                 f,
                 "timed out waiting for response after {attempts} attempt(s) in {elapsed:?}"
             ),
+            Error::Protocol(m) => write!(f, "{m}"),
         }
     }
 }
@@ -293,18 +296,48 @@ impl<T: Transport> Nanocore<T> {
         let mut chunks = Vec::with_capacity(n);
         for (i, req) in plan.iter().enumerate() {
             let reply = self.transact_expect(req.region, req.payload(), &[req.region])?;
-            if let Some(c) = crate::asset::parse_chunk(&reply.payload) {
-                chunks.push(c);
+            // ⚠️ 每一块都必须与它自己的请求对上。原来这里是
+            // `if let Some(c) = parse_chunk(..) { chunks.push(c) }`——既不校验地址，
+            // 解析失败还静默丢弃；而 `assemble` 只按 addr 排序拼接、不查缺口也不查
+            // 重复，于是：缺块 → blob 变短；重复块 → blob 变长后被下面的
+            // `blob[..total]` **静默截断成正确长度、内容却是错的**。
+            //
+            // 真机实测（2026-10-12）：38 槽全量读里出现过 1 次这种"长度 12242 但
+            // 内容错误"的读回，crc32 照样打印，读侧无从察觉。
+            let c = crate::asset::parse_chunk(&reply.payload).ok_or_else(|| {
+                Error::Protocol(format!(
+                    "asset read: chunk {}/{n} (slot {} addr {}) replied with an \
+                     undecodable payload ({} bytes)",
+                    i + 1,
+                    req.slot,
+                    req.addr,
+                    reply.payload.len()
+                ))
+            })?;
+            if c.slot != req.slot || c.addr != req.addr {
+                return Err(Error::Protocol(format!(
+                    "asset read: chunk {}/{n} answered for slot {} addr {} but slot {} \
+                     addr {} was requested — the read would be silently mis-assembled",
+                    i + 1, c.slot, c.addr, req.slot, req.addr
+                )));
             }
+            chunks.push(c);
             on_chunk(i + 1, n);
         }
         let blob = crate::asset::assemble(&chunks);
         // 计划是按标准数据块大小构建的；裁掉多余的余量。
-        Ok(if blob.len() > total as usize {
+        let out = if blob.len() > total as usize {
             blob[..total as usize].to_vec()
         } else {
             blob
-        })
+        };
+        if out.len() != total as usize {
+            return Err(Error::Protocol(format!(
+                "asset read: reassembled {} of {total} bytes — a chunk went missing",
+                out.len()
+            )));
+        }
+        Ok(out)
     }
 
     /// 将 IR 数据块写回槽位，并通过重新读取进行验证。

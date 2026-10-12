@@ -129,6 +129,7 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
                 format!("no reply to the chain write after {attempts} attempt(s) in {elapsed:?}")
             }
             Error::Transport(t) => t.to_string(),
+            Error::Protocol(m) => m,
         })?;
     describe(&tx, "", None);
     describe(&ack, "", None);
@@ -161,11 +162,23 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
 
 /// 从设备快照中读取当前链序。
 ///
-/// `chainOrder` 尾部是少数已解码的快照区域之一，因此当前可用。
+/// ⚠️ 这里**不能**用 [`protocol::parse_snapshot_chain_order`]：那个函数是按
+/// "链字段 == 原始线上 payload 的末 11 字节" 来定位的，而快照载荷从 `[3]` 起是
+/// `[mask][7 data]` 的**连续打包流**，掩码字节每隔 8 个就插在原始 payload 里。
+/// 真实帧的原始尾部是 `… 08 00 20 20` —— 链字段根本没落在末尾。
+/// 单元测试之所以通过，是因为它合成的数据里那段没有交错掩码字节。
+///
+/// 真机实测（2026-10-11）：`chain show` 对**任何**链序都报
+/// "snapshot did not contain a decodable chainOrder"，而同一帧经
+/// `decode_snapshot_state` / `debug snapshot` 能正确解出 8 元素链序。
+/// 因此统一走 `decode_snapshot_state`，与 `preset show` 保持一致。
 fn cmd_chain_show(conn: &Conn) -> Result<(), Failure> {
     let mut dev = open_device(conn)?;
     let s = dev.read_snapshot().map_err(|e| e.to_string())?;
-    match protocol::parse_snapshot_chain_order(&s.payload) {
+    let state = protocol::decode_snapshot_state(&s.payload).ok_or_else(|| {
+        Failure::error("the 0x63 snapshot did not decode (see `debug snapshot`)")
+    })?;
+    match state.chain {
         Some(order) => {
             println!("chain (left -> right): {}", render_chain(&order));
             Ok(())
