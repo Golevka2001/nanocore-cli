@@ -40,12 +40,30 @@ fn collect_assets(
         let (total, plan) = asset::read_plan(region, wire)
             .ok_or_else(|| Failure::error(format!("no read plan for {label} slot {}", wire + 1)))?;
         println!("reading {label} slot {}…", wire + 1);
-        let blob = dev
-            .read_asset(&plan, total, |done, n| {
-                eprint!("\r  chunk {done}/{n}");
-            })
-            .map_err(|e| e.to_string())?;
-        eprintln!();
+        // 读两遍并要求一致：协议没有块级校验和，实测设备会间歇性把单个数据块的
+        // 内容弄坏而 slot/addr 回显是对的，单次读可能得到 crc32 看似正常的错数据。
+        // 导出是要落盘、会被别人复用的数据，值得多花一次往返。
+        let mut last: Vec<u8> = Vec::new();
+        for pass in 1..=2 {
+            if pass == 2 {
+                println!("  re-reading to confirm…");
+            }
+            let blob = dev
+                .read_asset(&plan, total, |done, n| {
+                    eprint!("\r  chunk {done}/{n}");
+                })
+                .map_err(|e| e.to_string())?;
+            eprintln!();
+            if pass == 2 && blob != last {
+                return Err(Failure::mismatch(format!(
+                    "{label} slot {} read differently on two consecutive passes — \
+                     refusing to embed an untrustworthy blob",
+                    wire + 1
+                )));
+            }
+            last = blob;
+        }
+        let blob = last;
         let crc = asset::crc32(&blob);
         println!("  {} bytes, crc32 {crc:08x}", blob.len());
         assets.insert(path.clone(), blob);
