@@ -201,9 +201,22 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     }
                 },
             };
+            // 与 amp 对称：不指定就查设备当前引用的 IR，而不是直接记成"未知"。
+            // 之前 IR 一律填 `FX2_SLOT_NONE`(255)，导出文件里的 `irSlot` 就永远是
+            // 255 —— 等于把"CAB"这一项悄悄丢掉了，而 amp 却能自动填上。
             let ir = match ir_slot {
-                None | Some(0) => FX2_SLOT_NONE,
+                Some(0) => FX2_SLOT_NONE,
                 Some(v) => v - 1,
+                None => match dev.read_active_ir_slot() {
+                    Ok(Some(s)) => s.index,
+                    Ok(None) => FX2_SLOT_NONE,
+                    Err(e) => {
+                        return Err(Failure::error(format!(
+                            "could not determine the active IR slot ({e}); \
+                             pass --ir-slot explicitly"
+                        )))
+                    }
+                },
             };
             let spec = nanocore::preset_bundle::PresetSpec {
                 version: 7,
@@ -245,7 +258,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             );
             Ok(())
         }
-        PresetCmd::Import { file, slot, with_assets, dry_run } => {
+        PresetCmd::Import { file, slot, with_assets, dry_run, force } => {
             let (manifest, assets) = nanocore::preset_bundle::read_bundle(std::path::Path::new(&file))
                 .map_err(Failure::error)?;
             if manifest.presets.is_empty() {
@@ -274,6 +287,30 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     manifest.presets.len()
                 )));
             }
+            // **导入是破坏性的**：写会话用 `0x49` 开启，设备会先清空整张预设表，
+            // 再靠随后的每组 `0x43` 逐槽写回来。官方 App 从不导入少于 40 组——
+            // `导入预设包.mmon` 里是 41 组写、40 个保存帧，出厂 40 个预设全部重写。
+            //
+            // 只导入 1 个预设就会把其余 39 个的名字抹成空，**且不报错**（真机实测）。
+            // 与其在这里悄悄做一份完整导出（那要走一遍全部槽的 0x41 往返，很容易再出
+            // 岔子），不如直接拒绝：破坏性操作要由用户显式确认。
+            {
+                let mut dev = open_device(conn)?;
+                let existing = dev.read_preset_names().map_err(Failure::error)?;
+                let named = existing.iter().filter(|e| e.named).count();
+                if named > manifest.presets.len() && !force {
+                    return Err(Failure::error(format!(
+                        "refusing to import: the device holds {named} named presets but the \
+                         bundle has {}. The write session (0x49) clears the whole table and \
+                         rewrites only the slots in the bundle, so the other {} would end up \
+                         empty with no error. Export them first, or pass --force to import \
+                         anyway.",
+                        manifest.presets.len(),
+                        named.saturating_sub(manifest.presets.len())
+                    )));
+                }
+            }
+
             let mut pairs: Vec<(u8, nanocore::preset43::PresetWrite)> = Vec::new();
             for entry in &manifest.presets {
                 // `--slot` 是用户编号 1–40；缺省沿用 manifest 里记录的 wire 槽位。

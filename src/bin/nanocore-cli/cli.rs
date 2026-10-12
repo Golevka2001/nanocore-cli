@@ -239,6 +239,9 @@ pub enum PresetCmd {
         /// Only print a summary of the frames that would be sent; do not touch the device
         #[arg(long)]
         dry_run: bool,
+        /// Import even though this empties the presets the bundle does not cover
+        #[arg(long)]
+        force: bool,
     },
     /// Set the preset volume (0–100)
     Volume {
