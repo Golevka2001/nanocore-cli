@@ -429,6 +429,12 @@ pub enum AssetCmd {
         /// Write the blob to this file
         #[arg(long, value_name = "FILE")]
         out: Option<String>,
+        /// Read the slot this many times and require every read to agree.
+        /// The protocol carries no per-chunk checksum, and the device
+        /// occasionally corrupts one chunk while echoing a correct slot/address,
+        /// so a single read can be wrong with a plausible crc32.
+        #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=8))]
+        recheck: u8,
     },
     /// Fetch a blob and compare it byte for byte with a reference file
     ///

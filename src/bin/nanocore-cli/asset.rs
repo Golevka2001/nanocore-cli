@@ -24,10 +24,15 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
             println!("  operations: read | verify | write (ir: 4096-byte blob; amp: full .ead/.eadl)");
             Ok(())
         }
-        AssetCmd::Read { region, slot, out } => {
+        AssetCmd::Read {
+            region,
+            slot,
+            out,
+            recheck,
+        } => {
             let target = ReadTarget::new(region, slot)?;
             let mut dev = open_device(conn)?;
-            asset_read(&mut dev, target, out, None)
+            asset_read(&mut dev, target, out, None, recheck)
         }
         AssetCmd::Verify {
             region,
@@ -39,7 +44,7 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
                 std::fs::read(&reference).map_err(|e| format!("cannot read {reference}: {e}"))?;
             let target = ReadTarget::new(region, slot)?;
             let mut dev = open_device(conn)?;
-            asset_read(&mut dev, target, out, Some(&want))
+            asset_read(&mut dev, target, out, Some(&want), 1)
         }
         AssetCmd::Write {
             region,
@@ -204,6 +209,7 @@ fn asset_read(
     target: ReadTarget,
     out: Option<String>,
     reference: Option<&[u8]>,
+    recheck: u8,
 ) -> Result<(), Failure> {
     let ReadTarget {
         region,
@@ -218,12 +224,34 @@ fn asset_read(
         plan.len(),
         total
     );
-    let blob = dev
-        .read_asset(&plan, total, |done, n| {
-            eprint!("\r  chunk {done}/{n}");
-        })
-        .map_err(|e| e.to_string())?;
-    eprintln!();
+    // 协议对读应答**没有块级校验和**，而实测设备/传输会间歇性把单个数据块的内容弄坏
+    // （2026-10-12：38 槽全量读里约 1% 的读回 crc32 正常但内容错误，同一槽重读又
+    // 会得到第三个不同的结果）。所以只要允许，就多读几遍并要求彼此一致。
+    let mut attempts: Vec<Vec<u8>> = Vec::new();
+    for attempt in 1..=recheck.max(1) {
+        if attempt > 1 {
+            println!("re-check pass {attempt} of {recheck}...");
+        }
+        let blob = dev
+            .read_asset(&plan, total, |done, n| {
+                eprint!("\r  chunk {done}/{n}");
+            })
+            .map_err(|e| e.to_string())?;
+        eprintln!();
+        attempts.push(blob);
+    }
+    if attempts.windows(2).any(|w| w[0] != w[1]) {
+        let crcs: Vec<String> = attempts
+            .iter()
+            .map(|b| format!("{:08x}", asset::crc32(b)))
+            .collect();
+        return Err(Failure::mismatch(format!(
+            "the device returned different bytes on consecutive reads of the same slot \
+             (crc32 {}); this read is not trustworthy — rerun with --recheck",
+            crcs.join(" / ")
+        )));
+    }
+    let blob = attempts.pop().expect("at least one attempt");
     println!("read {} bytes", blob.len());
 
     let crc = asset::crc32(&blob);
