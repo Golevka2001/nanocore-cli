@@ -679,6 +679,17 @@ impl<T: Transport> Nanocore<T> {
         })
     }
 
+    /// 读回**当前活动预设**的链序。
+    pub fn read_chain_order(&mut self) -> Result<Vec<u8>, String> {
+        let snap = self.read_snapshot().map_err(|e| e.to_string())?;
+        let state =
+            protocol::decode_snapshot_state(&snap.payload).ok_or("the 0x63 snapshot did not decode")?;
+        state
+            .chain
+            .map(|c| c.to_vec())
+            .ok_or_else(|| "the snapshot carried no chain order".to_string())
+    }
+
     /// 查询全部 30 个 IR 槽（= CAB 型号），返回被标记为「活动」的那个。
     ///
     /// 需先走 [`crate::preset_restore::preamble_frames`] 的

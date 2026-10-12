@@ -27,6 +27,10 @@ fn slot_disp(v: u8) -> String {
 ///
 /// 现在改用 `select_preset_checked`（`0x66 SET_FIELD` + 等应答）并轮询快照复核，
 /// 让返回值可信。`expect = None`（next/prev）只要求读数稳定下来。
+pub fn settle(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure> {
+    wait_preset_settled(dev, expect)
+}
+
 fn wait_preset_settled(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure> {
     use std::time::{Duration, Instant};
 
@@ -456,19 +460,52 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 )?;
                 Ok(state.preset_volume)
             };
+
+            // 帧里没有槽位字段 → 作用于**当前活动预设**。而且只发 `sub 0x02` 是不
+            // 落盘的：真机实测设成 50，切走再切回仍是原值。要跟一帧 `0x46` 保存，
+            // 与改名同一模式（`name_commit`）。
+            let active = dev
+                .read_snapshot()
+                .ok()
+                .and_then(|sn| nanocore::protocol::decode_snapshot_state(&sn.payload))
+                .map(|st| st.preset_index);
+            let wire = active.ok_or_else(|| {
+                Failure::error("could not read the active preset index".to_string())
+            })?;
+
             let before = read_volume(&mut dev)?;
             let (k, p) = nanocore::protocol::set_preset_volume(percent);
             transact(&mut dev, conn, k, p, &[])?;
+            let (k, p) = nanocore::protocol::name_commit(wire);
+            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "volume save")?;
 
             // 设备的快照不是即时刷新的，稍候再回读。
             std::thread::sleep(std::time::Duration::from_secs(1));
             let after = read_volume(&mut dev)?;
-            println!("preset volume: {before} -> {after}");
-            if after == percent {
+            if after != percent {
+                return Err(Failure::mismatch(format!(
+                    "volume write did not stick: set {percent}, snapshot reads {after}"
+                )));
+            }
+
+            // 快照只反映运行时值，**不能证明落盘**。切走再切回才算数。
+            let hop = if wire == 0 { 1 } else { 0 };
+            let (k, p) = nanocore::protocol::select_preset(hop);
+            transact(&mut dev, conn, k, p, &[])?;
+            wait_preset_settled(&mut dev, Some(hop))?;
+            let (k, p) = nanocore::protocol::select_preset(wire);
+            transact(&mut dev, conn, k, p, &[])?;
+            wait_preset_settled(&mut dev, Some(wire))?;
+
+            let persisted = read_volume(&mut dev)?;
+            if persisted == percent {
+                println!("preset volume: {before} -> {persisted} (saved)");
                 Ok(())
             } else {
                 Err(Failure::mismatch(format!(
-                    "volume write did not stick: set {percent}, snapshot reads {after}"
+                    "volume did not persist: set {percent} on slot #{}, after switching \
+                     away and back it reads {persisted}",
+                    wire + 1
                 )))
             }
         }
