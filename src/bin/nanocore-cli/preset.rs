@@ -470,7 +470,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let field = nanocore::protocol::encode_preset_name_field(&name)
                 .map_err(Failure::error)?;
             let wire = slot - 1;
-            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            let want = name.clone();
             let mut dev = open_device(conn)?;
 
             // 先读一遍完整名表。抓包 `预设14改名为1 2 3 4.mmon` 里 App 是在读完
@@ -498,7 +498,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                 .find(|e| e.slot == wire)
                 .map(|e| e.name.clone())
                 .unwrap_or_default();
-            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            let want = name.clone();
             if got == want {
                 println!("slot #{slot}: renamed to {want:?}");
                 Ok(())
@@ -574,7 +574,7 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let field = nanocore::protocol::encode_preset_name_field(&name)
                 .map_err(Failure::error)?;
             let wire = slot - 1;
-            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            let want = name.clone();
             let mut dev = open_device(conn)?;
 
             // 设备只接受"**切换进入**该预设"之后的改名（真机反复验证）：选当前已
