@@ -473,32 +473,22 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             let want: String = name.chars().filter(|&c| c != '\0').collect();
             let mut dev = open_device(conn)?;
 
-            // 设备只接受"**切换进入**该预设"之后的改名（真机反复验证）：选当前已
-            // 激活的槽不算一次切换，改名会静默不生效。所以先跳到别的槽、再跳回来，
-            // 制造一次真正的切换。
-            //
-            // 之后是三帧序列（对齐 ToneCommand，见
-            // data/captures/预设重命名P14 Psych改Psycn-re.mmon）：
-            //   1) 0x6D sub 0x01       —— 改名会话前置帧
-            //   2) 0x6D sub 0x0A       —— 9 字节名字区
-            //   3) 0x46 `01 00 00 0d`  —— 提交
-            // 第 3 帧是成败关键：只发前两帧时设备照样回显改名后的名字区，看着像收下了，
-            // 但 0x40 名表纹丝不动——这正是本命令此前一直失败的原因。
-            //
-            // 这条通路本身是抖的：同样的字节有时要试几次才落盘，所以整体重试。
-            // 官方序列只有这三帧，**不要切预设**（对齐 ToneCommand 的抓包）。
-            //
-            // 我曾经在这里加过"先跳到别的槽再跳回来"的 hop，理由是"设备只接受切换
-            // 之后的改名"。那是我自己臆造的规则，而且它正是失败的原因：带 hop 时
-            // 提交帧 `46 01 00 00 0d` 会被设备以 **status 0x7e 拒绝**，而官方同样的
-            // 字节（全程没切过预设）拿到的是干净的 `status 00` 回显。hop 还会让踏板
-            // 可见地来回跳，用户能直接看到。去掉后。
+            // 先读一遍完整名表。抓包 `预设14改名为1 2 3 4.mmon` 里 App 是在读完
+            // 8 组名表之后才发改名帧的，不确定这是不是前提，但按官方顺序走最稳妥。
+            dev.read_preset_names()?;
+
             let (k, p) = nanocore::protocol::name_session_begin();
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name session")?;
+
+            // 主路径：sub 0x0A 定长名字区 + 0x46 提交（真机实测唯一落盘的一条）。
             let (k, p) = nanocore::protocol::set_name_field(&field);
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name field")?;
             let (k, p) = nanocore::protocol::name_commit();
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name commit")?;
+
+            // 抓包 `预设14改名为1 2 3 4.mmon` 里 App 走的是另一条：sub 0x09 变长字段、
+            // 只有两帧、没有提交。那条设备会接受并回显，但真机上**不落盘**（0x40 名表
+            // 不变），所以这里不用它。协议层保留了编码函数供继续研究。
 
             // flash 落盘异步生效，稍候再读名表复核。
             std::thread::sleep(std::time::Duration::from_secs(3));

@@ -295,11 +295,8 @@ pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
 ///
 /// [`chain_encode`]: crate::protocol::chain_encode
 pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
-    // 顺序：先查字符集，再查长度。
-    // 设备只能显示键盘上打得出的半角字符；真机逐个试过字母、数字、空格，以及
-    // `- _ . , ! ? + = * / : ; ' " ( ) [ ] { } < > @ # $ % ^ & | ~ \\`
-    // 都可以，中文/全角标点/控制字符都写不进去。
-    // 先查字符集，`中文名` 这类会直接报"字符不允许"，而不是被当成 9 字节说超长。
+    // 顺序：先查字符集，再查空格，再查长度，最后查全空格。
+    // 先查字符集，`中文名` 这类会直接报"字符不允许"，而不是被当成超长。
     if let Some(bad) = name.chars().find(|c| !matches!(c, ' '..='~')) {
         return Err(format!("preset name: {bad:?} is not allowed"));
     }
@@ -307,21 +304,36 @@ pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
     if count == 0 {
         return Err("preset name is empty".to_string());
     }
-    if count > 8 {
-        return Err(format!("preset name: 8 characters max, got {count}"));
-    }
     // 全是空格的话，设备读回来和空名字没区别。
     if name.chars().all(|c| c == ' ') {
         return Err("preset name is only spaces".to_string());
     }
 
+    // 设备把名字区当**空格终止的字符串**：第一个空格之后的内容一律丢失。
+    // 这与编码方式无关——sub 0x0A 定长和 sub 0x09 变长两条路都实测如此
+    // （`Ab cd` → `Ab`，`Abc d` → `Abc`，抓包里 App 自己写的 `1 2 3 4` 也带空格）。
+    // 所以含空格的名字根本存不进去，在客户端就拦掉，别让用户以为改名成功了。
+    if let Some(at) = name.find(' ') {
+        return Err(format!(
+            "preset name: {:?} has a space at position {}; the device cuts the name there",
+            name,
+            at + 1
+        ));
+    }
+    // 上限 5 字符，不是 8。名字区虽然有 8 字节宽，但设备只存下前 5 个字符，
+    // 第 6 个及以后一律丢弃——`Abcdef` → `Abcde`，且与怎么编码、填不填 NUL、
+    // 长度字节写多少都无关。
+    if count > PRESET_NAME_MAX {
+        return Err(format!(
+            "preset name: {} characters max, got {count}",
+            PRESET_NAME_MAX
+        ));
+    }
+
     let bytes = name.as_bytes();
-    let mut padded = [0x00u8; 8];
-    padded[..bytes.len()].copy_from_slice(bytes);
     let mut out = [0x00u8; 9];
-    out[..6].copy_from_slice(&padded[..6]);
-    // 下标 6 固定插入 0x00，剩余字符跟在其后。
-    out[7..9].copy_from_slice(&padded[6..8]);
+    let n = bytes.len().min(8);
+    out[..n].copy_from_slice(&bytes[..n]);
     Ok(out)
 }
 
@@ -338,9 +350,34 @@ pub fn name_session_begin() -> (u8, Vec<u8>) {
 /// 名字区编码见 [`encode_preset_name_field`]。设备应答会把 NUL 重排到别的位置
 /// （出厂名表里 NUL 位置本来就每条不同：`Am\0bient`、`T\0ightRhy`、`Epi\0cSolo`），
 /// 所以回显不必逐字节相同，按"跳过 NUL 收集可打印字符"比较即可。
-pub fn set_name_field(field: &[u8; 9]) -> (u8, Vec<u8>) {
-    let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, 0x08];
+pub fn set_name_field(field: &[u8]) -> (u8, Vec<u8>) {
+    // 定长路径：长度字节恒为 8（= 名字区宽度）。
+    let len = 8usize;
+    let mut p = vec![0x00, sub::NAME, 0x00, 0x00, 0x08, len as u8];
     p.extend_from_slice(field);
+    (msg_type::DATA, p)
+}
+
+/// `0x6D` sub `0x09`：**变长**名字字段，名字里可以有空格。
+///
+/// 抓包 `预设14改名为1 2 3 4.mmon`（645.7747）：
+///
+/// ```text
+/// TX  6d  00 09 00 00 08 07  31 20 32 20 33 00 20 34
+/// RX  6d  00 00 09 00 00 08 07  31 20 32 20 00 33 20 34
+/// ```
+///
+/// 载荷是 `00 09 | 00 00 | 字段 0x08 | 长度 | <名字字节 + 1 个 NUL>`。
+/// **长度是字符数，不含那个 NUL**（这里 7 个字符 → `0x07`，后面跟 8 字节）。
+/// 所以整个名字区是变长的，不是固定 9 字节。
+///
+/// 设备回显时把 NUL 挪到了别处（`1 2 .3 4`），位置本身无意义。
+///
+/// 这条路径**没有提交帧**，抓包里 App 就是 `sub 0x01` + `sub 0x09` 两帧。
+pub fn set_name_field_varlen(name: &str) -> (u8, Vec<u8>) {
+    let mut p = vec![0x00, sub::NAME_VARLEN, 0x00, 0x00, 0x08, name.len() as u8];
+    p.extend_from_slice(name.as_bytes());
+    p.push(0x00);
     (msg_type::DATA, p)
 }
 
@@ -497,6 +534,12 @@ pub struct PresetEntry {
 
 /// 存储的预设名称的字符数。名称以空格填充到此宽度，并且以在分片之间插入 `0x00` 字节的方式存储。
 pub const PRESET_NAME_CHARS: usize = 8;
+
+/// 预设名实际能存的字符数上限。
+///
+/// 名字区有 8 字节宽，但设备只存下前 5 个字符：`Abcdef` → `Abcde`。试过定长/变长、
+/// 带不带尾随 NUL、长度字节写 5/6/7/8，结果一律是 5。
+pub const PRESET_NAME_MAX: usize = 5;
 
 /// 名表里每条名字区占的字节数。
 ///
