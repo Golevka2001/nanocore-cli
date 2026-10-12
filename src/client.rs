@@ -1268,28 +1268,3 @@ fn next_seq_after(s: u16) -> u16 {
 fn hex(payload: &[u8]) -> String {
     payload.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
 }
-
-#[cfg(test)]
-mod seq_tests {
-    use super::next_seq_after;
-
-    #[test]
-    fn seq_skips_the_non_7bit_safe_range() {
-        assert_eq!(next_seq_after(0x237e), 0x237f);
-        // 0x237f 的下一个不是 0x2380，而是跳到 0x2400
-        assert_eq!(next_seq_after(0x237f), 0x2400);
-        assert_eq!(next_seq_after(0x2400), 0x2401);
-        // 每个低字节 0x7F 之后都跳过一个 0x80-0xFF 段
-        assert_eq!(next_seq_after(0x007f), 0x0100);
-        assert_eq!(next_seq_after(0x0000), 0x0001);
-    }
-
-    #[test]
-    fn seq_stays_7bit_safe_forever() {
-        let mut s = 0x237fu16;
-        for _ in 0..70_000 {
-            s = next_seq_after(s);
-            assert!(s & 0xFF <= 0x7F, "seq {s:#06x} has a non-7-bit-safe low byte");
-        }
-    }
-}

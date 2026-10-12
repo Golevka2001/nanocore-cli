@@ -56,7 +56,6 @@ nanocore-cli settings wireless off        # 启用/关闭无线
 nanocore-cli settings input-gain -3        # 输入增益（dB，可为负）
 nanocore-cli settings midi-channel 2      # MIDI 接收通道
 
-nanocore-cli asset read ir 1 --out out.bin   # 把 1 号槽的 IR blob 拉出来
 nanocore-cli asset write amp 29 tone.ead     # 把 .ead/.eadl 模型写入 amp 槽
 
 # 协议 / 调试（未公开的帧格式）：

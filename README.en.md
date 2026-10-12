@@ -10,7 +10,7 @@
 
 Unofficial Rust CLI for the [LIVTRA NanoCore](https://livtramusic.com/products/nanocore) pocket effects pedal (TPE-S10).
 
-Drives a real device over USB-MIDI. Controls preset switching, on/off / model / parameters of the 8 effect modules, effect-chain order, and IR asset read/write — covering most of the official app's operations.
+Drives a real device over USB-MIDI. Controls preset switching, on/off / model / parameters of the 8 effect modules, effect-chain order, and IR asset writes — covering most of the official app's operations.
 
 ## CLI
 
@@ -56,7 +56,6 @@ nanocore-cli settings wireless off        # enable / disable wireless
 nanocore-cli settings input-gain -3        # input gain (dB, may be negative)
 nanocore-cli settings midi-channel 2      # MIDI receive channel
 
-nanocore-cli asset read ir 1 --out out.bin   # pull the slot-1 IR blob
 nanocore-cli asset write amp 29 tone.ead     # write an .ead/.eadl model to an amp slot
 
 # protocol / debugging (undocumented framing):
