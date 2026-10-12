@@ -2,10 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use nanocore::frame::Frame;
 use nanocore::preset_bundle::FX2_SLOT_NONE;
 
 use crate::cli::{Conn, PresetCmd};
-use crate::common::{Dev, Failure, open_device, progress, send_standard, transact};
+use crate::common::{Dev, Failure, open_device, progress, send_standard, transact, transact_reply};
 
 /// wire 槽位（0 起，`255` = unknown）→ 用户编号显示（1 起 / `unknown`）。
 fn slot_disp(v: u8) -> String {
@@ -74,6 +75,25 @@ fn wait_preset_settled(dev: &mut Dev, expect: Option<u8>) -> Result<(), Failure>
             }));
         }
         std::thread::sleep(Duration::from_millis(120));
+    }
+}
+
+/// 应答的 `payload[1]` 是状态字节，非 0 即被拒。
+///
+/// 改名三帧里第三帧（提交）被拒时设备回 `01 7e 00 00 00` —— 之前这里没有检查，
+/// 命令便一路当成功往下走，最后只报一句"名表没变"，把真正的拒收原因掩盖了。
+fn check_status(reply: Option<Frame>, what: &str) -> Result<(), Failure> {
+    let Some(frame) = reply else {
+        return Err(Failure::error(format!(
+            "the device did not answer the `{what}` step of the rename"
+        )));
+    };
+    match frame.payload.get(1) {
+        Some(&0x00) => Ok(()),
+        Some(&status) => Err(Failure::mismatch(format!(
+            "the device rejected the `{what}` step: status {status:02x}"
+        ))),
+        None => Ok(()),
     }
 }
 
@@ -381,6 +401,120 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     "{}/{} presets verified",
                     ok,
                     targets.len()
+                )))
+            }
+        }
+        PresetCmd::Volume { percent } => {
+            let mut dev = open_device(conn)?;
+            let read_volume =
+                |dev: &mut crate::common::Dev| -> Result<u8, Failure> {
+                let snap = dev.read_snapshot().map_err(|e| e.to_string())?;
+                let state = nanocore::protocol::decode_snapshot_state(&snap.payload).ok_or_else(
+                    || {
+                        Failure::error(
+                            "the 0x63 snapshot did not decode (only the USB payload form \
+                             is supported)",
+                        )
+                    },
+                )?;
+                Ok(state.preset_volume)
+            };
+            let before = read_volume(&mut dev)?;
+            let (k, p) = nanocore::protocol::set_preset_volume(percent);
+            transact(&mut dev, conn, k, p, &[])?;
+
+            // 设备的快照不是即时刷新的，稍候再回读。
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let after = read_volume(&mut dev)?;
+            println!("preset volume: {before} -> {after}");
+            if after == percent {
+                Ok(())
+            } else {
+                Err(Failure::mismatch(format!(
+                    "volume write did not stick: set {percent}, snapshot reads {after}"
+                )))
+            }
+        }
+        PresetCmd::List => {
+            let mut dev = open_device(conn)?;
+            let entries = dev.read_preset_names()?;
+            for e in &entries {
+                println!(
+                    "  #{:<2} {:<12} {}",
+                    e.slot + 1,
+                    e.name,
+                    if e.named { "" } else { "(empty)" }
+                );
+            }
+            Ok(())
+        }
+        PresetCmd::Set { index } => {
+            let mut dev = open_device(conn)?;
+            // 不用裸 program change：它不等应答，设备异步提交，导致紧随其后的
+            // `preset show` 读到上一个槽。
+            dev.select_preset_checked(index - 1)
+                .map_err(|e| Failure::error(e.to_string()))?;
+            wait_preset_settled(&mut dev, Some(index - 1))
+        }
+        PresetCmd::Next => {
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &nanocore::midicc::global::next_preset(conn.channel))?;
+            wait_preset_settled(&mut dev, None)
+        }
+        PresetCmd::Prev => {
+            let mut dev = open_device(conn)?;
+            send_standard(&mut dev, &nanocore::midicc::global::prev_preset(conn.channel))?;
+            wait_preset_settled(&mut dev, None)
+        }
+        PresetCmd::Rename { slot, name } => {
+            let field = nanocore::protocol::encode_preset_name_field(&name)
+                .map_err(Failure::error)?;
+            let wire = slot - 1;
+            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            let mut dev = open_device(conn)?;
+
+            // 设备只接受"**切换进入**该预设"之后的改名（真机反复验证）：选当前已
+            // 激活的槽不算一次切换，改名会静默不生效。所以先跳到别的槽、再跳回来，
+            // 制造一次真正的切换。
+            //
+            // 之后是三帧序列（对齐 ToneCommand，见
+            // data/captures/预设重命名P14 Psych改Psycn-re.mmon）：
+            //   1) 0x6D sub 0x01       —— 改名会话前置帧
+            //   2) 0x6D sub 0x0A       —— 9 字节名字区
+            //   3) 0x46 `01 00 00 0d`  —— 提交
+            // 第 3 帧是成败关键：只发前两帧时设备照样回显改名后的名字区，看着像收下了，
+            // 但 0x40 名表纹丝不动——这正是本命令此前一直失败的原因。
+            //
+            // 这条通路本身是抖的：同样的字节有时要试几次才落盘，所以整体重试。
+            // 官方序列只有这三帧，**不要切预设**（对齐 ToneCommand 的抓包）。
+            //
+            // 我曾经在这里加过"先跳到别的槽再跳回来"的 hop，理由是"设备只接受切换
+            // 之后的改名"。那是我自己臆造的规则，而且它正是失败的原因：带 hop 时
+            // 提交帧 `46 01 00 00 0d` 会被设备以 **status 0x7e 拒绝**，而官方同样的
+            // 字节（全程没切过预设）拿到的是干净的 `status 00` 回显。hop 还会让踏板
+            // 可见地来回跳，用户能直接看到。去掉后。
+            let (k, p) = nanocore::protocol::name_session_begin();
+            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name session")?;
+            let (k, p) = nanocore::protocol::set_name_field(&field);
+            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name field")?;
+            let (k, p) = nanocore::protocol::name_commit();
+            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name commit")?;
+
+            // flash 落盘异步生效，稍候再读名表复核。
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let entries = dev.read_preset_names()?;
+            let got = entries
+                .iter()
+                .find(|e| e.slot == wire)
+                .map(|e| e.name.clone())
+                .unwrap_or_default();
+            let want: String = name.chars().filter(|&c| c != '\0').collect();
+            if got == want {
+                println!("slot #{slot}: renamed to {want:?}");
+                Ok(())
+            } else {
+                Err(Failure::mismatch(format!(
+                    "the device accepted the frames but the name table still says {got:?}"
                 )))
             }
         }

@@ -1107,8 +1107,14 @@ impl<T: Transport> Nanocore<T> {
         let reply = self
             .transact_expect(k, p, &[crate::msg_type::PRESET_LIST])
             .map_err(|e| e.to_string())?;
-        let entries = protocol::parse_preset_list(&reply.payload)
-            .ok_or_else(|| format!("preset-list reply for slots {base}.. did not decode"))?;
+        let entries = protocol::parse_preset_list(&reply.payload).ok_or_else(|| {
+            let hex: Vec<String> = reply.payload.iter().map(|b| format!("{b:02x}")).collect();
+            format!(
+                "preset-list reply for slots {base}.. did not decode; raw[{}] {}",
+                reply.payload.len(),
+                hex.join(" ")
+            )
+        })?;
         Ok(entries.into_iter().find(|e| e.slot == slot))
     }
 
@@ -1125,8 +1131,14 @@ impl<T: Transport> Nanocore<T> {
             let reply = self
                 .transact_expect(k, p, &[crate::msg_type::PRESET_LIST])
                 .map_err(|e| e.to_string())?;
-            let entries = protocol::parse_preset_list(&reply.payload)
-                .ok_or_else(|| format!("preset-list reply for slots {base}.. did not decode"))?;
+            let entries = protocol::parse_preset_list(&reply.payload).ok_or_else(|| {
+                let hex: Vec<String> = reply.payload.iter().map(|b| format!("{b:02x}")).collect();
+                format!(
+                    "preset-list reply for slots {base}.. did not decode; raw[{}] {}",
+                    reply.payload.len(),
+                    hex.join(" ")
+                )
+            })?;
             out.extend(entries);
         }
         Ok(out)

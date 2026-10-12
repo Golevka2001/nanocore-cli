@@ -344,13 +344,17 @@ pub fn set_name_field(field: &[u8; 9]) -> (u8, Vec<u8>) {
     (msg_type::DATA, p)
 }
 
-/// 改名第三步：`0x46` 载荷 `01 00 00 0d` —— 提交。
+/// 改名第三步：`0x46` 载荷 `00 01 00 00 0d` —— 提交。
+///
+/// 抓包线上是 `46 00 01 00 00 0d`：去掉真类型 `0x46` 后载荷为 `00 01 00 00 0d`。
+/// 开头这个 `0x00` 少一个字节，设备就回 `01 7e 00 00 00`（status `0x7e` = 拒收）。
 ///
 /// **这一步是成败关键。** 只发前两帧时设备会回显改名后的名字区，看上去收下了，
 /// 但 `0x40` 名表纹丝不动；补上这一帧名字才真正落盘。
-/// 官方 App 的改名序列是这三帧（`data/captures/预设重命名P14 Psych改Psycn-re.mmon`）。
 pub fn name_commit() -> (u8, Vec<u8>) {
-    (0x46, vec![0x01, 0x00, 0x00, 0x0d])
+    // 抓包原样：线上是 `46 00 01 00 00 0d`，去掉真类型 `0x46` 后载荷为 `00 01 00 00 0d`。
+    // 开头这个 `0x00` 少一个字节，设备就回 `01 7e 00 00 00`（status 0x7e = 拒收）。
+    (0x46, vec![0x00, 0x01, 0x00, 0x00, 0x0d])
 }
 
 /// `0x6D` 效果类型切换。
@@ -494,6 +498,12 @@ pub struct PresetEntry {
 /// 存储的预设名称的字符数。名称以空格填充到此宽度，并且以在分片之间插入 `0x00` 字节的方式存储。
 pub const PRESET_NAME_CHARS: usize = 8;
 
+/// 名表里每条名字区占的字节数。
+///
+/// 8 个字符位 + 1 个分隔位。名字不足 8 字符时设备用 NUL 补齐，但**补齐的位置不固定**，
+/// 所以读的时候不能指望尾部对齐，只能按固定长度取可打印字符。
+pub const NAME_AREA_BYTES: usize = 9;
+
 /// 解析 `0x40` 预设列表应答载荷。
 ///
 /// ```text
@@ -553,23 +563,30 @@ pub fn parse_preset_list(payload: &[u8]) -> Option<Vec<PresetEntry>> {
         }
         let marks = (marks_at, i);
 
-        // 3. 恰好 PRESET_NAME_CHARS 个可打印字符，跳过 NUL。
+        // 3. 名字区固定 9 字节，取其中的可打印字符，其余（NUL 及个别控制字节）
+        //    一律当分隔符跳过。
+        //
+        //    设备存进去的字节并不总是干净的文本：改过名的槽位里会混进控制字节，
+        //    例如改名成 `TestNm` 后名表里是 `54 10 65 73 74 4e 00 20 20`——第 2
+        //    个字节是 `0x10`。遇到非可打印字节就整条判死，会让**整张名表**读不出来
+        //    （一个槽位坏了，`preset list` 直接报错）。所以这里只按位置消耗固定
+        //    长度，字符另收。
         let mut name = String::with_capacity(PRESET_NAME_CHARS);
         let mut name_nuls = Vec::new();
-        while i < payload.len() && name.len() < PRESET_NAME_CHARS {
-            let b = payload[i];
-            if b == 0x00 {
-                name_nuls.push(i);
-                i += 1;
-            } else if (0x20..=0x7E).contains(&b) {
-                name.push(b as char);
-                i += 1;
-            } else {
+        for _ in 0..NAME_AREA_BYTES {
+            if i >= payload.len() {
                 return None;
             }
+            let b = payload[i];
+            if (0x20..=0x7E).contains(&b) {
+                name.push(b as char);
+            } else {
+                name_nuls.push(i);
+            }
+            i += 1;
         }
-        if name.len() != PRESET_NAME_CHARS {
-            return None;
+        if name.is_empty() && !named {
+            name.clear();
         }
 
         // 4. 至多一个尾随字节 < 0x20，但绝不可能是下一个槽位索引。
