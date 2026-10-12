@@ -3,7 +3,6 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::{ArgValueCandidates, CompletionCandidate};
 
-use nanocore::asset;
 use nanocore::midi;
 use nanocore::midicc::Block;
 use nanocore::protocol;
@@ -225,9 +224,6 @@ pub enum PresetCmd {
         /// Override the IR slot reference (1–30, 0 = unknown; default: 0, limited App compatibility)
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u8).range(0..=30))]
         ir_slot: Option<u8>,
-        /// Also read the referenced amp / IR slots from the device and embed them
-        #[arg(long)]
-        with_assets: bool,
     },
     /// Import a preset from a .npreset bundle (overwrites the target slot)
     Import {
@@ -422,37 +418,11 @@ pub enum SettingsCmd {
 pub enum AssetCmd {
     /// List the asset regions and their slot ranges (no device needed)
     List,
-    /// Fetch a blob, print its crc32, optionally save it to a file
-    Read {
-        region: RegionArg,
-        slot: u8,
-        /// Write the blob to this file
-        #[arg(long, value_name = "FILE")]
-        out: Option<String>,
-        /// Read the slot this many times and require every read to agree.
-        /// The protocol carries no per-chunk checksum, and the device
-        /// occasionally corrupts one chunk while echoing a correct slot/address,
-        /// so a single read can be wrong with a plausible crc32.
-        #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=8))]
-        recheck: u8,
-    },
-    /// Fetch a blob and compare it byte for byte with a reference file
-    ///
-    /// For example, use `ir/slot_00.bin` from inside a .npreset bundle as the reference.
-    Verify {
-        region: RegionArg,
-        slot: u8,
-        /// Reference file to compare against
-        reference: String,
-        /// Write the blob to this file
-        #[arg(long, value_name = "FILE")]
-        out: Option<String>,
-    },
-    /// Write a blob to a slot and verify by read-back (IR only)
+    /// Write a blob to a slot; success is the device's own commit status byte
     ///
     ///  Experimental: an interrupted write may clear the device's preset-name table, after
     ///  which every slot shows the placeholder name "preset". Keep the session alive until
-    ///  this command prints its final OK/MISMATCH line.
+    ///  this command prints its final verdict.
     Write {
         region: RegionArg,
         slot: u8,
@@ -655,13 +625,6 @@ pub enum RegionArg {
 }
 
 impl RegionArg {
-    pub fn asset_region(self) -> u8 {
-        match self {
-            RegionArg::Amp => asset::REGION_AMP,
-            RegionArg::Ir => asset::REGION_IR,
-        }
-    }
-
     pub fn name(self) -> &'static str {
         match self {
             RegionArg::Amp => "amp",

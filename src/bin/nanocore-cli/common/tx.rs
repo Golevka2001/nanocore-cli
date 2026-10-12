@@ -82,6 +82,5 @@ pub fn transact_reply(
             "timeout after {attempts} attempt(s) in {elapsed:?}"
         ))),
         Err(Error::Transport(e)) => Err(Failure::error(e.to_string())),
-        Err(Error::Protocol(m)) => Err(Failure::error(m)),
     }
 }

@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use nanocore::asset;
 use nanocore::midicc;
-use nanocore::preset_bundle::{AssetRef, BundleAssets, FX2_SLOT_NONE};
+use nanocore::preset_bundle::FX2_SLOT_NONE;
 
 use crate::cli::{Conn, PresetCmd};
 use crate::common::{Dev, Failure, open_device, progress, send_standard, transact};
@@ -16,105 +15,6 @@ fn slot_disp(v: u8) -> String {
     } else {
         format!("#{}", v + 1)
     }
-}
-
-/// 读取引用到的 amp / IR 槽，返回 manifest 的资产条目与 ZIP 资产内容。
-///
-/// IR 读回的是 4096 B f32le，`import --with-assets` 能原样写回。
-/// amp 读回的是设备内部 DDBP 格式而非 `.ead`（转换发生在设备写入时），
-/// 因此标 `ead-payload` 由导入侧跳过 —— DDBP 详情仍未解。
-fn collect_assets(
-    dev: &mut Dev,
-    amp: u8,
-    ir: u8,
-) -> Result<(Vec<AssetRef>, Vec<AssetRef>, BundleAssets), Failure> {
-    fn read_one(
-        dev: &mut Dev,
-        assets: &mut BundleAssets,
-        region: u8,
-        wire: u8,
-        path: String,
-        encoding: &str,
-    ) -> Result<AssetRef, Failure> {
-        let label = if region == asset::REGION_AMP { "amp" } else { "ir" };
-        let (total, plan) = asset::read_plan(region, wire)
-            .ok_or_else(|| Failure::error(format!("no read plan for {label} slot {}", wire + 1)))?;
-        println!("reading {label} slot {}…", wire + 1);
-        // 读两遍并要求一致：协议没有块级校验和，实测设备会间歇性把单个数据块的
-        // 内容弄坏而 slot/addr 回显是对的，单次读可能得到 crc32 看似正常的错数据。
-        // 导出是要落盘、会被别人复用的数据，值得多花一次往返。
-        let mut last: Vec<u8> = Vec::new();
-        for pass in 1..=2 {
-            if pass == 2 {
-                println!("  re-reading to confirm…");
-            }
-            let blob = match dev.read_asset(&plan, total, |done, n| {
-                eprint!("\r  chunk {done}/{n}");
-            }) {
-                Ok(b) => {
-                    eprintln!();
-                    b
-                }
-                Err(e) if pass == 1 => {
-                    eprintln!();
-                    println!("  pass failed ({e}); retrying once");
-                    dev.read_asset(&plan, total, |done, n| {
-                        eprint!("\r  chunk {done}/{n}");
-                    })
-                    .map_err(|e| e.to_string())?
-                }
-                Err(e) => {
-                    eprintln!();
-                    return Err(Failure::error(e.to_string()));
-                }
-            };
-            if pass == 2 && blob != last {
-                return Err(Failure::mismatch(format!(
-                    "{label} slot {} read differently on two consecutive passes — \
-                     refusing to embed an untrustworthy blob",
-                    wire + 1
-                )));
-            }
-            last = blob;
-        }
-        let blob = last;
-        let crc = asset::crc32(&blob);
-        println!("  {} bytes, crc32 {crc:08x}", blob.len());
-        assets.insert(path.clone(), blob);
-        Ok(AssetRef {
-            slot: wire,
-            name: String::new(),
-            asset: path,
-            length: total,
-            crc32: crc,
-            encoding: encoding.to_string(),
-        })
-    }
-
-    let mut assets = BundleAssets::new();
-    let mut amp_slots = Vec::new();
-    let mut ir_slots = Vec::new();
-    if amp != FX2_SLOT_NONE {
-        amp_slots.push(read_one(
-            dev,
-            &mut assets,
-            asset::REGION_AMP,
-            amp,
-            format!("amp/slot_{amp:02}.bin"),
-            "ead-payload",
-        )?);
-    }
-    if ir != FX2_SLOT_NONE {
-        ir_slots.push(read_one(
-            dev,
-            &mut assets,
-            asset::REGION_IR,
-            ir,
-            format!("ir/slot_{ir:02}.bin"),
-            "f32le",
-        )?);
-    }
-    Ok((amp_slots, ir_slots, assets))
 }
 
 /// 等待设备报告的预设槽位稳定在期望值。
@@ -196,7 +96,6 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
             out,
             amp_slot,
             ir_slot,
-            with_assets,
         } => {
             // 用户编号 1–64 → wire 槽位 0–63。
             let wire = slot - 1;
@@ -296,19 +195,11 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     preset: spec,
                 }],
             );
-            let mut manifest = manifest;
-            let assets = if with_assets {
-                let (amp_slots, ir_slots, assets) = collect_assets(&mut dev, amp, ir)?;
-                manifest.amp_slots = amp_slots;
-                manifest.ir_slots = ir_slots;
-                assets
-            } else {
-                Default::default()
-            };
+            let manifest = manifest;
             nanocore::preset_bundle::write_bundle(
                 std::path::Path::new(&out),
                 &manifest,
-                &assets,
+                &Default::default(),
             )
             .map_err(Failure::error)?;
             println!(

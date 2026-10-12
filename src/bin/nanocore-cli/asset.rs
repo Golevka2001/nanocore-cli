@@ -1,9 +1,13 @@
-//! `asset` 命令：读取 / 校验 / 写入存储在设备槽位中的原始音箱/IR 数据块。
+//! `asset` 命令：把音箱 / IR 数据块写入设备槽位。
+//!
+//! 只保留写入。读取与校验已按 ToneCommand 的实际行为对齐后删除——官方 App
+//! 既不回读资产也不做内容校验，只有 `importEadBytes` / `importSlot` 这类写入口，
+//! 以及 `getSlots` / `getIrSlots` 这种只读**槽位目录**的查询。
 
-use nanocore::asset::{self, ChunkRequest};
+use nanocore::asset;
 
 use crate::cli::{AssetCmd, Conn, RegionArg};
-use crate::common::{Dev, Failure, open_device, progress};
+use crate::common::{Failure, open_device, progress};
 
 pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
     match cmd {
@@ -21,30 +25,8 @@ pub fn cmd_asset(cmd: AssetCmd, conn: &Conn) -> Result<(), Failure> {
                 asset::IR_SLOTS,
                 asset::IR_TOTAL
             );
-            println!("  operations: read | verify | write (ir: 4096-byte blob; amp: full .ead/.eadl)");
+            println!("  operations: write (ir: 4-byte-aligned blob up to 4096; amp: full .ead/.eadl)");
             Ok(())
-        }
-        AssetCmd::Read {
-            region,
-            slot,
-            out,
-            recheck,
-        } => {
-            let target = ReadTarget::new(region, slot)?;
-            let mut dev = open_device(conn)?;
-            asset_read(&mut dev, target, out, None, recheck)
-        }
-        AssetCmd::Verify {
-            region,
-            slot,
-            reference,
-            out,
-        } => {
-            let want =
-                std::fs::read(&reference).map_err(|e| format!("cannot read {reference}: {e}"))?;
-            let target = ReadTarget::new(region, slot)?;
-            let mut dev = open_device(conn)?;
-            asset_read(&mut dev, target, out, Some(&want), 1)
         }
         AssetCmd::Write {
             region,
@@ -93,7 +75,6 @@ fn cmd_write_amp(
     conn: &Conn,
 ) -> Result<(), Failure> {
     use nanocore::amp_write as aw;
-    use nanocore::asset;
 
     // 用户编号 1 起 → wire 槽位 0 起。槽位范围已由 `cmd_asset` 校验。
     let wire = slot - 1;
@@ -101,15 +82,11 @@ fn cmd_write_amp(
     println!("asset write amp slot {slot} — full .ead, {} bytes", ead.len());
     let mut dev = open_device(conn)?;
     // 成功判据在 write_amp_slot 内部：0x33 提交状态 00 + 0x35 名字被接受 +
-    // 型号表（0x36）回读为新名字。回读的 DDBP 内部格式仅作信息展示。
-    let back = dev.write_amp_slot(wire, &ead, name.as_deref(), progress)?;
+    // 成败只看设备自己的两个状态字节：0x33 提交 + 0x35 型号名（内部已校验），
+    // 外加随后的 0x36 型号表刷新确认新名字。官方 App 同样不回读资产。
+    dev.write_amp_slot(wire, &ead, name.as_deref(), progress)?;
     eprintln!();
-    println!(
-        "OK: model committed; device reports it as a custom model (read-back \
-         internal blob {} bytes, crc32 {:08x}).",
-        back.len(),
-        asset::crc32(&back)
-    );
+    println!("OK: device accepted the model (0x33/0x35 status 00, model table updated).");
     Ok(())
 }
 
@@ -135,175 +112,11 @@ fn cmd_write_ir(
     }
     println!("asset write ir slot {slot} — {} bytes", blob.len());
     let mut dev = open_device(conn)?;
-    let back = dev.write_ir_slot(wire, &blob, name.as_deref(), progress)?;
+    dev.write_ir_slot(wire, &blob, name.as_deref(), progress)?;
     eprintln!();
-    match back == blob {
-        true => {
-            let crc = asset::crc32(&back);
-            println!(
-                "OK: read-back is byte-identical ({} bytes, crc32 {crc:08x}).",
-                back.len()
-            );
-            Ok(())
-        }
-        false => {
-            let at = back
-                .iter()
-                .zip(blob.iter())
-                .position(|(a, b)| a != b)
-                .unwrap_or(0);
-            Err(Failure::mismatch(format!(
-                "MISMATCH after write: first difference at byte {at} \
-                 (device 0x{:02x}, file 0x{:02x})",
-                back[at], blob[at]
-            )))
-        }
-    }
-}
-
-/// 一次读取的已校验目标：区域、槽位、分块计划与预期长度。
-///
-/// 构造即校验——非法区域或槽位在打开端口之前就被拒绝。
-struct ReadTarget {
-    region: RegionArg,
-    slot: u8,
-    plan: Vec<ChunkRequest>,
-    total: u32,
-}
-
-impl ReadTarget {
-    /// `slot` 是用户编号（1 起）；分块计划按 wire 槽位（0 起）构造。
-    fn new(region: RegionArg, slot: u8) -> Result<Self, String> {
-        let region_byte = region.asset_region();
-        let slots = asset::slots_for(region_byte)
-            .ok_or_else(|| format!("no read plan for region {}", region.name()))?;
-        if slot == 0 || slot > slots {
-            return Err(format!(
-                "{} slot must be 1-{} (device has {slots} slots), got {slot}",
-                region.name(),
-                slots
-            ));
-        }
-        // CLI 的槽号是 1-based，且与 `.npreset` 包内的 `slot_NN` 命名**同号**。
-        //
-        // 这一条是被真机实验纠正的：README / docs 里的说法是"CLI 槽 = 包内 NN + 1"
-        // （`resources/models.json` 的 note 也这么写），据此 `asset write amp 2 amp/slot_01.ead`
-        // 会写到固件 index 1，而那其实是包内 `slot_02.ead` 的内容——写错槽且无法察觉。
-        //
-        // 实测依据（2026-10-11）：把 `amp/slot_01.ead` 写进 CLI 槽 2，读回 DDPP 的
-        // crc32 = 0x44bc5f64，与该槽写入前的原始内容**逐字节相同**，证明它写对了。
-        let (total, plan) = asset::read_plan(region_byte, slot - 1)
-            .ok_or_else(|| format!("internal: no plan for {} slot {slot}", region.name()))?;
-        Ok(Self {
-            region,
-            slot,
-            plan,
-            total,
-        })
-    }
-}
-
-/// `asset read` / `asset verify` 的共享实现体。
-fn asset_read(
-    dev: &mut Dev,
-    target: ReadTarget,
-    out: Option<String>,
-    reference: Option<&[u8]>,
-    recheck: u8,
-) -> Result<(), Failure> {
-    let ReadTarget {
-        region,
-        slot,
-        plan,
-        total,
-    } = target;
-    println!(
-        "asset {} slot {} (read-only, {} chunk request(s), expecting {} bytes)...",
-        region.name(),
-        slot,
-        plan.len(),
-        total
-    );
-    // 协议对读应答**没有块级校验和**，而实测设备/传输是间歇性出错的：既会返回
-    // 长度正确、内容却错的 blob（约 1%，同一槽连读三次能得到三个不同结果），
-    // 也会整遍读直接失败。所以每一遍都重试到成功，再用重复读互相印证。
-    let mut attempts: Vec<Vec<u8>> = Vec::new();
-    let mut last_err: Option<String> = None;
-    let passes = recheck.max(1);
-    for attempt in 1..=passes {
-        if attempt > 1 {
-            println!("re-check pass {attempt} of {passes}...");
-        }
-        match dev.read_asset(&plan, total, |done, n| {
-            eprint!("\r  chunk {done}/{n}");
-        }) {
-            Ok(blob) => {
-                eprintln!();
-                attempts.push(blob);
-                last_err = None;
-            }
-            // 设备/传输是间歇性出错的：一次坏帧、一次错位、一次超时都会让整遍读失败。
-            // 还有剩余遍数就重来，最后一遍才把错误交出去。
-            Err(e) => {
-                eprintln!();
-                let msg = e.to_string();
-                if attempt < passes {
-                    println!("  pass {attempt} failed ({msg}); retrying");
-                    last_err = Some(msg);
-                    continue;
-                }
-                return Err(Failure::error(msg));
-            }
-        }
-    }
-    if attempts.is_empty() {
-        return Err(Failure::error(
-            last_err.unwrap_or_else(|| "asset read produced no data".into()),
-        ));
-    }
-    if attempts.windows(2).any(|w| w[0] != w[1]) {
-        let crcs: Vec<String> = attempts
-            .iter()
-            .map(|b| format!("{:08x}", asset::crc32(b)))
-            .collect();
-        return Err(Failure::mismatch(format!(
-            "the device returned different bytes on consecutive reads of the same slot \
-             (crc32 {}); this read is not trustworthy — rerun with --recheck",
-            crcs.join(" / ")
-        )));
-    }
-    let blob = attempts.pop().expect("at least one attempt");
-    println!("read {} bytes", blob.len());
-
-    let crc = asset::crc32(&blob);
-    println!("crc32 = {crc:08x}");
-
-    if let Some(path) = &out {
-        match std::fs::write(path, &blob) {
-            Ok(()) => println!("written to {path}"),
-            Err(e) => eprintln!("warning: cannot write {path}: {e}"),
-        }
-    }
-    if let Some(want) = reference {
-        if blob.len() != want.len() {
-            return Err(Failure::mismatch(format!(
-                "MISMATCH: device returned {} bytes, reference has {}",
-                blob.len(),
-                want.len()
-            )));
-        }
-        match blob.iter().zip(want.iter()).position(|(a, b)| a != b) {
-            None => println!(
-                "OK: byte-identical to the reference ({} bytes, crc32 {crc:08x}).",
-                blob.len()
-            ),
-            Some(at) => {
-                return Err(Failure::mismatch(format!(
-                    "MISMATCH: first difference at byte {at}: device 0x{:02x}, reference 0x{:02x}",
-                    blob[at], want[at]
-                )));
-            }
-        }
-    }
+    // 成功判据就是设备自己的 0x57 提交状态字节。官方 App 不回读比对，
+    // 而 0x39/0x59 的读应答没有块级校验和、实测会间歇性损坏内容，
+    // 拿它当"验证写入"只会给出虚假的 OK 或虚假的失败。
+    println!("OK: the device acknowledged the commit (0x57 status 00).");
     Ok(())
 }

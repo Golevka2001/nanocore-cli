@@ -57,8 +57,6 @@ pub enum Error<E> {
     Transport(E),
     /// 设备在超时预算内始终未应答。
     Timeout { attempts: u32, elapsed: Duration },
-    /// 设备应答了，但内容与请求对不上（重组后会静默产出错误数据）。
-    Protocol(String),
 }
 
 impl<E: fmt::Display> fmt::Display for Error<E> {
@@ -69,7 +67,6 @@ impl<E: fmt::Display> fmt::Display for Error<E> {
                 f,
                 "timed out waiting for response after {attempts} attempt(s) in {elapsed:?}"
             ),
-            Error::Protocol(m) => write!(f, "{m}"),
         }
     }
 }
@@ -274,110 +271,7 @@ impl<T: Transport> Nanocore<T> {
         self.transact_expect(k, p, &[crate::msg_type::MODEL_LIST])
     }
 
-    /// 使用来自 [`crate::asset::read_plan`] 的读取计划读取完整的音箱模型或 IR 数据块。
-    ///
-    /// 只读。逐个发送数据块请求，并按 `addr` 升序拼接解码后的应答（设备会乱序应答）。
-    ///
-    /// 每收到一个应答就调用一次 `on_chunk(done, total)`，以便调用方显示进度；不需要时传入一个空闭包即可。
-    ///
-    /// 读取计划作为参数传入而非在此推导，
-    /// 这样未知区域或槽位会在任何 MIDI 发出之前被调用方拒绝，
-    /// 而不会表现成传输层错误。
-    pub fn read_asset<F>(
-        &mut self,
-        plan: &[crate::asset::ChunkRequest],
-        total: u32,
-        mut on_chunk: F,
-    ) -> Result<Vec<u8>, Error<T::Error>>
-    where
-        F: FnMut(usize, usize),
-    {
-        let n = plan.len();
-        let mut chunks = Vec::with_capacity(n);
-        for (i, req) in plan.iter().enumerate() {
-            let reply = self.transact_expect(req.region, req.payload(), &[req.region])?;
-            // ⚠️ 每一块都必须与它自己的请求对上。原来这里是
-            // `if let Some(c) = parse_chunk(..) { chunks.push(c) }`——既不校验地址，
-            // 解析失败还静默丢弃；而 `assemble` 只按 addr 排序拼接、不查缺口也不查
-            // 重复，于是：缺块 → blob 变短；重复块 → blob 变长后被下面的
-            // `blob[..total]` **静默截断成正确长度、内容却是错的**。
-            //
-            // 真机实测（2026-10-12）：38 槽全量读里出现过 1 次这种"长度 12242 但
-            // 内容错误"的读回，crc32 照样打印，读侧无从察觉。
-            //
-            // 但"解析失败"不能一律当错误：读计划恒按该区域的**标称**长度构造
-            // （IR = 4096），而设备上确实存在变长 IR（实测槽 12 = 2780 B、槽 16 =
-            // 3764 B）。对超出实际数据的地址，设备回的是空应答。旧代码正是靠
-            // 静默丢弃这些尾部块才"碰巧"读出正确长度——这是巧合，不是设计。
-            // 这里把尾部空应答显式当作"数据到此为止"，并且只允许出现在已经拿到
-            // 至少一块之后；第一块就读不到数据仍然报错。
-            let c = match crate::asset::parse_chunk(&reply.payload) {
-                Some(c) => c,
-                None if i > 0 => {
-                    on_chunk(i + 1, n);
-                    break;
-                }
-                None => {
-                    return Err(Error::Protocol(format!(
-                        "asset read: chunk 1/{n} (slot {} addr {}) replied with an \
-                         undecodable payload ({} bytes)",
-                        req.slot,
-                        req.addr,
-                        reply.payload.len()
-                    )));
-                }
-            };
-            if c.slot != req.slot || c.addr != req.addr {
-                return Err(Error::Protocol(format!(
-                    "asset read: chunk {}/{n} answered for slot {} addr {} but slot {} \
-                     addr {} was requested — the read would be silently mis-assembled",
-                    i + 1, c.slot, c.addr, req.slot, req.addr
-                )));
-            }
-            // 每块解码后应恰好是一个数据块；末块是 `req.len` 字节。
-            // 应答没有块级校验和，所以长度是唯一能发现"帧被截断/错位"的廉价信号 ——
-            // 而错位的数据块会带着**正确的** slot/addr 通过上面的检查，内容却是错的。
-            let want_len = if i + 1 == n {
-                req.len as usize
-            } else {
-                crate::asset::CHUNK_BYTES
-            };
-            if c.data.len() != want_len {
-                return Err(Error::Protocol(format!(
-                    "asset read: chunk {}/{n} (slot {} addr {}) decoded to {} bytes, \
-                     expected {want_len} — the frame is truncated or misaligned",
-                    i + 1,
-                    req.slot,
-                    req.addr,
-                    c.data.len()
-                )));
-            }
-            chunks.push(c);
-            on_chunk(i + 1, n);
-        }
-        let blob = crate::asset::assemble(&chunks);
-        if blob.is_empty() {
-            return Err(Error::Protocol(format!(
-                "asset read: no data chunks came back for slot {}",
-                plan[0].slot
-            )));
-        }
-        // 计划是按标称长度构建的；裁掉多余的余量。
-        let out = if blob.len() > total as usize {
-            blob[..total as usize].to_vec()
-        } else {
-            blob
-        };
-        if out.len() > total as usize {
-            return Err(Error::Protocol(format!(
-                "asset read: reassembled {} bytes for a {total}-byte asset",
-                out.len()
-            )));
-        }
-        Ok(out)
-    }
-
-    /// 将 IR 数据块写回槽位，并通过重新读取进行验证。
+    /// 将 IR 数据块写回槽位；成功与否只看设备自己的提交状态字节。
     ///
     /// 针对单个槽位重放应用的导入流程：
     /// `0x56`（查询名称）→ PING → `0x49`（会话）→ PING → `0x50`（同步）→
@@ -388,14 +282,16 @@ impl<T: Transport> Nanocore<T> {
     /// `0x53` 帧的 `B3` 字节由 blob 派生（它承载 CRC 被掩掉的最高位 —— 见 `asset::write_hash`）。
     /// 前导步骤尽力而为：设备的写入会话跨连接保留，会话已打开时 `0x49`/`0x50` 将得不到应答。
     ///
-    /// 返回回读的字节，以便调用方与 `blob` 比较。
+    /// 设备在 `0x57` 提交帧的状态字节里给出成败，因此不需要回读比对——
+    /// 官方 App 同样不回读；而 `0x59` 的读应答没有块级校验且会间歇性损坏，
+    /// 拿它当验证只会给出不可信的结论。
     pub fn write_ir_slot(
         &mut self,
         slot: u8,
         blob: &[u8],
         name_override: Option<&str>,
         mut on_progress: impl FnMut(&str),
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(), String> {
         // Flash 操作很慢：设备应答会话/提交帧的时间可能远超默认的 1 s 预算
         // （观察到：一个 0x49 ACK 在整个 1 s 预算耗尽之后才到达）。
         // 整个写入流程使用宽松的策略。
@@ -419,7 +315,7 @@ impl<T: Transport> Nanocore<T> {
         blob: &[u8],
         name_override: Option<&str>,
         on_progress: &mut dyn FnMut(&str),
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(), String> {
         use crate::asset;
 
         // 1. 首先查询槽位名称 —— 趁设备仍处于正常（读取友好）模式。
@@ -537,53 +433,23 @@ impl<T: Transport> Nanocore<T> {
             asset::write_name(slot, &name_bytes),
             &[asset::WRITE_NAME],
         ).map_err(|e| e.to_string())?;
-        self.transact_expect(
-            asset::WRITE_COMMIT,
-            asset::write_commit(slot),
-            &[asset::WRITE_COMMIT],
-        )
-        .map_err(|e| e.to_string())?;
-
-        // 应用会在提交与其回读之间重新枚举槽位表；flash 写入不会立即可见。
-        // 重新查询槽位，并给设备留出时间后再回读。
-        let _ = self.transact_expect(
-            asset::SLOT_QUERY,
-            asset::slot_query(slot),
-            &[asset::SLOT_QUERY],
-        );
-        // flash 写入是异步落定的：立即回读可能读到部分过期的数据
-        // （观察到：提交后数秒，blob 中约 2.4 s 处的一个过期字节范围）。
-        // 留出时间，并重试回读直到匹配或预算耗尽。
-        std::thread::sleep(std::time::Duration::from_millis(1200));
-
-
-        // 8. 回读并返回。整个读取重试几次：
-        //    提交后立即读取时设备可能返回部分过期的数据。
-        let (total, plan) = asset::read_plan(asset::REGION_IR, slot)
-            .ok_or_else(|| "no read plan for that slot".to_string()).map_err(|e| e.to_string())?;
-        let mut back = Vec::new();
-        for attempt in 0..3 {
-            let mut chunks = Vec::new();
-            for req in &plan {
-                let reply = self.transact_expect(req.region, req.payload(), &[req.region]).map_err(|e| e.to_string())?;
-                if let Some(c) = asset::parse_chunk(&reply.payload) {
-                    chunks.push(c);
-                }
-            }
-            back = asset::assemble(&chunks);
-            if back.len() > total as usize {
-                back.truncate(total as usize);
-            }
-            if back == blob {
-                if attempt > 0 {
-                    on_progress(&format!("read-back stable on attempt {}", attempt + 1));
-                }
-                break;
-            }
-            on_progress(&format!("read-back stale (attempt {}), waiting…", attempt + 1));
-            std::thread::sleep(std::time::Duration::from_millis(1200));
+        // 提交状态是设备自己给的判据 —— 与 amp 写路径对 0x33/0x35 的处理一致。
+        // 官方 App 写完就结束，不回读比对，这里也不做。
+        let ack = self
+            .transact_expect(
+                asset::WRITE_COMMIT,
+                asset::write_commit(slot),
+                &[asset::WRITE_COMMIT],
+            )
+            .map_err(|e| format!("0x57 commit not acked: {e}"))?;
+        if ack.payload.get(1) != Some(&0x00) {
+            return Err(format!(
+                "device rejected the commit (status {:02x})",
+                ack.payload[1]
+            ));
         }
-        Ok(back)
+
+        Ok(())
     }
 
     /// 将 amp 模型（完整 `.ead`，12302 B）写入设备 amp 槽位，并回读校验 crc32。
@@ -602,14 +468,14 @@ impl<T: Transport> Nanocore<T> {
     /// 与 IR 写一样：写会话有清空预设名表等副作用，失败后用
     /// `preset restore-factory` 恢复。
     ///
-    /// 返回回读的剥壳负载（12242 B），调用方与 `ead[60..]` 比较。
+    /// 成败只看设备自己的 `0x33` 提交与 `0x35` 型号名两个状态字节（见上方）。
     pub fn write_amp_slot(
         &mut self,
         slot: u8,
         ead: &[u8],
         name_override: Option<&str>,
         mut on_progress: impl FnMut(&str),
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(), String> {
         use crate::amp_write as aw;
 
         assert_eq!(ead.len(), aw::EAD_TOTAL, "amp blob must be a full .ead");
@@ -634,7 +500,7 @@ impl<T: Transport> Nanocore<T> {
         ead: &[u8],
         name_override: Option<&str>,
         on_progress: &mut dyn FnMut(&str),
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(), String> {
         use crate::amp_write as aw;
         use crate::asset;
         use crate::msg_type;
@@ -765,21 +631,8 @@ impl<T: Transport> Nanocore<T> {
             std::thread::sleep(Duration::from_millis(1500));
         }
 
-        // 9. 回读（信息性）：设备内部 DDBP 格式，无法与 .ead 负载逐字节比对，
-        //    仅供调用方展示 crc 变化。
-        let (_total, plan) = asset::read_plan(asset::REGION_AMP, slot)
-            .ok_or_else(|| "no read plan for that amp slot".to_string())?;
-        let mut chunks = Vec::new();
-        for req in &plan {
-            let reply = self
-                .transact_expect(req.region, req.payload(), &[req.region])
-                .map_err(|e| e.to_string())?;
-            if let Some(c) = asset::parse_chunk(&reply.payload) {
-                chunks.push(c);
-            }
-        }
         on_progress("done");
-        Ok(asset::assemble(&chunks))
+        Ok(())
     }
 
     /// 查询全部 38 个 amp/drive 型号槽，返回被标记为"活动"的槽位

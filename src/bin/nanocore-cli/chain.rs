@@ -129,7 +129,6 @@ fn chain_write(dev: &mut Dev, kind: u8, payload: Vec<u8>) -> Result<(), Failure>
                 format!("no reply to the chain write after {attempts} attempt(s) in {elapsed:?}")
             }
             Error::Transport(t) => t.to_string(),
-            Error::Protocol(m) => m,
         })?;
     describe(&tx, "", None);
     describe(&ack, "", None);
