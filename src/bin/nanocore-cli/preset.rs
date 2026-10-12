@@ -491,14 +491,10 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
 
             // 官方序列（见 `docs/protocol/inventory.md`）：前置帧 + 一帧名字，**不切预设、
             // 不提交**。7 份 `预设1改名*.mmon` 抓包里的改名就是孤零零一帧。
-            let (k, p) = nanocore::protocol::name_session_begin();
-            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name session")?;
-
+            // 官方序列：**只有一帧**。7 份 `预设1改名*.mmon` 抓包里，改名就是
+            // 孤零零一帧 `0x6D`，前后只有 `0x68` 心跳——没有前置帧、没有 `0x46` 提交。
             let (k, p) = nanocore::protocol::set_name_field(&field);
             check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name field")?;
-
-            let (k, p) = nanocore::protocol::name_commit();
-            check_status(transact_reply(&mut dev, conn, k, p, &[])?, "name commit")?;
 
             // flash 落盘异步生效，稍候再读名表复核。
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -516,68 +512,6 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     "the device accepted the frames but the name table still says {got:?}"
                 )))
             }
-        }
-        PresetCmd::Volume { percent } => {
-            let mut dev = open_device(conn)?;
-            let read_volume =
-                |dev: &mut crate::common::Dev| -> Result<u8, Failure> {
-                let snap = dev.read_snapshot().map_err(|e| e.to_string())?;
-                let state = nanocore::protocol::decode_snapshot_state(&snap.payload).ok_or_else(
-                    || {
-                        Failure::error(
-                            "the 0x63 snapshot did not decode (only the USB payload form \
-                             is supported)",
-                        )
-                    },
-                )?;
-                Ok(state.preset_volume)
-            };
-            let before = read_volume(&mut dev)?;
-            let (k, p) = nanocore::protocol::set_preset_volume(percent);
-            transact(&mut dev, conn, k, p, &[])?;
-
-            // 设备的快照不是即时刷新的，稍候再回读。
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let after = read_volume(&mut dev)?;
-            println!("preset volume: {before} -> {after}");
-            if after == percent {
-                Ok(())
-            } else {
-                Err(Failure::mismatch(format!(
-                    "volume write did not stick: set {percent}, snapshot reads {after}"
-                )))
-            }
-        }
-        PresetCmd::List => {
-            let mut dev = open_device(conn)?;
-            let entries = dev.read_preset_names()?;
-            for e in &entries {
-                println!(
-                    "  #{:<2} {:<12} {}",
-                    e.slot + 1,
-                    e.name,
-                    if e.named { "" } else { "(empty)" }
-                );
-            }
-            Ok(())
-        }
-        PresetCmd::Set { index } => {
-            let mut dev = open_device(conn)?;
-            // 不用裸 program change：它不等应答，设备异步提交，导致紧随其后的
-            // `preset show` 读到上一个槽。
-            dev.select_preset_checked(index - 1)
-                .map_err(|e| Failure::error(e.to_string()))?;
-            wait_preset_settled(&mut dev, Some(index - 1))
-        }
-        PresetCmd::Next => {
-            let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &nanocore::midicc::global::next_preset(conn.channel))?;
-            wait_preset_settled(&mut dev, None)
-        }
-        PresetCmd::Prev => {
-            let mut dev = open_device(conn)?;
-            send_standard(&mut dev, &nanocore::midicc::global::prev_preset(conn.channel))?;
-            wait_preset_settled(&mut dev, None)
         }
         PresetCmd::RestoreFactory => {
             // 语义与官方 App 的"仅 DSP 恢复"一致：40 组出厂预设整体重写。
