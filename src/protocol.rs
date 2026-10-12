@@ -295,27 +295,26 @@ pub fn set_name(name: &[u8]) -> (u8, Vec<u8>) {
 ///
 /// [`chain_encode`]: crate::protocol::chain_encode
 pub fn encode_preset_name_field(name: &str) -> Result<[u8; 9], String> {
-    // 长度按**字符**算，不按字节：'中文名' 是 3 个字符，应该落到下面的字符集检查，
-    // 而不是被报成"9 个字符超长"。
-    let count = name.chars().count();
-    if count == 0 || count > 8 {
-        return Err(format!(
-            "preset name must be 1-8 characters, got {count}"
-        ));
-    }
-    // 设备端只能显示键盘上打得出的半角字符。真机逐个试过：
-    // 字母、数字、空格，以及 `- _ . , ! ? + = * / : ; ' " ( ) [ ] { } < > @ # $ % ^ & | ~ \`
-    // 都可以。中文、日文、全角标点、以及任何控制字符都写不进去。
+    // 顺序：先查字符集，再查长度。
+    // 设备只能显示键盘上打得出的半角字符；真机逐个试过字母、数字、空格，以及
+    // `- _ . , ! ? + = * / : ; ' " ( ) [ ] { } < > @ # $ % ^ & | ~ \\`
+    // 都可以，中文/全角标点/控制字符都写不进去。
+    // 先查字符集，`中文名` 这类会直接报"字符不允许"，而不是被当成 9 字节说超长。
     if let Some(bad) = name.chars().find(|c| !matches!(c, ' '..='~')) {
-        return Err(format!(
-            "preset names accept only English letters, digits, spaces and common \
-             half-width punctuation (ASCII 0x20-0x7E); {bad:?} is not allowed"
-        ));
+        return Err(format!("preset name: {bad:?} is not allowed"));
+    }
+    let count = name.chars().count();
+    if count == 0 {
+        return Err("preset name is empty".to_string());
+    }
+    if count > 8 {
+        return Err(format!("preset name: 8 characters max, got {count}"));
     }
     // 全是空格的话，设备读回来和空名字没区别。
     if name.chars().all(|c| c == ' ') {
-        return Err("preset name must not consist of spaces only".to_string());
+        return Err("preset name is only spaces".to_string());
     }
+
     let bytes = name.as_bytes();
     let mut padded = [0x00u8; 8];
     padded[..bytes.len()].copy_from_slice(bytes);
