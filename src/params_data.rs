@@ -172,8 +172,12 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
 ("delay", 2, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
     ParamInfo { index: 1, name: "Feedback", cc: 75 },
-    ParamInfo { index: 2, name: "Filter", cc: 76 },
-    ParamInfo { index: 3, name: "Mix", cc: 77 },
+    ParamInfo { index: 2, name: "Sensitivity", cc: 76 },
+    ParamInfo { index: 3, name: "Depth", cc: 77 },
+    ParamInfo { index: 4, name: "Attack", cc: 78 },
+    ParamInfo { index: 5, name: "Release", cc: 79 },
+    ParamInfo { index: 6, name: "Filter", cc: 0 },
+    ParamInfo { index: 7, name: "Mix", cc: 0 },
 ]),
 ("delay", 3, &[
     ParamInfo { index: 0, name: "Time", cc: 74 },
@@ -255,12 +259,14 @@ pub const TYPED: &[(&str, u8, &[ParamInfo])] = &[
     ParamInfo { index: 3, name: "Mod Rate", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
-// variant 7 = spring（CC47=6；手册 5-7：Decay / PreDelay / Crossover / Mod / Mix）
+// variant 7 = spring（CC47=6）。1.12 的第 4 位由 Mod 改称 Tone（音色）——
+// App 1.3.2 的 Spring 面板为 衰减 / 预延迟 / 分频点 / 音色 / 混合；wire 上
+// 参数个数与位置都未变。
 ("reverb", 7, &[
     ParamInfo { index: 0, name: "Decay", cc: 85 },
     ParamInfo { index: 1, name: "PreDelay", cc: 86 },
     ParamInfo { index: 2, name: "Crossover", cc: 87 },
-    ParamInfo { index: 3, name: "Mod", cc: 88 },
+    ParamInfo { index: 3, name: "Tone", cc: 88 },
     ParamInfo { index: 4, name: "Mix", cc: 89 },
 ]),
 ];
@@ -340,8 +346,8 @@ pub const EFFECT_TYPES: &[(&str, &[(u8, &str)])] = &[
 /// 参数列表不依赖效果类型的块的 `(块键, b5, 参数列表)`。
 pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 // 手册「AMP 参数说明」写的是 Gain / Bass / Mid / Treble / Level —— 无块名前缀，
-// 设备与 App 上也是这么显示的。`cab` 同理，只有 Low Cut / High Cut 两个，
-// 设备实存也是 2 个（此前表里多一个 `Level`(CC67)，设备并不存）。
+// 设备与 App 上也是这么显示的。`cab` 在 1.10 固件只存 2 个（Low Cut / High Cut），
+// 1.12 起实存 3 个（加了 Level，CC67 回归 —— 见下方表内注释）。
 ("amp", 2, &[
     ParamInfo { index: 0, name: "Gain", cc: 60 },
     ParamInfo { index: 1, name: "Bass", cc: 61 },
@@ -352,6 +358,9 @@ pub const FIXED: &[(&str, u8, &[ParamInfo])] = &[
 ("cab", 3, &[
     ParamInfo { index: 0, name: "Low Cut", cc: 65 },
     ParamInfo { index: 1, name: "High Cut", cc: 66 },
+    // 1.12 加回了 CAB/IR 的独立输出电平：实测 b6=2 可写可读（1.10 时设备
+    // 只存 2 个，当时是误记）。手册未给量程，按无量程（0..1）渲染。
+    ParamInfo { index: 2, name: "Level", cc: 67 },
 ]),
 ];
 
@@ -504,8 +513,9 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Level", lo: 0.0, hi: 100.0, unit: "" },
 ]),
+// 1.12 把粗调扩到 ±24 半音（±1 微调不变）。App 面板默认值仍是 0（0.5）。
 ("fx2", 8, &[
-    Range { name: "Pitch", lo: -12.0, hi: 12.0, unit: "st" },
+    Range { name: "Pitch", lo: -24.0, hi: 24.0, unit: "st" },
     Range { name: "Fine", lo: -1.0, hi: 1.0, unit: "st" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
@@ -533,9 +543,15 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
+// 1.12 重排后的取值顺序与 TYPED 的 ("delay", 2) 一致 —— 量程按位置取，
+// 两表的顺序必须同步。
 ("delay", 2, &[
     Range { name: "Time", lo: 0.1, hi: 3000.0, unit: "ms" },
     Range { name: "Feedback", lo: 0.0, hi: 95.0, unit: "" },
+    Range { name: "Sensitivity", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Depth", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Attack", lo: 0.0, hi: 100.0, unit: "ms" },
+    Range { name: "Release", lo: 0.0, hi: 2000.0, unit: "ms" },
     Range { name: "Filter", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
@@ -642,12 +658,12 @@ pub const RANGES: &[(&str, u8, &[Range])] = &[
     Range { name: "Mod Rate", lo: 0.02, hi: 0.25, unit: "Hz" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
-// variant 7 = spring（手册 5-7：分频点 800Hz~8kHz）
+// variant 7 = spring（手册 5-7：分频点 800Hz~8kHz；1.12 起第 4 位叫 Tone）
 ("reverb", 7, &[
     Range { name: "Decay", lo: 0.0, hi: 12.0, unit: "s" },
     Range { name: "PreDelay", lo: 5.0, hi: 80.0, unit: "ms" },
     Range { name: "Crossover", lo: 800.0, hi: 8000.0, unit: "Hz" },
-    Range { name: "Mod", lo: 0.0, hi: 100.0, unit: "" },
+    Range { name: "Tone", lo: 0.0, hi: 100.0, unit: "" },
     Range { name: "Mix", lo: 0.0, hi: 100.0, unit: "" },
 ]),
 

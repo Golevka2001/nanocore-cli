@@ -291,30 +291,6 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     manifest.presets.len()
                 )));
             }
-            // **导入是破坏性的**：写会话用 `0x49` 开启，设备会先清空整张预设表，
-            // 再靠随后的每组 `0x43` 逐槽写回来。官方 App 从不导入少于 40 组——
-            // `导入预设包.mmon` 里是 41 组写、40 个保存帧，出厂 40 个预设全部重写。
-            //
-            // 只导入 1 个预设就会把其余 39 个的名字抹成空，**且不报错**（真机实测）。
-            // 与其在这里悄悄做一份完整导出（那要走一遍全部槽的 0x41 往返，很容易再出
-            // 岔子），不如直接拒绝：破坏性操作要由用户显式确认。
-            {
-                let mut dev = open_device(conn)?;
-                let existing = dev.read_preset_names().map_err(Failure::error)?;
-                let named = existing.iter().filter(|e| e.named).count();
-                if named > manifest.presets.len() && !force {
-                    return Err(Failure::error(format!(
-                        "refusing to import: the device holds {named} named presets but the \
-                         bundle has {}. The write session (0x49) clears the whole table and \
-                         rewrites only the slots in the bundle, so the other {} would end up \
-                         empty with no error. Export them first, or pass --force to import \
-                         anyway.",
-                        manifest.presets.len(),
-                        named.saturating_sub(manifest.presets.len())
-                    )));
-                }
-            }
-
             let mut pairs: Vec<(u8, nanocore::preset43::PresetWrite)> = Vec::new();
             for entry in &manifest.presets {
                 // `--slot` 是用户编号 1–40；缺省沿用 manifest 里记录的 wire 槽位。
@@ -347,6 +323,32 @@ pub fn cmd_preset(cmd: PresetCmd, conn: &Conn) -> Result<(), Failure> {
                     );
                 }
                 return Ok(());
+            }
+            // **导入是破坏性的**：写会话用 `0x49` 开启，设备会先清空整张预设表，
+            // 再靠随后的每组 `0x43` 逐槽写回来。官方 App 从不导入少于 40 组——
+            // `导入预设包.mmon` 里是 41 组写、40 个保存帧，出厂 40 个预设全部重写。
+            //
+            // 只导入 1 个预设就会把其余 39 个的名字抹成空，**且不报错**（真机实测）。
+            // 与其在这里悄悄做一份完整导出（那要走一遍全部槽的 0x41 往返，很容易再出
+            // 岔子），不如直接拒绝：破坏性操作要由用户显式确认。
+            //
+            // 守卫放在 `--dry-run` 之后：dry-run 只打印将要发送的帧，不碰设备，
+            // 没有理由要求它先去读设备名表（没有设备时也能预览导入内容）。
+            {
+                let mut dev = open_device(conn)?;
+                let existing = dev.read_preset_names().map_err(Failure::error)?;
+                let named = existing.iter().filter(|e| e.named).count();
+                if named > manifest.presets.len() && !force {
+                    return Err(Failure::error(format!(
+                        "refusing to import: the device holds {named} named presets but the \
+                         bundle has {}. The write session (0x49) clears the whole table and \
+                         rewrites only the slots in the bundle, so the other {} would end up \
+                         empty with no error. Export them first, or pass --force to import \
+                         anyway.",
+                        manifest.presets.len(),
+                        named.saturating_sub(manifest.presets.len())
+                    )));
+                }
             }
             eprintln!(
                 "warning: importing overwrites the target preset slots. Do not \

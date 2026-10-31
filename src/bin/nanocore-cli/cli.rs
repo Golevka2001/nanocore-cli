@@ -75,8 +75,7 @@ pub struct Cli {
 }
 
 /// 协议探测旋钮：逐个 flatten 到 `debug` 下**会发帧的**叶子命令
-/// （`ping` / `snapshot` / `enable` / `setparam` / `variant` / `raw` /
-/// `replay` / `probe`）。
+/// （`ping` / `snapshot` / `enable` / `setparam` / `raw` / `replay` / `probe`）。
 ///
 /// 这些是裸协议层的应急手段——非 `debug` 命令一个都用不到，所以**不**是
 /// 全局参数：让 `preset list --no-sysex` 之类通过只会掩盖"此处不该有这个

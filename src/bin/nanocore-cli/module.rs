@@ -103,6 +103,10 @@ fn cmd_module_list() -> Result<(), Failure> {
     Ok(())
 }
 
+fn cc_disp(cc: u8) -> String {
+    if cc == 0 { "—".into() } else { format!("CC{cc}") }
+}
+
 fn print_module_help(block: BlockArg) -> Result<(), Failure> {
     let key = block.key();
     let slot = params_data::block_slot(key)
@@ -213,11 +217,12 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>, conn: &Conn) -> Result<(), Fa
     match (&rec, show_values) {
         (Some(rec), true) => {
             for p in ps {
+                let cc = cc_disp(p.cc);
                 match rec.params.get(p.index as usize) {
-                    Some(v) => println!("  b6={:<2} {:<24} CC{:<3} = {v}", p.index, p.name, p.cc),
+                    Some(v) => println!("  b6={:<2} {:<24} {:<5} = {v}", p.index, p.name, cc),
                     None => println!(
-                        "  b6={:<2} {:<24} CC{:<3} = (not stored by the device)",
-                        p.index, p.name, p.cc
+                        "  b6={:<2} {:<24} {:<5} = (not stored by the device)",
+                        p.index, p.name, cc
                     ),
                 }
             }
@@ -234,7 +239,7 @@ fn cmd_params(block: BlockArg, r#type: Option<u8>, conn: &Conn) -> Result<(), Fa
         }
         _ => {
             for p in ps {
-                println!("  b6={:<2} {:<24} CC{}", p.index, p.name, p.cc);
+                println!("  b6={:<2} {:<24} {}", p.index, p.name, cc_disp(p.cc));
             }
             if let Some(rec) = &rec {
                 // 设备当前类型用 `type_number` —— reverb 的编号不是 `variant + 1`
@@ -321,10 +326,10 @@ fn read_param(
     };
     match info {
         Some(p) => println!(
-            "{} param {} (b6={idx}, CC{}) = {v}",
+            "{} param {} (b6={idx}, {}) = {v}",
             block.key(),
             p.name,
-            p.cc
+            cc_disp(p.cc)
         ),
         None => println!(
             "{} param b6={idx} = {v} (no published name for effect type {})",

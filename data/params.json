@@ -434,6 +434,11 @@
           "index": 1,
           "cc": 66,
           "name": "High Cut"
+        },
+        {
+          "index": 2,
+          "cc": 67,
+          "name": "Level"
         }
       ]
     },
@@ -591,11 +596,31 @@
           {
             "index": 2,
             "cc": 76,
-            "name": "Filter"
+            "name": "Sensitivity"
           },
           {
             "index": 3,
             "cc": 77,
+            "name": "Depth"
+          },
+          {
+            "index": 4,
+            "cc": 78,
+            "name": "Attack"
+          },
+          {
+            "index": 5,
+            "cc": 79,
+            "name": "Release"
+          },
+          {
+            "index": 6,
+            "cc": 0,
+            "name": "Filter"
+          },
+          {
+            "index": 7,
+            "cc": 0,
             "name": "Mix"
           }
         ],
@@ -904,7 +929,7 @@
           {
             "index": 3,
             "cc": 88,
-            "name": "Mod"
+            "name": "Tone"
           },
           {
             "index": 4,
@@ -1232,8 +1257,8 @@
         "8": [
           {
             "name": "Pitch",
-            "lo": -12.0,
-            "hi": 12.0,
+            "lo": -24.0,
+            "hi": 24.0,
             "unit": "st"
           },
           {
@@ -1367,6 +1392,30 @@
             "lo": 0.0,
             "hi": 95.0,
             "unit": ""
+          },
+          {
+            "name": "Sensitivity",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Depth",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": ""
+          },
+          {
+            "name": "Attack",
+            "lo": 0.0,
+            "hi": 100.0,
+            "unit": "ms"
+          },
+          {
+            "name": "Release",
+            "lo": 0.0,
+            "hi": 2000.0,
+            "unit": "ms"
           },
           {
             "name": "Filter",
@@ -1851,7 +1900,7 @@
             "unit": "Hz"
           },
           {
-            "name": "Mod",
+            "name": "Tone",
             "lo": 0.0,
             "hi": 100.0,
             "unit": ""
