@@ -133,7 +133,7 @@ pub fn read_bundle(path: &Path) -> Result<(Manifest, BundleAssets), String> {
     let mut manifest_raw = None;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().to_string();
+        let name = entry.name().map_err(|e| e.to_string())?.into_owned();
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
         if name == "manifest.json" {
